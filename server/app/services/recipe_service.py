@@ -5,14 +5,17 @@ wholesale on update (delete-orphan), mirroring Spotter's program service and Pla
 service (parent-flush-then-children, replace-children).
 """
 
+import datetime
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.cook_event import CookEvent
 from app.models.recipe import Recipe, RecipeIngredient, RecipeStep
 from app.schemas.recipe import (
+    CookedOut,
     IngredientIn,
     RecipeCreate,
     RecipeOut,
@@ -50,6 +53,49 @@ def _build_ingredients(items: list[IngredientIn]) -> list[RecipeIngredient]:
         )
         for order, i in enumerate(items)
     ]
+
+
+async def _cook_stats(
+    db: AsyncSession, user_id: uuid.UUID, recipe_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[int, datetime.datetime]]:
+    """(times_cooked, last_cooked_at) per recipe, one grouped query for a whole listing."""
+    if not recipe_ids:
+        return {}
+    result = await db.execute(
+        select(CookEvent.recipe_id, func.count(), func.max(CookEvent.cooked_at))
+        .where(CookEvent.user_id == user_id, CookEvent.recipe_id.in_(recipe_ids))
+        .group_by(CookEvent.recipe_id)
+    )
+    return {recipe_id: (count, last) for recipe_id, count, last in result.all()}
+
+
+async def mark_cooked(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> CookedOut:
+    """One "I made this" tap → one history row."""
+    await load_owned_recipe(db, user_id, recipe_id)
+    db.add(CookEvent(user_id=user_id, recipe_id=recipe_id))
+    await db.commit()
+    stats = await _cook_stats(db, user_id, [recipe_id])
+    count, last = stats.get(recipe_id, (0, None))
+    return CookedOut(times_cooked=count, last_cooked_at=last)
+
+
+async def unmark_cooked(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> CookedOut:
+    """Undo a mis-tap: drop the most recent event (404 when there is none)."""
+    await load_owned_recipe(db, user_id, recipe_id)
+    result = await db.execute(
+        select(CookEvent)
+        .where(CookEvent.user_id == user_id, CookEvent.recipe_id == recipe_id)
+        .order_by(CookEvent.cooked_at.desc())
+        .limit(1)
+    )
+    latest = result.scalar_one_or_none()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing to undo")
+    await db.delete(latest)
+    await db.commit()
+    stats = await _cook_stats(db, user_id, [recipe_id])
+    count, last = stats.get(recipe_id, (0, None))
+    return CookedOut(times_cooked=count, last_cooked_at=last)
 
 
 def _summary(recipe: Recipe) -> RecipeSummaryOut:
@@ -98,12 +144,23 @@ async def create_recipe(
 
 async def list_recipes(db: AsyncSession, user_id: uuid.UUID) -> list[RecipeSummaryOut]:
     result = await db.execute(select(Recipe).where(Recipe.user_id == user_id).order_by(Recipe.name))
-    return [_summary(r) for r in result.scalars().all()]
+    recipes = list(result.scalars().all())
+    stats = await _cook_stats(db, user_id, [r.id for r in recipes])
+    out = []
+    for r in recipes:
+        count, last = stats.get(r.id, (0, None))
+        summary = _summary(r)
+        out.append(summary.model_copy(update={"times_cooked": count, "last_cooked_at": last}))
+    return out
 
 
 async def get_recipe(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> RecipeOut:
     recipe = await load_owned_recipe(db, user_id, recipe_id)
-    return RecipeOut.model_validate(recipe)
+    stats = await _cook_stats(db, user_id, [recipe_id])
+    count, last = stats.get(recipe_id, (0, None))
+    return RecipeOut.model_validate(recipe).model_copy(
+        update={"times_cooked": count, "last_cooked_at": last}
+    )
 
 
 async def update_recipe(

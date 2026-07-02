@@ -180,6 +180,8 @@ class RecipeOut(BaseModel):
     favorite: bool = False
     tags: list[str] = []
     notes: str | None = None
+    times_cooked: int = 0
+    last_cooked_at: datetime.datetime | None = None
     created_at: datetime.datetime
     steps: list[StepOut]
     ingredients: list[IngredientOut]
@@ -271,6 +273,15 @@ class RecipeSummaryOut(BaseModel):
     image_url: str | None = None
     favorite: bool = False
     tags: list[str] = []
+    times_cooked: int = 0
+    last_cooked_at: datetime.datetime | None = None
     created_at: datetime.datetime
     ingredient_count: int
     step_count: int
+
+
+class CookedOut(BaseModel):
+    """Result of marking (or unmarking) a cook: the fresh aggregates."""
+
+    times_cooked: int
+    last_cooked_at: datetime.datetime | None = None

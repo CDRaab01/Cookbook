@@ -15,6 +15,7 @@ enum class RecipeSort(val label: String) {
     Name("Name"),
     Newest("Newest"),
     Quickest("Quickest"),
+    LeastRecentlyCooked("Haven't made lately"),
 }
 
 @HiltViewModel
@@ -91,6 +92,8 @@ class RecipeListViewModel @Inject constructor(
                 val total = (it.prepMinutes ?: 0) + (it.cookMinutes ?: 0)
                 if (total > 0) total else Int.MAX_VALUE
             }
+            // Never-cooked first, then longest-ago — "what should I make again?".
+            RecipeSort.LeastRecentlyCooked -> out.sortedBy { it.lastCookedAt ?: "" }
         }
     }
 }

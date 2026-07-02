@@ -43,6 +43,13 @@ interface ApiService {
     @DELETE("recipes/{id}")
     suspend fun deleteRecipe(@Path("id") id: String)
 
+    // --- Made-it tracking ---
+    @POST("recipes/{id}/cooked")
+    suspend fun markCooked(@Path("id") id: String): CookedOut
+
+    @DELETE("recipes/{id}/cooked/last")
+    suspend fun unmarkCooked(@Path("id") id: String): CookedOut
+
     // --- Plate integration (nutrition estimate + log-to-diary) ---
     @GET("recipes/{id}/nutrition")
     suspend fun getRecipeNutrition(@Path("id") id: String): RecipeNutritionOut

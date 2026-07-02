@@ -285,6 +285,19 @@ private fun RecipeCard(recipe: RecipeSummaryOut, onClick: () -> Unit) {
                 )
                 Spacer(Modifier.width(4.dp))
                 Caption(if (recipe.servings == 1) "serving" else "servings")
+                if (recipe.timesCooked > 0) {
+                    Spacer(Modifier.width(16.dp))
+                    DataText(
+                        "${recipe.timesCooked}×",
+                        style = CookbookTheme.dataType.numeralLarge,
+                        color = colors.fresh.base,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Caption(
+                        com.cookbook.util.relativeDays(recipe.lastCookedAt)
+                            ?.let { "made · $it" } ?: "made",
+                    )
+                }
             }
         }
     }

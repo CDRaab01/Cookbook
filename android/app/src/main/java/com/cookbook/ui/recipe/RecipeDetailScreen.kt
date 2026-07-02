@@ -102,6 +102,18 @@ fun RecipeDetailScreen(
     LaunchedEffect(Unit) {
         viewModel.addedToList.collect { snackbar.showSnackbar("Added to your shopping list") }
     }
+    LaunchedEffect(Unit) {
+        viewModel.madeIt.collect { count ->
+            val result = snackbar.showSnackbar(
+                message = "Made it! That's time #$count.",
+                actionLabel = "Log to Plate",
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                showLogDialog = true
+            }
+        }
+    }
     LaunchedEffect(plateLogStatus) {
         plateLogStatus?.let {
             snackbar.showSnackbar(it)
@@ -206,6 +218,7 @@ fun RecipeDetailScreen(
             is UiState.Success -> RecipeDetailBody(
                 recipe = s.data,
                 onAddToList = { pickScale = true },
+                onMadeIt = viewModel::markCooked,
                 nutrition = nutrition,
                 onEstimateNutrition = viewModel::estimateNutrition,
                 onLogToPlate = { showLogDialog = true },
@@ -287,6 +300,7 @@ fun RecipeDetailScreen(
 private fun RecipeDetailBody(
     recipe: RecipeOut,
     onAddToList: () -> Unit,
+    onMadeIt: () -> Unit,
     nutrition: UiState<com.cookbook.data.remote.RecipeNutritionOut>,
     onEstimateNutrition: () -> Unit,
     onLogToPlate: () -> Unit,
@@ -348,16 +362,35 @@ private fun RecipeDetailBody(
                         Spacer(Modifier.width(20.dp))
                         MetaStat(value = "$it", label = "cook min", color = colors.heat.base)
                     }
+                    if (recipe.timesCooked > 0) {
+                        Spacer(Modifier.width(20.dp))
+                        MetaStat(
+                            value = "${recipe.timesCooked}×",
+                            label = com.cookbook.util.relativeDays(recipe.lastCookedAt)
+                                ?.let { "made · $it" } ?: "made",
+                            color = colors.fresh.base,
+                        )
+                    }
                 }
             }
         }
 
         item {
-            PulseButton(
-                text = "Add to shopping list",
-                onClick = onAddToList,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PulseButton(
+                    text = "Add to shopping list",
+                    onClick = onAddToList,
+                    modifier = Modifier.weight(1f),
+                )
+                PulseButton(
+                    text = "I made this",
+                    onClick = onMadeIt,
+                    tonal = true,
+                    channel = colors.fresh.base,
+                    onChannel = colors.fresh.on,
+                    dimChannel = colors.fresh.dim,
+                )
+            }
         }
 
         item {

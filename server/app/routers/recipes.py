@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.limiter import limiter
 from app.schemas.recipe import (
+    CookedOut,
     DiscoveredRecipe,
     PreviewIngredientOut,
     RecipeCreate,
@@ -36,6 +37,8 @@ from app.services.recipe_service import (
     delete_recipe,
     get_recipe,
     list_recipes,
+    mark_cooked,
+    unmark_cooked,
     update_recipe,
 )
 
@@ -150,6 +153,18 @@ async def update(
 @router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     await delete_recipe(db, current_user.id, recipe_id)
+
+
+@router.post("/{recipe_id}/cooked", response_model=CookedOut, status_code=status.HTTP_201_CREATED)
+async def cooked(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    """ "I made this" — appends one cook event and returns the fresh aggregates."""
+    return await mark_cooked(db, current_user.id, recipe_id)
+
+
+@router.delete("/{recipe_id}/cooked/last", response_model=CookedOut)
+async def uncooked(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    """Undo a mis-tap: removes the most recent cook event."""
+    return await unmark_cooked(db, current_user.id, recipe_id)
 
 
 @router.get("/{recipe_id}/nutrition", response_model=RecipeNutritionOut)

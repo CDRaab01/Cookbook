@@ -72,9 +72,17 @@ data class RecipeOut(
     val favorite: Boolean = false,
     val tags: List<String> = emptyList(),
     val notes: String? = null,
+    @SerialName("times_cooked") val timesCooked: Int = 0,
+    @SerialName("last_cooked_at") val lastCookedAt: String? = null,
     @SerialName("created_at") val createdAt: String = "",
     val steps: List<StepOut> = emptyList(),
     val ingredients: List<IngredientOut> = emptyList(),
+)
+
+@Serializable
+data class CookedOut(
+    @SerialName("times_cooked") val timesCooked: Int,
+    @SerialName("last_cooked_at") val lastCookedAt: String? = null,
 )
 
 @Serializable
@@ -143,6 +151,8 @@ data class RecipeSummaryOut(
     @SerialName("image_url") val imageUrl: String? = null,
     val favorite: Boolean = false,
     val tags: List<String> = emptyList(),
+    @SerialName("times_cooked") val timesCooked: Int = 0,
+    @SerialName("last_cooked_at") val lastCookedAt: String? = null,
     @SerialName("created_at") val createdAt: String = "",
     @SerialName("ingredient_count") val ingredientCount: Int = 0,
     @SerialName("step_count") val stepCount: Int = 0,

@@ -4,6 +4,7 @@ import com.cookbook.data.local.db.ShoppingDao
 import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.CookedOut
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.ForgotPasswordRequest
 import com.cookbook.data.remote.LogToPlateRequest
@@ -153,6 +154,8 @@ private class FakeApi : ApiService {
         error("unused")
     override suspend fun suggestItems(query: String): List<SuggestionOut> = error("unused")
     override suspend fun migrateFromPlate(): PlateMigrationResult = error("unused")
+    override suspend fun markCooked(id: String): CookedOut = error("unused")
+    override suspend fun unmarkCooked(id: String): CookedOut = error("unused")
     override suspend fun getRecipeNutrition(id: String): RecipeNutritionOut = error("unused")
     override suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult =
         error("unused")

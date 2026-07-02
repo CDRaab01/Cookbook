@@ -85,6 +85,49 @@ class RecipeDetailViewModel @Inject constructor(
         }
     }
 
+    /** One-shot after "I made this": times cooked, so the screen can offer the Plate log. */
+    private val _madeIt = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val madeIt: SharedFlow<Int> = _madeIt
+
+    fun markCooked() {
+        viewModelScope.launch {
+            try {
+                val result = recipeRepository.markCooked(recipeId)
+                val current = (_recipe.value as? UiState.Success)?.data
+                if (current != null) {
+                    _recipe.value = UiState.Success(
+                        current.copy(
+                            timesCooked = result.timesCooked,
+                            lastCookedAt = result.lastCookedAt,
+                        ),
+                    )
+                }
+                _madeIt.tryEmit(result.timesCooked)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't record it"
+            }
+        }
+    }
+
+    fun undoCooked() {
+        viewModelScope.launch {
+            try {
+                val result = recipeRepository.unmarkCooked(recipeId)
+                val current = (_recipe.value as? UiState.Success)?.data
+                if (current != null) {
+                    _recipe.value = UiState.Success(
+                        current.copy(
+                            timesCooked = result.timesCooked,
+                            lastCookedAt = result.lastCookedAt,
+                        ),
+                    )
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't undo"
+            }
+        }
+    }
+
     /** Save the personal notes card; "" clears server-side. */
     fun saveNotes(text: String) {
         viewModelScope.launch {

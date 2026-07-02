@@ -1,5 +1,6 @@
 package com.cookbook.data.repository
 
+import com.cookbook.data.remote.CookedOut
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.LogToPlateRequest
 import com.cookbook.data.remote.LogToPlateResult
@@ -22,6 +23,8 @@ interface RecipeRepository {
     suspend fun importRecipe(sourceId: String): RecipeOut
     suspend fun importRecipeFromUrl(url: String): RecipeOut
     suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut
+    suspend fun markCooked(id: String): CookedOut
+    suspend fun unmarkCooked(id: String): CookedOut
     suspend fun getRecipeNutrition(id: String): RecipeNutritionOut
     suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult
 }
