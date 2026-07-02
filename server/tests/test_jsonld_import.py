@@ -134,9 +134,7 @@ async def test_import_url_endpoint(auth_client, monkeypatch):
             source_url=url,
         )
 
-    monkeypatch.setattr(
-        "app.services.recipe_discovery_service.fetch_recipe_from_url", fake_fetch
-    )
+    monkeypatch.setattr("app.services.recipe_discovery_service.fetch_recipe_from_url", fake_fetch)
 
     resp = await auth_client.post(
         "/recipes/import-url", json={"url": "https://blog.example.com/chili"}
@@ -165,13 +163,9 @@ async def test_import_url_no_recipe_found(auth_client, monkeypatch):
     async def fake_fetch(url, client):
         return None
 
-    monkeypatch.setattr(
-        "app.services.recipe_discovery_service.fetch_recipe_from_url", fake_fetch
-    )
+    monkeypatch.setattr("app.services.recipe_discovery_service.fetch_recipe_from_url", fake_fetch)
     # No Spoonacular key in the test env ⇒ no fallback ⇒ clean 422.
-    monkeypatch.setattr(
-        "app.services.recipe_discovery_service.settings.spoonacular_api_key", None
-    )
+    monkeypatch.setattr("app.services.recipe_discovery_service.settings.spoonacular_api_key", None)
     resp = await auth_client.post(
         "/recipes/import-url", json={"url": "https://blog.example.com/not-a-recipe"}
     )

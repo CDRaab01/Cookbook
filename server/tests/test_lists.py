@@ -83,9 +83,7 @@ async def test_two_recipes_merge_shared_ingredients(auth_client):
     lst = await _default_list(auth_client)
 
     await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": chili["id"]})
-    resp = await auth_client.post(
-        f"/lists/{lst['id']}/add-recipe", json={"recipe_id": tacos["id"]}
-    )
+    resp = await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": tacos["id"]})
     items = resp.json()["items"]
     by_name = {i["name"]: i for i in items}
 
@@ -125,9 +123,7 @@ async def test_check_off_and_clear(auth_client):
     ).json()["items"]
 
     beef = next(i for i in items if i["name"] == "Ground beef")
-    resp = await auth_client.patch(
-        f"/lists/{lst['id']}/items/{beef['id']}", json={"checked": True}
-    )
+    resp = await auth_client.patch(f"/lists/{lst['id']}/items/{beef['id']}", json={"checked": True})
     updated = next(i for i in resp.json()["items"] if i["id"] == beef["id"])
     assert updated["checked"] is True
     assert updated["checked_at"] is not None
@@ -147,9 +143,7 @@ async def test_checked_items_do_not_absorb_new_adds(auth_client):
     await auth_client.patch(f"/lists/{lst['id']}/items/{milk['id']}", json={"checked": True})
 
     # Adding milk again creates a fresh unchecked line instead of merging into history.
-    resp = await auth_client.post(
-        f"/lists/{lst['id']}/items", json={"name": "Milk", "quantity": 2}
-    )
+    resp = await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Milk", "quantity": 2})
     items = resp.json()["items"]
     assert len(items) == 2
     unchecked = next(i for i in items if not i["checked"])
@@ -158,9 +152,9 @@ async def test_checked_items_do_not_absorb_new_adds(auth_client):
 
 async def test_uncheck_clears_checked_at(auth_client):
     lst = await _default_list(auth_client)
-    items = (
-        await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Bread"})
-    ).json()["items"]
+    items = (await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Bread"})).json()[
+        "items"
+    ]
     item = items[0]
     await auth_client.patch(f"/lists/{lst['id']}/items/{item['id']}", json={"checked": True})
     resp = await auth_client.patch(
@@ -173,9 +167,9 @@ async def test_uncheck_clears_checked_at(auth_client):
 
 async def test_delete_item(auth_client):
     lst = await _default_list(auth_client)
-    items = (
-        await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Bread"})
-    ).json()["items"]
+    items = (await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Bread"})).json()[
+        "items"
+    ]
     resp = await auth_client.delete(f"/lists/{lst['id']}/items/{items[0]['id']}")
     assert resp.status_code == 200
     assert resp.json()["items"] == []
@@ -256,7 +250,10 @@ async def test_all_water_recipe_400s(auth_client):
     recipe = (
         await auth_client.post(
             "/recipes",
-            json={"name": "Hydration", "ingredients": [{"name": "Water", "quantity": 8, "unit": "cups"}]},
+            json={
+                "name": "Hydration",
+                "ingredients": [{"name": "Water", "quantity": 8, "unit": "cups"}],
+            },
         )
     ).json()
     lst = await _default_list(auth_client)
@@ -310,7 +307,5 @@ async def test_cross_user_list_isolation(auth_client, client):
         json={"name": "Other", "email": f"other_{uid}@cookbook.com", "password": "Testpass123!"},
     )
     headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
-    resp = await client.post(
-        f"/lists/{lst['id']}/items", json={"name": "Sneaky"}, headers=headers
-    )
+    resp = await client.post(f"/lists/{lst['id']}/items", json={"name": "Sneaky"}, headers=headers)
     assert resp.status_code == 404

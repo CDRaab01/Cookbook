@@ -11,12 +11,8 @@ async def test_lists_index_creates_default_and_counts(auth_client):
 
     lid = lists[0]["id"]
     await auth_client.post(f"/lists/{lid}/items", json={"name": "Milk"})
-    items = (
-        await auth_client.post(f"/lists/{lid}/items", json={"name": "Bread"})
-    ).json()["items"]
-    await auth_client.patch(
-        f"/lists/{lid}/items/{items[0]['id']}", json={"checked": True}
-    )
+    items = (await auth_client.post(f"/lists/{lid}/items", json={"name": "Bread"})).json()["items"]
+    await auth_client.patch(f"/lists/{lid}/items/{items[0]['id']}", json={"checked": True})
 
     lists = (await auth_client.get("/lists")).json()
     assert lists[0]["unchecked_count"] == 1

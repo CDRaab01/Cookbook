@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.RecipePreviewOut
 import com.cookbook.data.repository.RecipeRepository
+import com.cookbook.util.RecipeDraftStore
 import com.cookbook.util.SharedIntentStore
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +21,7 @@ import javax.inject.Inject
 class DiscoverViewModel @Inject constructor(
     private val recipeRepository: RecipeRepository,
     private val sharedIntentStore: SharedIntentStore,
+    private val recipeDraftStore: RecipeDraftStore,
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -49,6 +51,13 @@ class DiscoverViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
+
+    private val _importingPhoto = MutableStateFlow(false)
+    val importingPhoto: StateFlow<Boolean> = _importingPhoto
+
+    /** One-shot: a photo draft is ready — the screen opens a new, pre-filled recipe editor. */
+    private val _photoDraftReady = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val photoDraftReady: SharedFlow<Unit> = _photoDraftReady
 
     init {
         // A URL shared from the browser (ACTION_SEND) opens the import dialog pre-filled.
@@ -156,5 +165,29 @@ class DiscoverViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    // --- Photo import ---
+
+    fun importPhoto(bytes: ByteArray, mimeType: String, fileName: String) {
+        if (_importingPhoto.value) return
+        viewModelScope.launch {
+            _importingPhoto.value = true
+            try {
+                val draft = recipeRepository.importPhoto(bytes, mimeType, fileName)
+                recipeDraftStore.offer(draft)
+                _photoDraftReady.tryEmit(Unit)
+            } catch (e: HttpException) {
+                _error.value = when (e.code()) {
+                    503 -> "Couldn't reach LM Studio. Is it running?"
+                    504 -> "The vision model timed out — it may still be loading."
+                    else -> "Couldn't read that photo (${e.code()})"
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't read that photo"
+            } finally {
+                _importingPhoto.value = false
+            }
+        }
     }
 }

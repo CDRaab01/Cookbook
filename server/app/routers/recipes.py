@@ -1,11 +1,13 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.limiter import limiter
+from app.schemas.photo import RecipePhotoDraftOut
 from app.schemas.recipe import (
     CookedOut,
     DiscoveredRecipe,
@@ -19,6 +21,7 @@ from app.schemas.recipe import (
     RecipeUpdate,
 )
 from app.security import CurrentUser
+from app.services.ai.vision import estimate_recipe_photo
 from app.services.plate_nutrition_service import (
     LogToPlateRequest,
     LogToPlateResult,
@@ -123,6 +126,24 @@ async def import_from_url(
     """Import any recipe page by URL (v0.2): the site's JSON-LD markup first, Spoonacular's
     extractor as fallback. Works without a Spoonacular key when the site has clean markup."""
     return await import_recipe_from_url(db, current_user.id, req.url)
+
+
+@router.post("/import-photo", response_model=RecipePhotoDraftOut)
+@limiter.limit("10/minute")
+async def import_photo(
+    request: Request,
+    current_user: CurrentUser,
+    photo: Annotated[UploadFile, File()],
+):
+    """Read a recipe photo (card, cookbook page) into a draft via a local LM Studio vision
+    model. Nothing is saved — the client opens the normal recipe editor pre-filled with the
+    draft, and the user reviews/edits before the usual POST /recipes commits it."""
+    if not (photo.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=422, detail="File must be an image.")
+    image_bytes = await photo.read()
+    if len(image_bytes) > settings.photo_max_bytes:
+        raise HTTPException(status_code=413, detail="Photo is too large.")
+    return await estimate_recipe_photo(image_bytes, photo.content_type)
 
 
 @router.post("", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)

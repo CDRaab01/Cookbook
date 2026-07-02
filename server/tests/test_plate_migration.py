@@ -94,9 +94,7 @@ async def test_migrate_imports_recipes_and_is_idempotent(client, plate_configure
     assert banana["ingredient_count"] == 2
 
     detail = (
-        await client.get(
-            f"/recipes/{banana['id']}", headers={"Authorization": f"Bearer {token}"}
-        )
+        await client.get(f"/recipes/{banana['id']}", headers={"Authorization": f"Bearer {token}"})
     ).json()
     assert detail["ingredients"][0]["name"] == "Banana"
     assert detail["ingredients"][0]["quantity"] == 118

@@ -48,7 +48,13 @@ SPOONACULAR_PAYLOAD = {
             "original": "1.5 lb pork tenderloin, trimmed",
         },
         {"name": "penne pasta", "amount": 8, "unit": "oz", "aisle": "Pasta and Rice"},
-        {"name": "basil", "amount": 0, "unit": "", "aisle": "Produce", "original": "basil to taste"},
+        {
+            "name": "basil",
+            "amount": 0,
+            "unit": "",
+            "aisle": "Produce",
+            "original": "basil to taste",
+        },
     ],
     "analyzedInstructions": [
         {
@@ -109,9 +115,7 @@ class FakeSource(RecipeSource):
             source_id="42",
             title="Chili Supreme",
             ingredients=[
-                NormalizedIngredient(
-                    name="ground beef", quantity=1.0, unit="lb", category="meat"
-                ),
+                NormalizedIngredient(name="ground beef", quantity=1.0, unit="lb", category="meat"),
                 NormalizedIngredient(name="beans", quantity=2.0, unit="can", category="pantry"),
             ],
             steps=["Brown the beef.", "Simmer with beans."],
@@ -168,9 +172,7 @@ async def test_import_creates_editable_recipe(auth_client, fake_spoonacular):
     assert entry["source"] == "imported"
 
     lst = (await auth_client.get("/lists/default")).json()
-    add = await auth_client.post(
-        f"/lists/{lst['id']}/add-recipe", json={"recipe_id": body["id"]}
-    )
+    add = await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": body["id"]})
     assert add.status_code == 200
     assert len(add.json()["items"]) == 2
 

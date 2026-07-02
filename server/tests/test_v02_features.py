@@ -40,7 +40,10 @@ async def test_notes_set_and_clear(auth_client):
     recipe = (
         await auth_client.post(
             "/recipes",
-            json={"name": "Chili", "ingredients": [{"name": "Beans", "quantity": 2, "unit": "can"}]},
+            json={
+                "name": "Chili",
+                "ingredients": [{"name": "Beans", "quantity": 2, "unit": "can"}],
+            },
         )
     ).json()
     assert recipe["notes"] is None
@@ -81,7 +84,8 @@ async def test_suggest_from_history_and_category_recall(auth_client):
     # Re-add twice more to bump use_count.
     for _ in range(2):
         await auth_client.post(
-            f"/lists/{lst['id']}/items", json={"name": "protein powder", "quantity": 1, "unit": "tub"}
+            f"/lists/{lst['id']}/items",
+            json={"name": "protein powder", "quantity": 1, "unit": "tub"},
         )
 
     resp = await auth_client.get("/lists/suggest", params={"q": "prot"})
@@ -110,7 +114,9 @@ async def test_recipe_adds_feed_suggestions(auth_client):
             "/recipes",
             json={
                 "name": "Taco Tuesday",
-                "ingredients": [{"name": "Flank steak", "quantity": 1, "unit": "lb", "category": "meat"}],
+                "ingredients": [
+                    {"name": "Flank steak", "quantity": 1, "unit": "lb", "category": "meat"}
+                ],
             },
         )
     ).json()
@@ -143,7 +149,10 @@ class PreviewFakeSource(RecipeSource):
             title="Preview Chili",
             ingredients=[
                 NormalizedIngredient(
-                    name="ground beef", quantity=1.0, unit="lb", category="meat",
+                    name="ground beef",
+                    quantity=1.0,
+                    unit="lb",
+                    category="meat",
                     original_text="1 lb ground beef, 85/15",
                 )
             ],

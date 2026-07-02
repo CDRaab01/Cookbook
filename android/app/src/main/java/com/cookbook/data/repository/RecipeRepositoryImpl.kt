@@ -12,11 +12,15 @@ import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeImportRequest
 import com.cookbook.data.remote.RecipeImportUrlRequest
 import com.cookbook.data.remote.RecipeNutritionOut
+import com.cookbook.data.remote.RecipePhotoDraftOut
 import com.cookbook.data.remote.RecipePreviewOut
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.remote.RecipeUpdateRequest
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -115,5 +119,15 @@ class RecipeRepositoryImpl @Inject constructor(
             ),
         )
         return imported
+    }
+
+    override suspend fun importPhoto(
+        bytes: ByteArray,
+        mimeType: String,
+        fileName: String,
+    ): RecipePhotoDraftOut {
+        val body = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
+        val part = MultipartBody.Part.createFormData("photo", fileName, body)
+        return api.importPhoto(part)
     }
 }

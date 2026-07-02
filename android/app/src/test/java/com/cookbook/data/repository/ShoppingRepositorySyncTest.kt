@@ -18,6 +18,7 @@ import com.cookbook.data.remote.PlanEntryOut
 import com.cookbook.data.remote.PlanToListRequest
 import com.cookbook.data.remote.PlanToListResult
 import com.cookbook.data.remote.PlateMigrationResult
+import com.cookbook.data.remote.RecipePhotoDraftOut
 import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeImportRequest
 import com.cookbook.data.remote.RecipeImportUrlRequest
@@ -172,6 +173,8 @@ private class FakeApi : ApiService {
     override suspend fun updateRecipe(id: String, req: RecipeUpdateRequest): RecipeOut =
         error("unused")
     override suspend fun deleteRecipe(id: String) = error("unused")
+    override suspend fun importPhoto(photo: okhttp3.MultipartBody.Part): RecipePhotoDraftOut =
+        error("unused")
     override suspend fun getPlan(start: String, end: String): List<PlanEntryOut> = error("unused")
     override suspend fun createPlanEntry(req: PlanEntryCreateRequest): PlanEntryOut = error("unused")
     override suspend fun deletePlanEntry(id: String) = error("unused")

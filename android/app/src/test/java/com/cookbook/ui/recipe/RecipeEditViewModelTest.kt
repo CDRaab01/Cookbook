@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.repository.RecipeRepository
+import com.cookbook.util.RecipeDraftStore
 import com.cookbook.util.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,7 +30,8 @@ class RecipeEditViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val repository: RecipeRepository = mock()
 
-    private fun newViewModel() = RecipeEditViewModel(repository, SavedStateHandle())
+    private fun newViewModel() =
+        RecipeEditViewModel(repository, RecipeDraftStore(), SavedStateHandle())
 
     @Before
     fun setUp() {

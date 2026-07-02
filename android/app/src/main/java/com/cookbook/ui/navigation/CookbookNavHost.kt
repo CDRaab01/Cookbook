@@ -201,6 +201,9 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                     onImported = { id ->
                         navController.navigate(Screen.RecipeDetail.withId(id))
                     },
+                    onOpenPhotoDraft = {
+                        navController.navigate(Screen.RecipeEdit.withId(null))
+                    },
                 )
             }
             composable(Screen.Plan.route) {

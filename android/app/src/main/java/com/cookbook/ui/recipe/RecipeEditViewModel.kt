@@ -8,6 +8,7 @@ import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeUpdateRequest
 import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.ui.navigation.Screen
+import com.cookbook.util.RecipeDraftStore
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,7 @@ data class RecipeDraft(
 @HiltViewModel
 class RecipeEditViewModel @Inject constructor(
     private val recipeRepository: RecipeRepository,
+    private val recipeDraftStore: RecipeDraftStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -55,7 +57,33 @@ class RecipeEditViewModel @Inject constructor(
     private val _loading = MutableStateFlow(recipeId != null)
     val loading: StateFlow<Boolean> = _loading
 
+    /** Set when this editor opened pre-filled from a photo-import draft the model wasn't
+     * fully confident about — the screen surfaces it as a one-time banner. */
+    private val _photoNote = MutableStateFlow<String?>(null)
+    val photoNote: StateFlow<String?> = _photoNote
+
     init {
+        if (recipeId == null) {
+            recipeDraftStore.consume()?.let { photo ->
+                _draft.value = RecipeDraft(
+                    name = photo.name,
+                    servings = photo.servings?.toString() ?: "1",
+                    prepMinutes = photo.prepMinutes?.toString().orEmpty(),
+                    cookMinutes = photo.cookMinutes?.toString().orEmpty(),
+                    ingredients = photo.ingredients.map {
+                        IngredientDraft(
+                            name = it.name,
+                            quantity = it.quantity?.let { q ->
+                                if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
+                            }.orEmpty(),
+                            unit = it.unit.orEmpty(),
+                        )
+                    }.ifEmpty { listOf(IngredientDraft()) },
+                    steps = photo.steps.ifEmpty { listOf("") },
+                )
+                if (photo.lowConfidence) _photoNote.value = photo.note
+            }
+        }
         if (recipeId != null) {
             viewModelScope.launch {
                 try {
@@ -205,5 +233,9 @@ class RecipeEditViewModel @Inject constructor(
 
     fun clearSaveError() {
         if (_saveState.value is UiState.Error) _saveState.value = UiState.Idle
+    }
+
+    fun clearPhotoNote() {
+        _photoNote.value = null
     }
 }

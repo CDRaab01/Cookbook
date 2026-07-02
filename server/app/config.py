@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # Timeout (seconds) for outbound calls to Plate.
     plate_timeout_seconds: float = 8.0
 
+    # Photo import (v0.3): a local LM Studio instance (OpenAI-compatible) reads a recipe photo
+    # (card, cookbook page) into a draft the user reviews before saving — never auto-committed.
+    # No key gate (it's local, not a paid API); unreachable LM Studio degrades to 503, not a
+    # silent feature flag, so the client can tell "not configured" from "briefly down".
+    lm_studio_base_url: str = "http://localhost:1234/v1"
+    lm_studio_vision_model: str = "google/gemma-3-12b"
+    lm_studio_timeout: float = 60.0
+    photo_max_bytes: int = 8 * 1024 * 1024
+
     # Optional SMTP — if unset, reset codes are printed to stdout instead
     smtp_host: str | None = None
     smtp_port: int = 587

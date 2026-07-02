@@ -1,5 +1,7 @@
 package com.cookbook.ui.discover
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Search
@@ -45,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -64,6 +68,7 @@ import design.pulse.ui.components.SectionHeader
 @Composable
 fun DiscoverScreen(
     onImported: (String) -> Unit,
+    onOpenPhotoDraft: () -> Unit = {},
     viewModel: DiscoverViewModel = hiltViewModel(),
 ) {
     val query by viewModel.query.collectAsState()
@@ -72,10 +77,22 @@ fun DiscoverScreen(
     val importing by viewModel.importing.collectAsState()
     val urlDraft by viewModel.urlDraft.collectAsState()
     val importingUrl by viewModel.importingUrl.collectAsState()
+    val importingPhoto by viewModel.importingPhoto.collectAsState()
     val error by viewModel.error.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        if (bytes != null) viewModel.importPhoto(bytes, mimeType, "recipe.jpg")
+    }
 
     LaunchedEffect(Unit) { viewModel.imported.collect { onImported(it) } }
+    LaunchedEffect(Unit) { viewModel.photoDraftReady.collect { onOpenPhotoDraft() } }
     LaunchedEffect(error) {
         error?.let {
             snackbar.showSnackbar(it)
@@ -88,6 +105,23 @@ fun DiscoverScreen(
             TopAppBar(
                 title = { Text("Discover", style = MaterialTheme.typography.titleLarge) },
                 actions = {
+                    IconButton(
+                        onClick = { photoPicker.launch("image/*") },
+                        enabled = !importingPhoto,
+                    ) {
+                        if (importingPhoto) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = CookbookTheme.colors.heat.base,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Outlined.CameraAlt,
+                                contentDescription = "Import from a photo",
+                            )
+                        }
+                    }
                     IconButton(onClick = { viewModel.openUrlDialog() }) {
                         Icon(Icons.Outlined.Link, contentDescription = "Import from a link")
                     }
@@ -120,8 +154,9 @@ fun DiscoverScreen(
                 UiState.Idle -> EmptyState(
                     icon = Icons.Outlined.TravelExplore,
                     title = "Find something to cook",
-                    subtitle = "Search real recipes, or paste a link with the icon up top — " +
-                        "you can also Share a recipe page from your browser straight to Cookbook.",
+                    subtitle = "Search real recipes, paste a link, or snap a photo of a recipe " +
+                        "card with the icons up top — you can also Share a recipe page from " +
+                        "your browser straight to Cookbook.",
                 )
                 is UiState.Loading -> Column(
                     Modifier.fillMaxSize(),

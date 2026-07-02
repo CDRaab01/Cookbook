@@ -42,9 +42,7 @@ async def _user_with_recipe(client) -> tuple[User, str, str]:
         json={"name": "Nut", "email": email, "password": "Testpass123!"},
     )
     token = resp.json()["access_token"]
-    recipe = await client.post(
-        "/recipes", json=CHILI, headers={"Authorization": f"Bearer {token}"}
-    )
+    recipe = await client.post("/recipes", json=CHILI, headers={"Authorization": f"Bearer {token}"})
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select
 

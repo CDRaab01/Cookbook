@@ -56,6 +56,7 @@ fun RecipeEditScreen(
     val draft by viewModel.draft.collectAsState()
     val saveState by viewModel.saveState.collectAsState()
     val loading by viewModel.loading.collectAsState()
+    val photoNote by viewModel.photoNote.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val colors = CookbookTheme.colors
 
@@ -67,6 +68,12 @@ fun RecipeEditScreen(
                 viewModel.clearSaveError()
             }
             else -> {}
+        }
+    }
+    LaunchedEffect(photoNote) {
+        photoNote?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearPhotoNote()
         }
     }
 

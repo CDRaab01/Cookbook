@@ -5,6 +5,7 @@ import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.LogToPlateRequest
 import com.cookbook.data.remote.LogToPlateResult
 import com.cookbook.data.remote.RecipeCreateRequest
+import com.cookbook.data.remote.RecipePhotoDraftOut
 import com.cookbook.data.remote.RecipeNutritionOut
 import com.cookbook.data.remote.RecipePreviewOut
 import com.cookbook.data.remote.RecipeOut
@@ -27,4 +28,5 @@ interface RecipeRepository {
     suspend fun unmarkCooked(id: String): CookedOut
     suspend fun getRecipeNutrition(id: String): RecipeNutritionOut
     suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult
+    suspend fun importPhoto(bytes: ByteArray, mimeType: String, fileName: String): RecipePhotoDraftOut
 }

@@ -8,9 +8,7 @@ async def _recipe(auth_client, name: str, ingredients: list[dict]) -> str:
 
 
 async def test_plan_crud_and_range(auth_client):
-    chili = await _recipe(
-        auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}]
-    )
+    chili = await _recipe(auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}])
 
     created = await auth_client.post(
         "/plan", json={"date": "2026-07-06", "slot": "dinner", "recipe_id": chili}
@@ -38,9 +36,7 @@ async def test_plan_crud_and_range(auth_client):
 
 
 async def test_entry_needs_exactly_one_of_recipe_or_note(auth_client):
-    chili = await _recipe(
-        auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}]
-    )
+    chili = await _recipe(auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}])
     both = await auth_client.post(
         "/plan",
         json={"date": "2026-07-06", "slot": "dinner", "recipe_id": chili, "note": "??"},
@@ -72,9 +68,7 @@ async def test_plan_to_list_merges_the_week(auth_client):
         ],
     )
     for date, recipe in (("2026-07-06", chili), ("2026-07-07", tacos), ("2026-07-08", chili)):
-        await auth_client.post(
-            "/plan", json={"date": date, "slot": "dinner", "recipe_id": recipe}
-        )
+        await auth_client.post("/plan", json={"date": date, "slot": "dinner", "recipe_id": recipe})
     # A note entry must not affect the shopping math.
     await auth_client.post(
         "/plan", json={"date": "2026-07-09", "slot": "dinner", "note": "Takeout"}
@@ -104,20 +98,14 @@ async def test_plan_to_list_empty_range_400(auth_client):
 
 
 async def test_range_limits(auth_client):
-    resp = await auth_client.get(
-        "/plan", params={"start": "2026-07-06", "end": "2026-09-30"}
-    )
+    resp = await auth_client.get("/plan", params={"start": "2026-07-06", "end": "2026-09-30"})
     assert resp.status_code == 422
-    resp = await auth_client.get(
-        "/plan", params={"start": "2026-07-06", "end": "2026-07-01"}
-    )
+    resp = await auth_client.get("/plan", params={"start": "2026-07-06", "end": "2026-07-01"})
     assert resp.status_code == 422
 
 
 async def test_deleting_recipe_cascades_plan_entries(auth_client):
-    chili = await _recipe(
-        auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}]
-    )
+    chili = await _recipe(auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}])
     await auth_client.post(
         "/plan", json={"date": "2026-07-06", "slot": "dinner", "recipe_id": chili}
     )
