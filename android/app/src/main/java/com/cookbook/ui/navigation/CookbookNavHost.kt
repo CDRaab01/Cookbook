@@ -2,9 +2,7 @@ package com.cookbook.ui.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -14,15 +12,22 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.cookbook.data.local.TokenStore
 import com.cookbook.ui.auth.AuthViewModel
 import com.cookbook.ui.auth.ForgotPasswordScreen
 import com.cookbook.ui.auth.LoginScreen
 import com.cookbook.ui.auth.RegisterScreen
+import com.cookbook.ui.recipe.RecipeDetailScreen
+import com.cookbook.ui.recipe.RecipeEditScreen
+import com.cookbook.ui.recipe.RecipeListScreen
+import com.cookbook.ui.settings.SettingsScreen
+import com.cookbook.ui.shopping.ShoppingScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import design.pulse.ui.components.EmptyState
 import javax.inject.Inject
@@ -122,20 +127,62 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                 )
             }
 
-            // Top-level tabs. Placeholder bodies until their phases land (CLAUDE.md §7).
             composable(Screen.Recipes.route) {
-                EmptyState(
-                    icon = Icons.AutoMirrored.Outlined.MenuBook,
-                    title = "Your recipe book is empty",
-                    subtitle = "Recipes arrive in Phase 2.",
+                RecipeListScreen(
+                    onRecipeClick = { id ->
+                        navController.navigate(Screen.RecipeDetail.withId(id))
+                    },
+                    onAddRecipe = { navController.navigate(Screen.RecipeEdit.withId(null)) },
+                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                )
+            }
+            composable(
+                Screen.RecipeDetail.routeWithArg,
+                arguments = listOf(navArgument(Screen.RecipeDetail.ARG) { type = NavType.StringType }),
+            ) {
+                RecipeDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onEdit = { id -> navController.navigate(Screen.RecipeEdit.withId(id)) },
+                )
+            }
+            composable(
+                Screen.RecipeEdit.routeWithArg,
+                arguments = listOf(
+                    navArgument(Screen.RecipeEdit.ARG) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                val editingExisting = entry.arguments?.getString(Screen.RecipeEdit.ARG) != null
+                RecipeEditScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { id ->
+                        if (editingExisting) {
+                            // Detail is on the back stack beneath the editor; pop back and let
+                            // its resume-reload show the fresh data.
+                            navController.popBackStack()
+                        } else {
+                            navController.navigate(Screen.RecipeDetail.withId(id)) {
+                                popUpTo(Screen.Recipes.route)
+                            }
+                        }
+                    },
+                )
+            }
+            composable(Screen.Settings.route) {
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onLoggedOut = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                 )
             }
             composable(Screen.Shopping.route) {
-                EmptyState(
-                    icon = Icons.Outlined.ShoppingCart,
-                    title = "Nothing on the list",
-                    subtitle = "The shopping list arrives in Phase 3.",
-                )
+                ShoppingScreen()
             }
             composable(Screen.Discover.route) {
                 EmptyState(

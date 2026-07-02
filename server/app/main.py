@@ -7,7 +7,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.config import settings
 from app.limiter import limiter
-from app.routers import auth, users
+from app.routers import auth, lists, recipes, users
 
 # Single source for the human-facing version, reused by GET /version below.
 APP_VERSION = "0.1.0"
@@ -77,6 +77,8 @@ async def security_headers(request: Request, call_next) -> Response:
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(recipes.router)
+app.include_router(lists.router)
 
 
 @app.get("/health", tags=["health"])
