@@ -66,6 +66,13 @@ Write-Host "=== Cookbook redeploy ==="
 Write-Host "Repo:   $RepoDir"
 Write-Host "Ref:    $Ref"
 
+# 0. Git refuses to operate on a repo owned by a different account than the one
+#    running it (CVE-2022-24765 mitigation) -- exactly the case when a Windows
+#    service account (e.g. NetworkService, running the self-hosted runner)
+#    redeploys a clone owned by an interactive user. --global (not --system) so
+#    this self-heals under whichever account runs the script, with no admin step.
+& git config --global --add safe.directory $RepoDir 2>$null
+
 # 1. Fetch latest refs.
 Invoke-Checked git @("-C", $RepoDir, "fetch", "--prune", "origin")
 
