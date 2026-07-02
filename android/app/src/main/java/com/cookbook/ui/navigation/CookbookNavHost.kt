@@ -1,5 +1,6 @@
 package com.cookbook.ui.navigation
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -77,7 +78,9 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
         NavHost(
             navController = navController,
             startDestination = Screen.Gate.route,
-            modifier = Modifier.padding(padding),
+            // Without this, each screen's own inner Scaffold/TopAppBar re-applies the same
+            // system-bar insets a second time — the double-gap bug Plate/Spotter hit first.
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         ) {
             composable(Screen.Gate.route) {
                 val gateViewModel: GateViewModel = hiltViewModel()
