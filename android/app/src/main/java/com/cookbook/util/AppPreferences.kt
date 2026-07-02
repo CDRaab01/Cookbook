@@ -26,6 +26,7 @@ class AppPreferences @Inject constructor(
 ) {
     companion object {
         private val SERVER_URL = stringPreferencesKey("pref_server_url")
+        private val SHOPPING_LIST_ID = stringPreferencesKey("pref_shopping_list_id")
     }
 
     /** Base URL of the Cookbook server. Defaults to the build-time value when unset. */
@@ -35,5 +36,14 @@ class AppPreferences @Inject constructor(
 
     suspend fun setServerUrl(value: String) {
         context.prefsDataStore.edit { it[SERVER_URL] = value }
+    }
+
+    /** The server id of the default shopping list, cached so offline mutations know their list. */
+    val shoppingListId: Flow<String?> = context.prefsDataStore.data.map { prefs ->
+        prefs[SHOPPING_LIST_ID]?.takeIf { it.isNotBlank() }
+    }
+
+    suspend fun setShoppingListId(value: String) {
+        context.prefsDataStore.edit { it[SHOPPING_LIST_ID] = value }
     }
 }
