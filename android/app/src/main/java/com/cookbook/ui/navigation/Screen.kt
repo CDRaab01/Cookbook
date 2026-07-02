@@ -20,4 +20,9 @@ sealed class Screen(val route: String) {
         val routeWithArg = "$route?$ARG={$ARG}"
         fun withId(id: String?) = if (id == null) route else "$route?$ARG=$id"
     }
+    data object CookMode : Screen("cook") {
+        const val ARG = "recipeId"
+        val routeWithArg = "$route/{$ARG}"
+        fun withId(id: String) = "$route/$id"
+    }
 }

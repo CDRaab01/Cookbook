@@ -21,6 +21,7 @@ import com.cookbook.ui.auth.AuthViewModel
 import com.cookbook.ui.auth.ForgotPasswordScreen
 import com.cookbook.ui.auth.LoginScreen
 import com.cookbook.ui.auth.RegisterScreen
+import com.cookbook.ui.cook.CookModeScreen
 import com.cookbook.ui.discover.DiscoverScreen
 import com.cookbook.ui.recipe.RecipeDetailScreen
 import com.cookbook.ui.recipe.RecipeEditScreen
@@ -144,6 +145,9 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                     onDuplicated = { id ->
                         navController.navigate(Screen.RecipeDetail.withId(id))
                     },
+                    onStartCooking = { id ->
+                        navController.navigate(Screen.CookMode.withId(id))
+                    },
                 )
             }
             composable(
@@ -171,6 +175,12 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                         }
                     },
                 )
+            }
+            composable(
+                Screen.CookMode.routeWithArg,
+                arguments = listOf(navArgument(Screen.CookMode.ARG) { type = NavType.StringType }),
+            ) {
+                CookModeScreen(onExit = { navController.popBackStack() })
             }
             composable(Screen.Settings.route) {
                 SettingsScreen(

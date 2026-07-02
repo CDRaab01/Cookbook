@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -80,6 +81,7 @@ fun RecipeDetailScreen(
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
     onDuplicated: (String) -> Unit = {},
+    onStartCooking: (String) -> Unit = {},
     viewModel: RecipeDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.recipe.collectAsState()
@@ -219,6 +221,7 @@ fun RecipeDetailScreen(
                 recipe = s.data,
                 onAddToList = { pickScale = true },
                 onMadeIt = viewModel::markCooked,
+                onStartCooking = { onStartCooking(viewModel.recipeId) },
                 nutrition = nutrition,
                 onEstimateNutrition = viewModel::estimateNutrition,
                 onLogToPlate = { showLogDialog = true },
@@ -301,6 +304,7 @@ private fun RecipeDetailBody(
     recipe: RecipeOut,
     onAddToList: () -> Unit,
     onMadeIt: () -> Unit,
+    onStartCooking: () -> Unit,
     nutrition: UiState<com.cookbook.data.remote.RecipeNutritionOut>,
     onEstimateNutrition: () -> Unit,
     onLogToPlate: () -> Unit,
@@ -389,6 +393,23 @@ private fun RecipeDetailBody(
                     channel = colors.fresh.base,
                     onChannel = colors.fresh.on,
                     dimChannel = colors.fresh.dim,
+                )
+            }
+        }
+        if (recipe.steps.isNotEmpty()) {
+            item {
+                PulseButton(
+                    text = "Start cooking",
+                    onClick = onStartCooking,
+                    modifier = Modifier.fillMaxWidth(),
+                    tonal = true,
+                    leadingIcon = {
+                        Icon(
+                            Icons.Outlined.PlayArrow,
+                            contentDescription = null,
+                            Modifier.width(20.dp),
+                        )
+                    },
                 )
             }
         }
