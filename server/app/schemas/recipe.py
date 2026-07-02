@@ -93,9 +93,7 @@ class RecipeUpdate(BaseModel):
     cook_minutes: int | None = Field(default=None, ge=MINUTES_BOUNDS[0], le=MINUTES_BOUNDS[1])
     image_url: str | None = None
     steps: list[str] | None = Field(default=None, max_length=MAX_RECIPE_STEPS)
-    ingredients: list[IngredientIn] | None = Field(
-        default=None, max_length=MAX_RECIPE_INGREDIENTS
-    )
+    ingredients: list[IngredientIn] | None = Field(default=None, max_length=MAX_RECIPE_INGREDIENTS)
 
     @field_validator("name")
     @classmethod

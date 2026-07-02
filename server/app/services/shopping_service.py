@@ -13,7 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.limits import MAX_LIST_ITEMS
-from app.lists.merge import IncomingItem, combine_quantities, merge_incoming, merge_key, scale_quantity
+from app.lists.merge import (
+    IncomingItem,
+    combine_quantities,
+    merge_incoming,
+    merge_key,
+    scale_quantity,
+)
 from app.models.shopping_list import ShoppingList, ShoppingListItem
 from app.schemas.shopping import AddRecipeRequest, ItemCreate, ItemUpdate, ListOut
 from app.services.recipe_service import load_owned_recipe
@@ -44,9 +50,7 @@ async def get_default_list(db: AsyncSession, user_id: uuid.UUID) -> ShoppingList
     return await _reload(db, created.id)
 
 
-async def load_owned_list(
-    db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID
-) -> ShoppingList:
+async def load_owned_list(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) -> ShoppingList:
     shopping_list = await db.get(ShoppingList, list_id)
     if shopping_list is None or shopping_list.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
@@ -72,9 +76,7 @@ def _merge_into_list(
 ) -> None:
     """Fold incoming rows into the list: sum into same-key unchecked items, append the rest."""
     unchecked_by_key = {
-        merge_key(item.name, item.unit): item
-        for item in shopping_list.items
-        if not item.checked
+        merge_key(item.name, item.unit): item for item in shopping_list.items if not item.checked
     }
     order = _next_order(shopping_list)
     appended = 0

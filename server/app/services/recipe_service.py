@@ -94,9 +94,7 @@ async def create_recipe(
 
 
 async def list_recipes(db: AsyncSession, user_id: uuid.UUID) -> list[RecipeSummaryOut]:
-    result = await db.execute(
-        select(Recipe).where(Recipe.user_id == user_id).order_by(Recipe.name)
-    )
+    result = await db.execute(select(Recipe).where(Recipe.user_id == user_id).order_by(Recipe.name))
     return [_summary(r) for r in result.scalars().all()]
 
 

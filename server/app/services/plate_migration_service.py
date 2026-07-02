@@ -48,9 +48,7 @@ def mint_cross_app_token(email: str) -> str:
 
 async def _fetch_exports(email: str, client: httpx.AsyncClient) -> list[dict]:
     url = settings.plate_base_url.rstrip("/") + "/recipes/export"
-    resp = await client.get(
-        url, headers={"Authorization": f"Bearer {mint_cross_app_token(email)}"}
-    )
+    resp = await client.get(url, headers={"Authorization": f"Bearer {mint_cross_app_token(email)}"})
     if resp.status_code == 401:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -103,9 +101,7 @@ async def migrate_from_plate(
             elif quantity > QUANTITY_BOUNDS[1]:
                 quantity = QUANTITY_BOUNDS[1]
             unit = (item.get("unit") or "").strip().lower() or None
-            ingredients.append(
-                IngredientIn(name=food_name[:255], quantity=quantity, unit=unit)
-            )
+            ingredients.append(IngredientIn(name=food_name[:255], quantity=quantity, unit=unit))
         req = RecipeCreate(
             name=name[:255],
             description=export.get("description"),
