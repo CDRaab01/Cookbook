@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # Timeout (seconds) for outbound calls to Plate.
     plate_timeout_seconds: float = 8.0
 
+    # Suite SSO (BROKER.md Phase 2b). When suite_jwks_url + suite_issuer are set, POST /auth/suite
+    # accepts a suite access token (RS256, from the Dragonfly identity server), validates it
+    # against the published JWKS, and trades it for a Cookbook session — linking by email. Unset ⇒
+    # the endpoint is disabled and the app's own email/password login is entirely unaffected
+    # (dual-auth). suite_audience is the `aud` the identity server stamps on suite access tokens.
+    suite_jwks_url: str | None = None
+    suite_issuer: str | None = None
+    suite_audience: str = "suite"
+
     # Photo import (v0.3): a local LM Studio instance (OpenAI-compatible) reads a recipe photo
     # (card, cookbook page) into a draft the user reviews before saving — never auto-committed.
     # No key gate (it's local, not a paid API); unreachable LM Studio degrades to 503, not a

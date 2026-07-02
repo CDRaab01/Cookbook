@@ -38,6 +38,11 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class SuiteLoginRequest(BaseModel):
+    # A suite access token issued by the Dragonfly identity server (BROKER.md Phase 2b).
+    suite_token: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
