@@ -125,6 +125,10 @@ dependencies {
     // Recipe images (v0.2) — remote URL loading with caching.
     implementation(libs.coil.compose)
 
+    // Home-screen shopping-list widget (v0.3).
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)

@@ -19,10 +19,19 @@ import javax.inject.Inject
 @HiltViewModel
 class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
+    private val widgetRefresher: com.cookbook.widget.WidgetRefresher,
 ) : ViewModel() {
 
     private val _list = MutableStateFlow<UiState<ShoppingListOut>>(UiState.Loading)
     val list: StateFlow<UiState<ShoppingListOut>> = _list
+
+    init {
+        // Any successful list state (load or mutation) redraws the home-screen widget, so it
+        // never sits stale next to a fresh app.
+        viewModelScope.launch {
+            _list.collect { if (it is UiState.Success) widgetRefresher.refresh() }
+        }
+    }
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error

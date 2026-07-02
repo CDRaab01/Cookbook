@@ -39,7 +39,7 @@ class ShoppingViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        viewModel = ShoppingViewModel(repository)
+        viewModel = ShoppingViewModel(repository, mock())
     }
 
     @After
