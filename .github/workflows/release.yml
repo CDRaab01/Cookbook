@@ -97,6 +97,20 @@ jobs:
             echo "No KEYSTORE_BASE64 secret; signing with the committed stable key."
           fi
           ./gradlew :app:assembleRelease --no-daemon
+      - name: Assert signing identity
+        # Guard against a silent key change: if the KEYSTORE_* secrets ever go missing the build
+        # would fall back to a different (committed) key, producing an APK that can't install over
+        # existing users. Pin the known-good signer cert and fail the release if it ever differs.
+        run: |
+          EXPECTED=7351af604164c06d89583e00ddd0227c0eae1feca6870e4906b0b25db618b2b5
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          ACTUAL=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Signing key changed (expected $EXPECTED, got $ACTUAL). Refusing to publish — it would be uninstallable over existing installs. If this key change is intentional, update EXPECTED here."
+            exit 1
+          fi
+          echo "Signing identity verified: $ACTUAL"
       - name: Stage APK + version.json for Dragonfly
         run: |
           APK=cookbook-v${{ steps.version.outputs.name }}.apk
