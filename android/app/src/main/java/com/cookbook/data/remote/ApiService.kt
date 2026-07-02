@@ -6,6 +6,7 @@ import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface ApiService {
 
@@ -42,6 +43,13 @@ interface ApiService {
     @DELETE("recipes/{id}")
     suspend fun deleteRecipe(@Path("id") id: String)
 
+    // --- Recipe discovery (Spoonacular via the server) ---
+    @GET("recipes/discover")
+    suspend fun discoverRecipes(@Query("q") query: String): List<DiscoveredRecipe>
+
+    @POST("recipes/import")
+    suspend fun importRecipe(@Body req: RecipeImportRequest): RecipeOut
+
     // --- Shopping list ---
     @GET("lists/default")
     suspend fun getDefaultList(): ShoppingListOut
@@ -73,6 +81,10 @@ interface ApiService {
 
     @POST("lists/{listId}/clear-checked")
     suspend fun clearCheckedItems(@Path("listId") listId: String): ShoppingListOut
+
+    // --- Plate migration ---
+    @POST("migrate/plate")
+    suspend fun migrateFromPlate(): PlateMigrationResult
 
     // --- Meta ---
     @GET("version")

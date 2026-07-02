@@ -4,9 +4,12 @@ import com.cookbook.data.local.db.ShoppingDao
 import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.ForgotPasswordRequest
 import com.cookbook.data.remote.LoginRequest
+import com.cookbook.data.remote.PlateMigrationResult
 import com.cookbook.data.remote.RecipeCreateRequest
+import com.cookbook.data.remote.RecipeImportRequest
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.remote.RecipeUpdateRequest
@@ -137,6 +140,9 @@ private class FakeApi : ApiService {
         listId: String,
         req: AddRecipeToListRequest,
     ): ShoppingListOut = error("unused")
+    override suspend fun discoverRecipes(query: String): List<DiscoveredRecipe> = error("unused")
+    override suspend fun importRecipe(req: RecipeImportRequest): RecipeOut = error("unused")
+    override suspend fun migrateFromPlate(): PlateMigrationResult = error("unused")
     override suspend fun getServerVersion(): VersionOut = error("unused")
 }
 

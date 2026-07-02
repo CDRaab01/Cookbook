@@ -1,8 +1,6 @@
 package com.cookbook.ui.navigation
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,13 +21,13 @@ import com.cookbook.ui.auth.AuthViewModel
 import com.cookbook.ui.auth.ForgotPasswordScreen
 import com.cookbook.ui.auth.LoginScreen
 import com.cookbook.ui.auth.RegisterScreen
+import com.cookbook.ui.discover.DiscoverScreen
 import com.cookbook.ui.recipe.RecipeDetailScreen
 import com.cookbook.ui.recipe.RecipeEditScreen
 import com.cookbook.ui.recipe.RecipeListScreen
 import com.cookbook.ui.settings.SettingsScreen
 import com.cookbook.ui.shopping.ShoppingScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
-import design.pulse.ui.components.EmptyState
 import javax.inject.Inject
 
 /** Resolves the auth gate: signed in → tabs, otherwise → login. */
@@ -185,10 +183,10 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                 ShoppingScreen()
             }
             composable(Screen.Discover.route) {
-                EmptyState(
-                    icon = Icons.Outlined.Search,
-                    title = "Discover recipes",
-                    subtitle = "External search arrives in Phase 5.",
+                DiscoverScreen(
+                    onImported = { id ->
+                        navController.navigate(Screen.RecipeDetail.withId(id))
+                    },
                 )
             }
         }

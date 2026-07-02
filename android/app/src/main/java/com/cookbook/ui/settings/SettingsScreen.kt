@@ -47,9 +47,18 @@ fun SettingsScreen(
     val serverUrl by viewModel.serverUrl.collectAsState()
     val serverVersion by viewModel.serverVersion.collectAsState()
     val userLabel by viewModel.userLabel.collectAsState()
+    val migrating by viewModel.migrating.collectAsState()
+    val migrationStatus by viewModel.migrationStatus.collectAsState()
     var editedUrl by remember(serverUrl) { mutableStateOf(serverUrl) }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
 
     LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(migrationStatus) {
+        migrationStatus?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearMigrationStatus()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -65,6 +74,7 @@ fun SettingsScreen(
                 ),
             )
         },
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(
@@ -112,6 +122,29 @@ fun SettingsScreen(
                         onChannel = colors.info.on,
                         dimChannel = colors.info.dim,
                         enabled = editedUrl.isNotBlank() && editedUrl != serverUrl,
+                    )
+                }
+            }
+
+            SectionHeader("Library & data", channel = colors.fresh.base)
+            PanelCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Text(
+                        "Bring your saved recipes over from Plate. Safe to re-run — recipes " +
+                            "already imported are skipped.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PulseButton(
+                        text = if (migrating) "Importing…" else "Import recipes from Plate",
+                        onClick = viewModel::migrateFromPlate,
+                        tonal = true,
+                        compact = true,
+                        channel = colors.fresh.base,
+                        onChannel = colors.fresh.on,
+                        dimChannel = colors.fresh.dim,
+                        enabled = !migrating,
                     )
                 }
             }

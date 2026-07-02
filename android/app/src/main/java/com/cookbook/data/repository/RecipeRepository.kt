@@ -1,5 +1,6 @@
 package com.cookbook.data.repository
 
+import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.remote.RecipeSummaryOut
@@ -12,4 +13,6 @@ interface RecipeRepository {
     suspend fun createRecipe(req: RecipeCreateRequest): RecipeOut
     suspend fun updateRecipe(id: String, req: RecipeUpdateRequest): RecipeOut
     suspend fun deleteRecipe(id: String)
+    suspend fun discoverRecipes(query: String): List<DiscoveredRecipe>
+    suspend fun importRecipe(sourceId: String): RecipeOut
 }

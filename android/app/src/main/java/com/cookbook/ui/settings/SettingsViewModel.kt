@@ -54,6 +54,44 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { appPreferences.setServerUrl(value.trim()) }
     }
 
+    private val _migrationStatus = MutableStateFlow<String?>(null)
+    val migrationStatus: StateFlow<String?> = _migrationStatus
+
+    private val _migrating = MutableStateFlow(false)
+    val migrating: StateFlow<Boolean> = _migrating
+
+    /** One-time pull of the user's Plate recipes (idempotent server-side; safe to re-tap). */
+    fun migrateFromPlate() {
+        if (_migrating.value) return
+        viewModelScope.launch {
+            _migrating.value = true
+            _migrationStatus.value = try {
+                val result = api.migrateFromPlate()
+                when {
+                    result.imported > 0 && result.skipped > 0 ->
+                        "Imported ${result.imported} recipes (${result.skipped} already here)"
+                    result.imported > 0 -> "Imported ${result.imported} recipes from Plate"
+                    result.skipped > 0 -> "Nothing new — all ${result.skipped} already imported"
+                    else -> "No recipes found in Plate"
+                }
+            } catch (e: retrofit2.HttpException) {
+                if (e.code() == 503) {
+                    "Plate integration isn't configured on the server"
+                } else {
+                    "Import failed (${e.code()})"
+                }
+            } catch (e: Exception) {
+                e.message ?: "Import failed"
+            } finally {
+                _migrating.value = false
+            }
+        }
+    }
+
+    fun clearMigrationStatus() {
+        _migrationStatus.value = null
+    }
+
     fun logout(onLoggedOut: () -> Unit) {
         viewModelScope.launch {
             authRepository.logout()

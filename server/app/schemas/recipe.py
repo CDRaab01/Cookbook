@@ -161,6 +161,29 @@ class RecipeOut(BaseModel):
         return v
 
 
+class DiscoveredRecipe(BaseModel):
+    """A recipe-discovery search hit (from the external provider)."""
+
+    source_id: str
+    title: str
+    image: str | None = None
+    ready_in_minutes: int | None = None
+    servings: int | None = None
+
+
+class RecipeImportRequest(BaseModel):
+    """Import an external recipe (by its provider id) as a saved Cookbook recipe."""
+
+    source_id: str
+
+    @field_validator("source_id")
+    @classmethod
+    def source_id_nonempty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("source_id must not be empty")
+        return v.strip()
+
+
 class RecipeSummaryOut(BaseModel):
     """List-view projection: no steps, just the counts the cards show."""
 

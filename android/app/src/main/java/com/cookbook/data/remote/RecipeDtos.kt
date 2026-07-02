@@ -71,6 +71,20 @@ data class RecipeOut(
 )
 
 @Serializable
+data class DiscoveredRecipe(
+    @SerialName("source_id") val sourceId: String,
+    val title: String,
+    val image: String? = null,
+    @SerialName("ready_in_minutes") val readyInMinutes: Int? = null,
+    val servings: Int? = null,
+)
+
+@Serializable
+data class RecipeImportRequest(
+    @SerialName("source_id") val sourceId: String,
+)
+
+@Serializable
 data class RecipeSummaryOut(
     val id: String,
     val name: String,

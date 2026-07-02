@@ -4,7 +4,9 @@ import com.cookbook.data.local.db.RecipeCacheDao
 import com.cookbook.data.local.db.RecipeDetailCacheEntity
 import com.cookbook.data.local.db.RecipeSummaryCacheEntity
 import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.RecipeCreateRequest
+import com.cookbook.data.remote.RecipeImportRequest
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.remote.RecipeUpdateRequest
@@ -66,5 +68,19 @@ class RecipeRepositoryImpl @Inject constructor(
     override suspend fun deleteRecipe(id: String) {
         api.deleteRecipe(id)
         cache.deleteDetail(id)
+    }
+
+    override suspend fun discoverRecipes(query: String): List<DiscoveredRecipe> =
+        api.discoverRecipes(query)
+
+    override suspend fun importRecipe(sourceId: String): RecipeOut {
+        val imported = api.importRecipe(RecipeImportRequest(sourceId))
+        cache.upsertDetail(
+            RecipeDetailCacheEntity(
+                imported.id,
+                json.encodeToString(RecipeOut.serializer(), imported),
+            ),
+        )
+        return imported
     }
 }

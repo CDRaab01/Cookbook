@@ -48,6 +48,12 @@ data class UserOut(
 )
 
 @Serializable
+data class PlateMigrationResult(
+    val imported: Int,
+    val skipped: Int,
+)
+
+@Serializable
 data class VersionOut(
     val name: String = "",
     val version: String = "",
