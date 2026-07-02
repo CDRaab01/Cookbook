@@ -118,6 +118,8 @@ class RecipeUpdate(BaseModel):
     image_url: str | None = None
     favorite: bool | None = None
     tags: list[str] | None = None
+    # Personal notes; "" clears (PATCH null = untouched, the clearing convention).
+    notes: str | None = None
     steps: list[str] | None = Field(default=None, max_length=MAX_RECIPE_STEPS)
     ingredients: list[IngredientIn] | None = Field(default=None, max_length=MAX_RECIPE_INGREDIENTS)
 
@@ -177,6 +179,7 @@ class RecipeOut(BaseModel):
     image_url: str | None = None
     favorite: bool = False
     tags: list[str] = []
+    notes: str | None = None
     created_at: datetime.datetime
     steps: list[StepOut]
     ingredients: list[IngredientOut]

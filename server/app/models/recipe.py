@@ -41,6 +41,9 @@ class Recipe(Base):
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)
     # Free-text labels ("weeknight", "grill"), lowercase, stored as a JSON list.
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Personal cooking notes ("half the sugar next time") — the recipe's margin scribbles,
+    # kept apart from the description so imports never overwrite them.
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

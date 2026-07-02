@@ -93,6 +93,7 @@ fun RecipeDetailScreen(
     var lastScale by remember { mutableStateOf(1.0) }
     var showLogDialog by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
+    var editingNotes by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.load() }
@@ -208,9 +209,21 @@ fun RecipeDetailScreen(
                 nutrition = nutrition,
                 onEstimateNutrition = viewModel::estimateNutrition,
                 onLogToPlate = { showLogDialog = true },
+                onEditNotes = { editingNotes = s.data.notes.orEmpty() },
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+
+    editingNotes?.let { initial ->
+        NotesDialog(
+            initial = initial,
+            onSave = { text ->
+                editingNotes = null
+                viewModel.saveNotes(text)
+            },
+            onDismiss = { editingNotes = null },
+        )
     }
 
     if (showLogDialog) {
@@ -277,6 +290,7 @@ private fun RecipeDetailBody(
     nutrition: UiState<com.cookbook.data.remote.RecipeNutritionOut>,
     onEstimateNutrition: () -> Unit,
     onLogToPlate: () -> Unit,
+    onEditNotes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
@@ -387,6 +401,23 @@ private fun RecipeDetailBody(
                 onEstimate = onEstimateNutrition,
                 onLogToPlate = onLogToPlate,
             )
+        }
+
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader("My notes", channel = colors.plum.base)
+                Spacer(Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = onEditNotes) {
+                    Text(if (recipe.notes.isNullOrBlank()) "Add" else "Edit")
+                }
+            }
+        }
+        if (!recipe.notes.isNullOrBlank()) {
+            item {
+                PanelCard(modifier = Modifier.fillMaxWidth(), tint = colors.plum.dim) {
+                    Text(recipe.notes, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
         }
 
         if (recipe.steps.isNotEmpty()) {
@@ -562,6 +593,34 @@ private fun LogToPlateDialog(
                 onClick = { onLog(meal, servingsEaten ?: 1.0) },
                 enabled = servingsEaten != null && servingsEaten > 0,
             ) { Text("Log it") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/** Multiline editor for the personal notes card. Saving empty clears the note. */
+@Composable
+private fun NotesDialog(
+    initial: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("My notes") },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text("Half the sugar next time…") },
+                modifier = Modifier.fillMaxWidth().height(160.dp),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text) }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

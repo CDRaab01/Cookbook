@@ -129,6 +129,8 @@ async def update_recipe(
         recipe.favorite = req.favorite
     if req.tags is not None:
         recipe.tags = req.tags
+    if req.notes is not None:
+        recipe.notes = req.notes.strip() or None
     if req.steps is not None:
         recipe.steps = _build_steps(req.steps)  # delete-orphan clears the old rows
     if req.ingredients is not None:

@@ -85,6 +85,22 @@ class RecipeDetailViewModel @Inject constructor(
         }
     }
 
+    /** Save the personal notes card; "" clears server-side. */
+    fun saveNotes(text: String) {
+        viewModelScope.launch {
+            try {
+                _recipe.value = UiState.Success(
+                    recipeRepository.updateRecipe(
+                        recipeId,
+                        com.cookbook.data.remote.RecipeUpdateRequest(notes = text.trim()),
+                    ),
+                )
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't save notes"
+            }
+        }
+    }
+
     /** One-shot: id of the duplicated recipe — the screen navigates to it. */
     private val _duplicated = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val duplicated: SharedFlow<String> = _duplicated

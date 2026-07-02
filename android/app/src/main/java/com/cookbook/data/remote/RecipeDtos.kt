@@ -36,6 +36,7 @@ data class RecipeUpdateRequest(
     @SerialName("image_url") val imageUrl: String? = null,
     val favorite: Boolean? = null,
     val tags: List<String>? = null,
+    val notes: String? = null,
     val steps: List<String>? = null,
     val ingredients: List<IngredientIn>? = null,
 )
@@ -70,6 +71,7 @@ data class RecipeOut(
     @SerialName("image_url") val imageUrl: String? = null,
     val favorite: Boolean = false,
     val tags: List<String> = emptyList(),
+    val notes: String? = null,
     @SerialName("created_at") val createdAt: String = "",
     val steps: List<StepOut> = emptyList(),
     val ingredients: List<IngredientOut> = emptyList(),

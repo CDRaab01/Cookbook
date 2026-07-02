@@ -36,6 +36,29 @@ async def test_create_with_tags_and_toggle_favorite(auth_client):
     assert resp.json()["tags"] == []
 
 
+async def test_notes_set_and_clear(auth_client):
+    recipe = (
+        await auth_client.post(
+            "/recipes",
+            json={"name": "Chili", "ingredients": [{"name": "Beans", "quantity": 2, "unit": "can"}]},
+        )
+    ).json()
+    assert recipe["notes"] is None
+
+    resp = await auth_client.patch(
+        f"/recipes/{recipe['id']}", json={"notes": "Half the sugar next time."}
+    )
+    assert resp.json()["notes"] == "Half the sugar next time."
+
+    # Other PATCHes leave notes untouched (null = skip).
+    resp = await auth_client.patch(f"/recipes/{recipe['id']}", json={"favorite": True})
+    assert resp.json()["notes"] == "Half the sugar next time."
+
+    # "" clears, per the clearing convention.
+    resp = await auth_client.patch(f"/recipes/{recipe['id']}", json={"notes": "  "})
+    assert resp.json()["notes"] is None
+
+
 async def test_too_many_tags_rejected(auth_client):
     resp = await auth_client.post(
         "/recipes",
