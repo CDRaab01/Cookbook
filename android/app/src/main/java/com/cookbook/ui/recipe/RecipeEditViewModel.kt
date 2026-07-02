@@ -30,6 +30,8 @@ data class RecipeDraft(
     val servings: String = "1",
     val prepMinutes: String = "",
     val cookMinutes: String = "",
+    val imageUrl: String = "",
+    val tags: List<String> = emptyList(),
     val ingredients: List<IngredientDraft> = listOf(IngredientDraft()),
     val steps: List<String> = listOf(""),
 )
@@ -64,6 +66,8 @@ class RecipeEditViewModel @Inject constructor(
                         servings = recipe.servings.toString(),
                         prepMinutes = recipe.prepMinutes?.toString().orEmpty(),
                         cookMinutes = recipe.cookMinutes?.toString().orEmpty(),
+                        imageUrl = recipe.imageUrl.orEmpty(),
+                        tags = recipe.tags,
                         ingredients = recipe.ingredients.map {
                             IngredientDraft(
                                 name = it.name,
@@ -103,6 +107,14 @@ class RecipeEditViewModel @Inject constructor(
             },
         )
     }
+
+    fun addTag(raw: String) = update {
+        val tag = raw.trim().lowercase()
+        if (tag.isEmpty() || tag in it.tags || it.tags.size >= 10) it
+        else it.copy(tags = it.tags + tag)
+    }
+
+    fun removeTag(tag: String) = update { it.copy(tags = it.tags - tag) }
 
     fun addStep() = update { it.copy(steps = it.steps + "") }
 
@@ -160,6 +172,8 @@ class RecipeEditViewModel @Inject constructor(
                             servings = d.servings.toInt(),
                             prepMinutes = d.prepMinutes.toIntOrNull(),
                             cookMinutes = d.cookMinutes.toIntOrNull(),
+                            imageUrl = d.imageUrl.trim().ifEmpty { null },
+                            tags = d.tags.ifEmpty { null },
                             steps = steps,
                             ingredients = ingredients,
                         ),
@@ -173,6 +187,9 @@ class RecipeEditViewModel @Inject constructor(
                             servings = d.servings.toInt(),
                             prepMinutes = d.prepMinutes.toIntOrNull(),
                             cookMinutes = d.cookMinutes.toIntOrNull(),
+                            // Trimmed as-is: "" clears the image server-side, null would skip.
+                            imageUrl = d.imageUrl.trim(),
+                            tags = d.tags, // replaces wholesale; empty list clears
                             steps = steps,
                             ingredients = ingredients,
                         ),

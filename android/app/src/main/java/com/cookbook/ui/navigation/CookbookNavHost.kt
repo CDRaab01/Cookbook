@@ -141,6 +141,9 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                 RecipeDetailScreen(
                     onBack = { navController.popBackStack() },
                     onEdit = { id -> navController.navigate(Screen.RecipeEdit.withId(id)) },
+                    onDuplicated = { id ->
+                        navController.navigate(Screen.RecipeDetail.withId(id))
+                    },
                 )
             }
             composable(

@@ -62,6 +62,8 @@ def _summary(recipe: Recipe) -> RecipeSummaryOut:
         cook_minutes=recipe.cook_minutes,
         source=recipe.source,
         image_url=recipe.image_url,
+        favorite=recipe.favorite,
+        tags=recipe.tags or [],
         created_at=recipe.created_at,
         ingredient_count=len(recipe.ingredients),
         step_count=len(recipe.steps),
@@ -83,6 +85,7 @@ async def create_recipe(
         prep_minutes=req.prep_minutes,
         cook_minutes=req.cook_minutes,
         image_url=req.image_url,
+        tags=req.tags,
         source=source,
         source_id=source_id,
     )
@@ -118,7 +121,12 @@ async def update_recipe(
     if req.cook_minutes is not None:
         recipe.cook_minutes = req.cook_minutes
     if req.image_url is not None:
-        recipe.image_url = req.image_url
+        # Sentinel: an explicit empty string clears the image (None means "leave untouched").
+        recipe.image_url = req.image_url.strip() or None
+    if req.favorite is not None:
+        recipe.favorite = req.favorite
+    if req.tags is not None:
+        recipe.tags = req.tags
     if req.steps is not None:
         recipe.steps = _build_steps(req.steps)  # delete-orphan clears the old rows
     if req.ingredients is not None:

@@ -1,0 +1,153 @@
+"""Keyword-based store-category guessing (v0.2) — pure, table-tested.
+
+Used wherever an item arrives without a category: URL imports (JSON-LD has no aisle data,
+unlike Spoonacular) and manual list adds with no history to recall. First keyword hit wins,
+longest keywords checked first so "cream cheese" beats "cream". A miss returns None and the
+item lands in "Other" — guessing wrong is worse than not guessing.
+"""
+
+from app.lists.merge import normalize_name
+
+# keyword (normalized-form substring) -> category. Ordered dict semantics via sorted lookup.
+_KEYWORDS: dict[str, str] = {
+    # produce
+    "onion": "produce",
+    "garlic": "produce",
+    "tomato": "produce",
+    "potato": "produce",
+    "carrot": "produce",
+    "celery": "produce",
+    "pepper": "produce",
+    "lettuce": "produce",
+    "spinach": "produce",
+    "kale": "produce",
+    "broccoli": "produce",
+    "cauliflower": "produce",
+    "cucumber": "produce",
+    "zucchini": "produce",
+    "squash": "produce",
+    "mushroom": "produce",
+    "avocado": "produce",
+    "lemon": "produce",
+    "lime": "produce",
+    "orange": "produce",
+    "apple": "produce",
+    "banana": "produce",
+    "berry": "produce",
+    "grape": "produce",
+    "cilantro": "produce",
+    "parsley": "produce",
+    "basil": "produce",
+    "thyme": "produce",
+    "rosemary": "produce",
+    "ginger": "produce",
+    "scallion": "produce",
+    "shallot": "produce",
+    "cabbage": "produce",
+    "corn": "produce",
+    "green bean": "produce",
+    "asparagus": "produce",
+    # meat / seafood
+    "chicken": "meat",
+    "beef": "meat",
+    "pork": "meat",
+    "turkey": "meat",
+    "lamb": "meat",
+    "bacon": "meat",
+    "sausage": "meat",
+    "ham": "meat",
+    "steak": "meat",
+    "ground": "meat",
+    "salmon": "meat",
+    "shrimp": "meat",
+    "tuna": "meat",
+    "fish": "meat",
+    "cod": "meat",
+    "tilapia": "meat",
+    "crab": "meat",
+    "brisket": "meat",
+    "rib": "meat",
+    "meatball": "meat",
+    # dairy (cheese before cream via longest-first ordering)
+    "milk": "dairy",
+    "cheese": "dairy",
+    "cheddar": "dairy",
+    "mozzarella": "dairy",
+    "parmesan": "dairy",
+    "butter": "dairy",
+    "yogurt": "dairy",
+    "cream": "dairy",
+    "egg": "dairy",
+    "sour cream": "dairy",
+    "half and half": "dairy",
+    "feta": "dairy",
+    "ricotta": "dairy",
+    # bakery
+    "bread": "bakery",
+    "bun": "bakery",
+    "roll": "bakery",
+    "tortilla": "bakery",
+    "bagel": "bakery",
+    "pita": "bakery",
+    "croissant": "bakery",
+    "baguette": "bakery",
+    # frozen
+    "frozen": "frozen",
+    "ice cream": "frozen",
+    # pantry
+    "flour": "pantry",
+    "sugar": "pantry",
+    "salt": "pantry",
+    "oil": "pantry",
+    "vinegar": "pantry",
+    "rice": "pantry",
+    "pasta": "pantry",
+    "noodle": "pantry",
+    "bean": "pantry",
+    "lentil": "pantry",
+    "broth": "pantry",
+    "stock": "pantry",
+    "sauce": "pantry",
+    "paste": "pantry",
+    "canned": "pantry",
+    "can of": "pantry",
+    "cereal": "pantry",
+    "oat": "pantry",
+    "honey": "pantry",
+    "syrup": "pantry",
+    "spice": "pantry",
+    "cumin": "pantry",
+    "paprika": "pantry",
+    "oregano": "pantry",
+    "cinnamon": "pantry",
+    "vanilla": "pantry",
+    "baking powder": "pantry",
+    "baking soda": "pantry",
+    "yeast": "pantry",
+    "chocolate": "pantry",
+    "peanut butter": "pantry",
+    "mayo": "pantry",
+    "mustard": "pantry",
+    "ketchup": "pantry",
+    "soy sauce": "pantry",
+    "coffee": "pantry",
+    "tea": "pantry",
+    "nut": "pantry",
+    "almond": "pantry",
+    "walnut": "pantry",
+    "quinoa": "pantry",
+    "coconut": "pantry",
+    "raisin": "pantry",
+}
+
+# Longest first so multi-word keywords ("sour cream", "baking powder") win over substrings.
+_ORDERED = sorted(_KEYWORDS.items(), key=lambda kv: len(kv[0]), reverse=True)
+
+
+def guess_category(name: str) -> str | None:
+    """Best-effort store category for a free-text item name; None when unsure."""
+    key = normalize_name(name)
+    for keyword, category in _ORDERED:
+        if keyword in key:
+            return category
+    return None

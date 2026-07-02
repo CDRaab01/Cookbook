@@ -1,5 +1,6 @@
 package com.cookbook.ui.shopping
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,16 +11,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -27,7 +33,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -44,6 +52,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cookbook.data.remote.ShoppingItemOut
+import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.ui.recipe.CATEGORY_ORDER
 import com.cookbook.ui.recipe.categoryLabel
 import com.cookbook.ui.recipe.formatQuantity
@@ -60,8 +69,10 @@ import design.pulse.ui.components.SectionHeader
 fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val state by viewModel.list.collectAsState()
     val error by viewModel.error.collectAsState()
+    val suggestions by viewModel.suggestions.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showAdd by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
 
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(error) {
@@ -76,6 +87,9 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
             TopAppBar(
                 title = { Text("Shopping", style = MaterialTheme.typography.titleLarge) },
                 actions = {
+                    IconButton(onClick = viewModel::load) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
+                    }
                     IconButton(onClick = { showAdd = true }) {
                         Icon(Icons.Outlined.Add, contentDescription = "Add item")
                     }
@@ -118,6 +132,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
                         items = items,
                         onToggle = viewModel::toggleChecked,
                         onDelete = viewModel::deleteItem,
+                        onEdit = { editing = it },
                         onClearChecked = viewModel::clearChecked,
                         modifier = Modifier.padding(padding),
                     )
@@ -127,12 +142,29 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     }
 
     if (showAdd) {
-        AddItemSheet(
-            onAdd = { name, qty, unit ->
-                viewModel.addItem(name, qty, unit)
+        AddItemDialog(
+            suggestions = suggestions,
+            onNameChanged = viewModel::onAddNameChanged,
+            onAdd = { name, qty, unit, category ->
+                viewModel.addItem(name, qty, unit, category)
+                viewModel.clearSuggestions()
                 showAdd = false
             },
-            onDismiss = { showAdd = false },
+            onDismiss = {
+                viewModel.clearSuggestions()
+                showAdd = false
+            },
+        )
+    }
+
+    editing?.let { item ->
+        EditItemDialog(
+            item = item,
+            onSave = { name, qty, unit, category ->
+                viewModel.editItem(item.id, name, qty, unit, category)
+                editing = null
+            },
+            onDismiss = { editing = null },
         )
     }
 }
@@ -142,6 +174,7 @@ private fun ShoppingListBody(
     items: List<ShoppingItemOut>,
     onToggle: (String, Boolean) -> Unit,
     onDelete: (String) -> Unit,
+    onEdit: (ShoppingItemOut) -> Unit,
     onClearChecked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -190,6 +223,7 @@ private fun ShoppingListBody(
                     item = item,
                     onToggle = { onToggle(item.id, it) },
                     onDelete = { onDelete(item.id) },
+                    onEdit = { onEdit(item) },
                 )
             }
         }
@@ -225,6 +259,7 @@ private fun ShoppingListBody(
                     item = item,
                     onToggle = { onToggle(item.id, it) },
                     onDelete = { onDelete(item.id) },
+                    onEdit = { onEdit(item) },
                 )
             }
         }
@@ -236,6 +271,7 @@ private fun ShoppingItemRow(
     item: ShoppingItemOut,
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val colors = CookbookTheme.colors
     Row(
@@ -252,24 +288,30 @@ private fun ShoppingItemRow(
                 checkmarkColor = colors.fresh.on,
             ),
         )
-        val qty = formatQuantity(item.quantity, item.unit)
-        if (qty != null) {
-            DataText(
-                qty,
-                style = CookbookTheme.dataType.numeral,
-                color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant else colors.heat.base,
-                modifier = Modifier.width(72.dp),
+        // The text area opens the editor; the checkbox and × keep their own targets.
+        Row(
+            modifier = Modifier.weight(1f).clickable(onClick = onEdit),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val qty = formatQuantity(item.quantity, item.unit)
+            if (qty != null) {
+                DataText(
+                    qty,
+                    style = CookbookTheme.dataType.numeral,
+                    color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant else colors.heat.base,
+                    modifier = Modifier.width(72.dp),
+                )
+            } else {
+                Spacer(Modifier.width(72.dp))
+            }
+            Text(
+                item.name,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    textDecoration = if (item.checked) TextDecoration.LineThrough else TextDecoration.None,
+                ),
+                modifier = Modifier.weight(1f),
             )
-        } else {
-            Spacer(Modifier.width(72.dp))
         }
-        Text(
-            item.name,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                textDecoration = if (item.checked) TextDecoration.LineThrough else TextDecoration.None,
-            ),
-            modifier = Modifier.weight(1f),
-        )
         IconButton(onClick = onDelete) {
             Icon(
                 Icons.Outlined.Close,
@@ -283,68 +325,182 @@ private fun ShoppingItemRow(
 /** One-tap staples for the add dialog — the things that go on every list. */
 private val STAPLES = listOf("Milk", "Eggs", "Bread", "Butter", "Bananas", "Coffee", "Paper towels")
 
+/** Shared field block for add + edit: name / qty / unit / category chips. */
 @Composable
-private fun AddItemSheet(
-    onAdd: (name: String, quantity: Double?, unit: String?) -> Unit,
+private fun ItemFields(
+    name: String,
+    onName: (String) -> Unit,
+    quantity: String,
+    onQuantity: (String) -> Unit,
+    unit: String,
+    onUnit: (String) -> Unit,
+    category: String?,
+    onCategory: (String?) -> Unit,
+) {
+    val colors = CookbookTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = onName,
+            label = { Text("Item") },
+            singleLine = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = quantity,
+                onValueChange = onQuantity,
+                label = { Text("Qty") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = unit,
+                onValueChange = onUnit,
+                label = { Text("Unit") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+            )
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(CATEGORY_ORDER, key = { it }) { option ->
+                FilterChip(
+                    selected = category == option,
+                    onClick = { onCategory(if (category == option) null else option) },
+                    label = { Text(categoryLabel(option)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = colors.fresh.dim,
+                        selectedLabelColor = colors.fresh.base,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddItemDialog(
+    suggestions: List<SuggestionOut>,
+    onNameChanged: (String) -> Unit,
+    onAdd: (name: String, quantity: Double?, unit: String?, category: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("") }
     var unit by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf<String?>(null) }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add item") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(STAPLES, key = { it }) { staple ->
-                        androidx.compose.material3.SuggestionChip(
-                            onClick = { name = staple },
+                        SuggestionChip(
+                            onClick = {
+                                name = staple
+                                onNameChanged(staple)
+                            },
                             label = { Text(staple) },
                         )
                     }
                 }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Item") },
-                    singleLine = true,
+                ItemFields(
+                    name = name,
+                    onName = {
+                        name = it
+                        onNameChanged(it)
+                    },
+                    quantity = quantity,
+                    onQuantity = { quantity = it },
+                    unit = unit,
+                    onUnit = { unit = it },
+                    category = category,
+                    onCategory = { category = it },
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = quantity,
-                        onValueChange = { quantity = it },
-                        label = { Text("Qty") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = unit,
-                        onValueChange = { unit = it },
-                        label = { Text("Unit") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                    )
+                if (suggestions.isNotEmpty()) {
+                    Caption("From your history")
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(suggestions, key = { it.name }) { hit ->
+                            SuggestionChip(
+                                onClick = {
+                                    name = hit.name
+                                    unit = hit.unit.orEmpty()
+                                    category = hit.category
+                                },
+                                label = { Text(hit.name) },
+                            )
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(
+            TextButton(
                 onClick = {
                     onAdd(
                         name.trim(),
                         quantity.toDoubleOrNull(),
                         unit.trim().lowercase().ifEmpty { null },
+                        category,
                     )
                 },
                 enabled = name.isNotBlank(),
             ) { Text("Add") }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun EditItemDialog(
+    item: ShoppingItemOut,
+    onSave: (name: String, quantity: Double?, unit: String?, category: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(item.name) }
+    var quantity by remember {
+        mutableStateOf(
+            item.quantity?.let {
+                if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+            }.orEmpty(),
+        )
+    }
+    var unit by remember { mutableStateOf(item.unit.orEmpty()) }
+    var category by remember { mutableStateOf(item.category) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit item") },
+        text = {
+            ItemFields(
+                name = name,
+                onName = { name = it },
+                quantity = quantity,
+                onQuantity = { quantity = it },
+                unit = unit,
+                onUnit = { unit = it },
+                category = category,
+                onCategory = { category = it },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onSave(
+                        name.trim(),
+                        quantity.toDoubleOrNull(),
+                        unit.trim().lowercase().ifEmpty { null },
+                        category,
+                    )
+                },
+                enabled = name.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }

@@ -20,11 +20,12 @@ data class RecipeCreateRequest(
     @SerialName("prep_minutes") val prepMinutes: Int? = null,
     @SerialName("cook_minutes") val cookMinutes: Int? = null,
     @SerialName("image_url") val imageUrl: String? = null,
+    val tags: List<String>? = null,
     val steps: List<String> = emptyList(),
     val ingredients: List<IngredientIn> = emptyList(),
 )
 
-/** Partial update; null fields are left untouched by the server. */
+/** Partial update; null fields are left untouched by the server ("" clears the image). */
 @Serializable
 data class RecipeUpdateRequest(
     val name: String? = null,
@@ -33,6 +34,8 @@ data class RecipeUpdateRequest(
     @SerialName("prep_minutes") val prepMinutes: Int? = null,
     @SerialName("cook_minutes") val cookMinutes: Int? = null,
     @SerialName("image_url") val imageUrl: String? = null,
+    val favorite: Boolean? = null,
+    val tags: List<String>? = null,
     val steps: List<String>? = null,
     val ingredients: List<IngredientIn>? = null,
 )
@@ -65,6 +68,8 @@ data class RecipeOut(
     @SerialName("cook_minutes") val cookMinutes: Int? = null,
     val source: String = "manual",
     @SerialName("image_url") val imageUrl: String? = null,
+    val favorite: Boolean = false,
+    val tags: List<String> = emptyList(),
     @SerialName("created_at") val createdAt: String = "",
     val steps: List<StepOut> = emptyList(),
     val ingredients: List<IngredientOut> = emptyList(),
@@ -134,7 +139,37 @@ data class RecipeSummaryOut(
     @SerialName("cook_minutes") val cookMinutes: Int? = null,
     val source: String = "manual",
     @SerialName("image_url") val imageUrl: String? = null,
+    val favorite: Boolean = false,
+    val tags: List<String> = emptyList(),
     @SerialName("created_at") val createdAt: String = "",
     @SerialName("ingredient_count") val ingredientCount: Int = 0,
     @SerialName("step_count") val stepCount: Int = 0,
+)
+
+@Serializable
+data class RecipeImportUrlRequest(
+    val url: String,
+)
+
+@Serializable
+data class PreviewIngredientOut(
+    val name: String,
+    val quantity: Double? = null,
+    val unit: String? = null,
+    val category: String? = null,
+    val note: String? = null,
+)
+
+/** Full look at a Discover hit before importing — nothing saved yet. */
+@Serializable
+data class RecipePreviewOut(
+    @SerialName("source_id") val sourceId: String,
+    val title: String,
+    val image: String? = null,
+    val servings: Int? = null,
+    @SerialName("ready_in_minutes") val readyInMinutes: Int? = null,
+    @SerialName("source_url") val sourceUrl: String? = null,
+    val summary: String? = null,
+    val ingredients: List<PreviewIngredientOut> = emptyList(),
+    val steps: List<String> = emptyList(),
 )

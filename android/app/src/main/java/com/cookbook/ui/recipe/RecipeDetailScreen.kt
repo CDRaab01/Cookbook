@@ -10,11 +10,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -36,8 +45,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.cookbook.data.remote.IngredientOut
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.ui.theme.CookbookTheme
@@ -67,6 +79,7 @@ internal fun formatQuantity(quantity: Double?, unit: String?): String? {
 fun RecipeDetailScreen(
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
+    onDuplicated: (String) -> Unit = {},
     viewModel: RecipeDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.recipe.collectAsState()
@@ -79,9 +92,12 @@ fun RecipeDetailScreen(
     var pickScale by remember { mutableStateOf(false) }
     var lastScale by remember { mutableStateOf(1.0) }
     var showLogDialog by remember { mutableStateOf(false) }
+    var overflowOpen by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(Unit) { viewModel.deleted.collect { onBack() } }
+    LaunchedEffect(Unit) { viewModel.duplicated.collect { onDuplicated(it) } }
     LaunchedEffect(Unit) {
         viewModel.addedToList.collect { snackbar.showSnackbar("Added to your shopping list") }
     }
@@ -108,11 +124,57 @@ fun RecipeDetailScreen(
                     }
                 },
                 actions = {
+                    val loaded = (state as? UiState.Success)?.data
+                    IconButton(onClick = viewModel::toggleFavorite, enabled = loaded != null) {
+                        Icon(
+                            if (loaded?.favorite == true) Icons.Filled.Favorite
+                            else Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Favorite",
+                            tint = if (loaded?.favorite == true) CookbookTheme.colors.heat.base
+                            else LocalContentColor.current,
+                        )
+                    }
                     IconButton(onClick = { onEdit(viewModel.recipeId) }) {
                         Icon(Icons.Outlined.Edit, contentDescription = "Edit recipe")
                     }
-                    IconButton(onClick = { confirmDelete = true }) {
-                        Icon(Icons.Outlined.Delete, contentDescription = "Delete recipe")
+                    IconButton(onClick = { overflowOpen = true }) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "More")
+                    }
+                    DropdownMenu(
+                        expanded = overflowOpen,
+                        onDismissRequest = { overflowOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Duplicate") },
+                            onClick = {
+                                overflowOpen = false
+                                viewModel.duplicate()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Share as text") },
+                            onClick = {
+                                overflowOpen = false
+                                viewModel.shareText()?.let { text ->
+                                    val send = android.content.Intent(
+                                        android.content.Intent.ACTION_SEND,
+                                    ).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                    }
+                                    context.startActivity(
+                                        android.content.Intent.createChooser(send, "Share recipe"),
+                                    )
+                                }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                overflowOpen = false
+                                confirmDelete = true
+                            },
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -218,11 +280,30 @@ private fun RecipeDetailBody(
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
+    // Servings rescaler: view the ingredient amounts for a different batch size. Display-only —
+    // the stored recipe is untouched; "Add to shopping list" has its own scale picker.
+    var displayServings by androidx.compose.runtime.remember(recipe.id, recipe.servings) {
+        androidx.compose.runtime.mutableIntStateOf(recipe.servings)
+    }
+    val scale = displayServings.toDouble() / recipe.servings.coerceAtLeast(1)
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (recipe.imageUrl != null) {
+            item {
+                AsyncImage(
+                    model = recipe.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+        }
         item {
             Column {
                 Text(recipe.name, style = MaterialTheme.typography.headlineMedium)
@@ -233,6 +314,14 @@ private fun RecipeDetailBody(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                if (recipe.tags.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(recipe.tags) { tag ->
+                            SuggestionChip(onClick = {}, label = { Text(tag) })
+                        }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
                 Row {
@@ -257,14 +346,34 @@ private fun RecipeDetailBody(
             )
         }
 
-        item { SectionHeader("Ingredients", channel = colors.heat.base) }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionHeader("Ingredients", channel = colors.heat.base)
+                Spacer(Modifier.weight(1f))
+                // View amounts for a different batch size (display-only).
+                androidx.compose.material3.IconButton(
+                    onClick = { if (displayServings > 1) displayServings-- },
+                    enabled = displayServings > 1,
+                ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+                DataText(
+                    "$displayServings",
+                    style = CookbookTheme.dataType.dataSmall,
+                    color = colors.info.base,
+                )
+                Spacer(Modifier.width(4.dp))
+                Caption("servings")
+                androidx.compose.material3.IconButton(
+                    onClick = { if (displayServings < 99) displayServings++ },
+                ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+            }
+        }
         item {
             PanelCard(modifier = Modifier.fillMaxWidth()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     val grouped = recipe.ingredients.groupBy { it.category ?: "other" }
                     CATEGORY_ORDER.filter { grouped.containsKey(it) }.forEach { category ->
                         Caption(categoryLabel(category), color = colors.fresh.base)
-                        grouped.getValue(category).forEach { IngredientRow(it) }
+                        grouped.getValue(category).forEach { IngredientRow(it, scale) }
                     }
                 }
             }
@@ -506,9 +615,13 @@ private fun MetaStat(value: String, label: String, color: androidx.compose.ui.gr
 }
 
 @Composable
-private fun IngredientRow(ingredient: IngredientOut) {
+private fun IngredientRow(ingredient: IngredientOut, scale: Double = 1.0) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        val qty = formatQuantity(ingredient.quantity, ingredient.unit)
+        val scaled = ingredient.quantity?.let {
+            val v = it * scale
+            kotlin.math.round(v * 100) / 100 // 2-decimal display precision
+        }
+        val qty = formatQuantity(scaled, ingredient.unit)
         if (qty != null) {
             DataText(
                 qty,

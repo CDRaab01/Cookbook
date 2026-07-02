@@ -74,6 +74,14 @@ class AddRecipeRequest(BaseModel):
     force: bool = False
 
 
+class SuggestionOut(BaseModel):
+    """One autocomplete hit for the add dialog (v0.2), from the user's item history."""
+
+    name: str
+    unit: str | None = None
+    category: str | None = None
+
+
 class ItemOut(BaseModel):
     id: uuid.UUID
     name: str

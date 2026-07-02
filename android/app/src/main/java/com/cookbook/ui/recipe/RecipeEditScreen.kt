@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -119,6 +120,22 @@ fun RecipeEditScreen(
                     onValueChange = { v -> viewModel.update { it.copy(description = v) } },
                     label = { Text("Description (optional)") },
                     modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = draft.imageUrl,
+                    onValueChange = { v -> viewModel.update { it.copy(imageUrl = v) } },
+                    label = { Text("Image URL (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+            }
+            item {
+                TagEditor(
+                    tags = draft.tags,
+                    onAdd = viewModel::addTag,
+                    onRemove = viewModel::removeTag,
                 )
             }
             item {
@@ -210,6 +227,72 @@ fun RecipeEditScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = saveState !is UiState.Loading,
                 )
+            }
+        }
+    }
+}
+
+/** Free-text tags: type + Add (or IME done); chips remove on tap of ×. */
+@Composable
+private fun TagEditor(
+    tags: List<String>,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    val colors = CookbookTheme.colors
+    var input by remember { androidx.compose.runtime.mutableStateOf("") }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                label = { Text("Tags (weeknight, grill…)") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        onAdd(input)
+                        input = ""
+                    },
+                ),
+            )
+            Spacer(Modifier.width(8.dp))
+            PulseButton(
+                text = "Add",
+                onClick = {
+                    onAdd(input)
+                    input = ""
+                },
+                tonal = true,
+                compact = true,
+                channel = colors.plum.base,
+                onChannel = colors.plum.on,
+                dimChannel = colors.plum.dim,
+                enabled = input.isNotBlank(),
+            )
+        }
+        if (tags.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                itemsIndexed(tags) { _, tag ->
+                    androidx.compose.material3.InputChip(
+                        selected = false,
+                        onClick = { onRemove(tag) },
+                        label = { Text(tag) },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Outlined.Close,
+                                contentDescription = "Remove $tag",
+                                modifier = Modifier.width(16.dp),
+                            )
+                        },
+                    )
+                }
             }
         }
     }

@@ -13,18 +13,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.limits import MAX_LIST_ITEMS
+from app.lists.categorize import guess_category
 from app.lists.merge import (
     IncomingItem,
     combine_quantities,
     merge_incoming,
     merge_key,
+    normalize_name,
     scale_quantity,
 )
+from app.models.item_history import ItemHistory
 from app.models.shopping_list import ShoppingList, ShoppingListItem
-from app.schemas.shopping import AddRecipeRequest, ItemCreate, ItemUpdate, ListOut
+from app.schemas.shopping import AddRecipeRequest, ItemCreate, ItemUpdate, ListOut, SuggestionOut
 from app.services.recipe_service import load_owned_recipe
 
 DEFAULT_LIST_NAME = "Groceries"
+MAX_SUGGESTIONS = 8
 
 
 async def _reload(db: AsyncSession, list_id: uuid.UUID) -> ShoppingList:
@@ -105,6 +109,71 @@ def _merge_into_list(
             unchecked_by_key[key] = new_item
 
 
+async def _record_history(db: AsyncSession, user_id: uuid.UUID, items: list[IncomingItem]) -> None:
+    """Upsert item_history rows (v0.2) — the memory behind autocomplete and category recall.
+
+    Flushed with the caller's commit; per-key rows are unique per user, so a re-add just bumps
+    the count and refreshes the stored spelling/unit/category to the latest use.
+    """
+    keys = {normalize_name(i.name): i for i in items if i.name.strip()}
+    if not keys:
+        return
+    result = await db.execute(
+        select(ItemHistory).where(ItemHistory.user_id == user_id, ItemHistory.key.in_(keys.keys()))
+    )
+    existing = {row.key: row for row in result.scalars().all()}
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for key, item in keys.items():
+        row = existing.get(key)
+        if row is not None:
+            row.use_count += 1
+            row.last_used = now
+            row.name = item.name
+            if item.unit is not None:
+                row.unit = item.unit
+            if item.category is not None:
+                row.category = item.category
+        else:
+            db.add(
+                ItemHistory(
+                    user_id=user_id,
+                    key=key,
+                    name=item.name,
+                    unit=item.unit,
+                    category=item.category,
+                    last_used=now,
+                )
+            )
+
+
+async def recall_category(db: AsyncSession, user_id: uuid.UUID, name: str) -> str | None:
+    """The category to use for an uncategorized add: your history first, keyword guess second."""
+    result = await db.execute(
+        select(ItemHistory.category).where(
+            ItemHistory.user_id == user_id, ItemHistory.key == normalize_name(name)
+        )
+    )
+    remembered = result.scalar_one_or_none()
+    return remembered or guess_category(name)
+
+
+async def suggest_items(db: AsyncSession, user_id: uuid.UUID, q: str) -> list[SuggestionOut]:
+    """Autocomplete for the add dialog: your own most-used items matching the prefix."""
+    text = q.strip()
+    if not text:
+        return []
+    result = await db.execute(
+        select(ItemHistory)
+        .where(ItemHistory.user_id == user_id, ItemHistory.name.ilike(f"%{text}%"))
+        .order_by(ItemHistory.use_count.desc(), ItemHistory.last_used.desc())
+        .limit(MAX_SUGGESTIONS)
+    )
+    return [
+        SuggestionOut(name=row.name, unit=row.unit, category=row.category)
+        for row in result.scalars().all()
+    ]
+
+
 async def get_list_out(db: AsyncSession, user_id: uuid.UUID) -> ListOut:
     shopping_list = await get_default_list(db, user_id)
     return ListOut.model_validate(shopping_list)
@@ -115,11 +184,11 @@ async def add_item(
 ) -> ListOut:
     shopping_list = await load_owned_list(db, user_id, list_id)
     _guard_capacity(shopping_list, adding=1)
-    _merge_into_list(
-        shopping_list,
-        [IncomingItem(name=req.name, quantity=req.quantity, unit=req.unit, category=req.category)],
-        recipe_id=None,
-    )
+    # Uncategorized adds get auto-sorted: the category you used last time, else a keyword guess.
+    category = req.category or await recall_category(db, user_id, req.name)
+    incoming = IncomingItem(name=req.name, quantity=req.quantity, unit=req.unit, category=category)
+    _merge_into_list(shopping_list, [incoming], recipe_id=None)
+    await _record_history(db, user_id, [incoming])
     await db.commit()
     return ListOut.model_validate(await _reload(db, list_id))
 
@@ -160,6 +229,7 @@ async def add_recipe(
     )
     _guard_capacity(shopping_list, adding=len(incoming))
     _merge_into_list(shopping_list, incoming, recipe_id=recipe.id)
+    await _record_history(db, user_id, incoming)
     await db.commit()
     return ListOut.model_validate(await _reload(db, list_id))
 

@@ -57,12 +57,21 @@ interface ApiService {
     @GET("recipes/discover")
     suspend fun discoverRecipes(@Query("q") query: String): List<DiscoveredRecipe>
 
+    @GET("recipes/discover/{sourceId}")
+    suspend fun previewRecipe(@Path("sourceId") sourceId: String): RecipePreviewOut
+
     @POST("recipes/import")
     suspend fun importRecipe(@Body req: RecipeImportRequest): RecipeOut
+
+    @POST("recipes/import-url")
+    suspend fun importRecipeFromUrl(@Body req: RecipeImportUrlRequest): RecipeOut
 
     // --- Shopping list ---
     @GET("lists/default")
     suspend fun getDefaultList(): ShoppingListOut
+
+    @GET("lists/suggest")
+    suspend fun suggestItems(@Query("q") query: String): List<SuggestionOut>
 
     @POST("lists/{listId}/items")
     suspend fun addShoppingItem(

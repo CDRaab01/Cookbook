@@ -8,9 +8,12 @@ from app.database import get_db
 from app.limiter import limiter
 from app.schemas.recipe import (
     DiscoveredRecipe,
+    PreviewIngredientOut,
     RecipeCreate,
     RecipeImportRequest,
+    RecipeImportUrlRequest,
     RecipeOut,
+    RecipePreviewOut,
     RecipeSummaryOut,
     RecipeUpdate,
 )
@@ -22,7 +25,12 @@ from app.services.plate_nutrition_service import (
     get_recipe_nutrition,
     log_recipe_to_plate,
 )
-from app.services.recipe_discovery_service import discover_recipes, import_recipe
+from app.services.recipe_discovery_service import (
+    discover_recipes,
+    import_recipe,
+    import_recipe_from_url,
+    preview_recipe,
+)
 from app.services.recipe_service import (
     create_recipe,
     delete_recipe,
@@ -58,6 +66,37 @@ async def discover(
     ]
 
 
+@router.get("/discover/{source_id}", response_model=RecipePreviewOut)
+@limiter.limit("30/minute")
+async def discover_preview(
+    request: Request,
+    source_id: str,
+    current_user: CurrentUser,
+):
+    """Full look at a Discover hit (ingredients + steps) before importing — nothing saved."""
+    normalized = await preview_recipe(source_id)
+    return RecipePreviewOut(
+        source_id=normalized.source_id,
+        title=normalized.title,
+        image=normalized.image,
+        servings=normalized.servings,
+        ready_in_minutes=normalized.ready_in_minutes,
+        source_url=normalized.source_url,
+        summary=normalized.summary,
+        ingredients=[
+            PreviewIngredientOut(
+                name=i.name,
+                quantity=i.quantity,
+                unit=i.unit,
+                category=i.category,
+                note=i.original_text if i.original_text != i.name else None,
+            )
+            for i in normalized.ingredients
+        ],
+        steps=normalized.steps,
+    )
+
+
 @router.post("/import", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit("30/minute")
 async def import_external(
@@ -68,6 +107,19 @@ async def import_external(
 ):
     """Import an external recipe as an editable Cookbook recipe (free-text ingredients + steps)."""
     return await import_recipe(db, current_user.id, req.source_id)
+
+
+@router.post("/import-url", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("15/minute")
+async def import_from_url(
+    request: Request,
+    req: RecipeImportUrlRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Import any recipe page by URL (v0.2): the site's JSON-LD markup first, Spoonacular's
+    extractor as fallback. Works without a Spoonacular key when the site has clean markup."""
+    return await import_recipe_from_url(db, current_user.id, req.url)
 
 
 @router.post("", response_model=RecipeOut, status_code=status.HTTP_201_CREATED)

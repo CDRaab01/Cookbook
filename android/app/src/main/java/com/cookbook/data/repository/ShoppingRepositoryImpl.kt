@@ -8,6 +8,7 @@ import com.cookbook.data.remote.ShoppingItemCreateRequest
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingItemUpdateRequest
 import com.cookbook.data.remote.ShoppingListOut
+import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.util.AppPreferences
 import kotlinx.coroutines.flow.firstOrNull
 import retrofit2.HttpException
@@ -110,6 +111,40 @@ class ShoppingRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun editItem(
+        listId: String,
+        itemId: String,
+        name: String,
+        quantity: Double?,
+        unit: String?,
+        category: String?,
+    ): ShoppingListOut {
+        val row = dao.byLocalId(itemId) ?: return localView()
+        dao.update(
+            row.copy(name = name, quantity = quantity, unit = unit, category = category, dirty = true),
+        )
+        val serverId = row.serverId ?: return localView() // pushed by sync with the add
+        return try {
+            val fresh = api.updateShoppingItem(
+                listId,
+                serverId,
+                ShoppingItemUpdateRequest(
+                    name = name, quantity = quantity, unit = unit, category = category,
+                ),
+            )
+            reconcile(fresh)
+            localView(fresh.id, fresh.name)
+        } catch (_: IOException) {
+            localView()
+        }
+    }
+
+    override suspend fun suggest(query: String): List<SuggestionOut> = try {
+        if (query.isBlank()) emptyList() else api.suggestItems(query)
+    } catch (_: IOException) {
+        emptyList()
+    }
+
     override suspend fun deleteItem(listId: String, itemId: String): ShoppingListOut {
         val row = dao.byLocalId(itemId) ?: return localView()
         if (row.serverId == null) {
@@ -184,8 +219,18 @@ class ShoppingRepositoryImpl @Inject constructor(
                         dao.delete(row.localId)
                     }
                     row.dirty && row.serverId != null -> {
+                        // Push the full local state: dirty can mean an offline edit, not just
+                        // a check-off (server-side nulls mean "untouched", so this is safe).
                         api.updateShoppingItem(
-                            listId, row.serverId, ShoppingItemUpdateRequest(checked = row.checked),
+                            listId,
+                            row.serverId,
+                            ShoppingItemUpdateRequest(
+                                name = row.name,
+                                quantity = row.quantity,
+                                unit = row.unit,
+                                category = row.category,
+                                checked = row.checked,
+                            ),
                         )
                         dao.update(row.copy(dirty = false))
                     }

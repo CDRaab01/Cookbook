@@ -32,6 +32,24 @@ def _normalize_unit(v: str | None) -> str | None:
     return key or None
 
 
+MAX_TAGS = 10
+MAX_TAG_LENGTH = 30
+
+
+def _validate_tags(v: list[str] | None) -> list[str] | None:
+    """Lowercase, trimmed, deduped (order kept), bounded — tags are labels, not essays."""
+    if v is None:
+        return None
+    cleaned: list[str] = []
+    for tag in v:
+        key = " ".join(tag.strip().lower().split())[:MAX_TAG_LENGTH]
+        if key and key not in cleaned:
+            cleaned.append(key)
+    if len(cleaned) > MAX_TAGS:
+        raise ValueError(f"at most {MAX_TAGS} tags")
+    return cleaned
+
+
 class IngredientIn(BaseModel):
     name: str
     quantity: float | None = Field(default=None, gt=QUANTITY_BOUNDS[0], le=QUANTITY_BOUNDS[1])
@@ -64,6 +82,7 @@ class RecipeCreate(BaseModel):
     prep_minutes: int | None = Field(default=None, ge=MINUTES_BOUNDS[0], le=MINUTES_BOUNDS[1])
     cook_minutes: int | None = Field(default=None, ge=MINUTES_BOUNDS[0], le=MINUTES_BOUNDS[1])
     image_url: str | None = None
+    tags: list[str] | None = None
     steps: list[str] = Field(default=[], max_length=MAX_RECIPE_STEPS)
     ingredients: list[IngredientIn] = Field(default=[], max_length=MAX_RECIPE_INGREDIENTS)
 
@@ -73,6 +92,11 @@ class RecipeCreate(BaseModel):
         if not v.strip():
             raise ValueError("name must not be empty")
         return v.strip()
+
+    @field_validator("tags")
+    @classmethod
+    def tags_valid(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_tags(v)
 
     @field_validator("steps")
     @classmethod
@@ -92,6 +116,8 @@ class RecipeUpdate(BaseModel):
     prep_minutes: int | None = Field(default=None, ge=MINUTES_BOUNDS[0], le=MINUTES_BOUNDS[1])
     cook_minutes: int | None = Field(default=None, ge=MINUTES_BOUNDS[0], le=MINUTES_BOUNDS[1])
     image_url: str | None = None
+    favorite: bool | None = None
+    tags: list[str] | None = None
     steps: list[str] | None = Field(default=None, max_length=MAX_RECIPE_STEPS)
     ingredients: list[IngredientIn] | None = Field(default=None, max_length=MAX_RECIPE_INGREDIENTS)
 
@@ -103,6 +129,11 @@ class RecipeUpdate(BaseModel):
         if not v.strip():
             raise ValueError("name must not be empty")
         return v.strip()
+
+    @field_validator("tags")
+    @classmethod
+    def tags_valid(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_tags(v)
 
     @field_validator("steps")
     @classmethod
@@ -144,9 +175,16 @@ class RecipeOut(BaseModel):
     cook_minutes: int | None = None
     source: str
     image_url: str | None = None
+    favorite: bool = False
+    tags: list[str] = []
     created_at: datetime.datetime
     steps: list[StepOut]
     ingredients: list[IngredientOut]
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def tags_never_null(cls, v):
+        return v or []
 
     model_config = {"from_attributes": True}
 
@@ -182,6 +220,41 @@ class RecipeImportRequest(BaseModel):
         return v.strip()
 
 
+class RecipeImportUrlRequest(BaseModel):
+    """Import a recipe straight from a website URL (v0.2)."""
+
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def url_nonempty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("url must not be empty")
+        return v.strip()
+
+
+class PreviewIngredientOut(BaseModel):
+    name: str
+    quantity: float | None = None
+    unit: str | None = None
+    category: str | None = None
+    note: str | None = None
+
+
+class RecipePreviewOut(BaseModel):
+    """Full look at a Discover hit before importing (v0.2) — nothing saved yet."""
+
+    source_id: str
+    title: str
+    image: str | None = None
+    servings: int | None = None
+    ready_in_minutes: int | None = None
+    source_url: str | None = None
+    summary: str | None = None
+    ingredients: list[PreviewIngredientOut]
+    steps: list[str]
+
+
 class RecipeSummaryOut(BaseModel):
     """List-view projection: no steps, just the counts the cards show."""
 
@@ -193,6 +266,8 @@ class RecipeSummaryOut(BaseModel):
     cook_minutes: int | None = None
     source: str
     image_url: str | None = None
+    favorite: bool = False
+    tags: list[str] = []
     created_at: datetime.datetime
     ingredient_count: int
     step_count: int

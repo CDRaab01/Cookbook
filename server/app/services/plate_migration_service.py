@@ -50,9 +50,14 @@ async def _fetch_exports(email: str, client: httpx.AsyncClient) -> list[dict]:
     url = settings.plate_base_url.rstrip("/") + "/recipes/export"
     resp = await client.get(url, headers={"Authorization": f"Bearer {mint_cross_app_token(email)}"})
     if resp.status_code == 401:
+        # Plate 401s both for a bad secret AND for an email it has no account for — the latter
+        # is far more common in practice (the email is the only identity bridge).
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Plate rejected the cross-app token (secrets out of sync?).",
+            detail=(
+                "Plate couldn't match your account. Register on Plate with this same email "
+                "address (or check that CROSS_APP_SECRET matches on both servers)."
+            ),
         )
     resp.raise_for_status()
     return resp.json()

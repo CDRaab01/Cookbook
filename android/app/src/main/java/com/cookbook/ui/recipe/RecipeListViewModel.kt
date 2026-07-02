@@ -11,6 +11,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class RecipeSort(val label: String) {
+    Name("Name"),
+    Newest("Newest"),
+    Quickest("Quickest"),
+}
+
 @HiltViewModel
 class RecipeListViewModel @Inject constructor(
     private val recipeRepository: RecipeRepository,
@@ -21,6 +27,15 @@ class RecipeListViewModel @Inject constructor(
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
+
+    private val _sort = MutableStateFlow(RecipeSort.Name)
+    val sort: StateFlow<RecipeSort> = _sort
+
+    private val _favoritesOnly = MutableStateFlow(false)
+    val favoritesOnly: StateFlow<Boolean> = _favoritesOnly
+
+    private val _selectedTag = MutableStateFlow<String?>(null)
+    val selectedTag: StateFlow<String?> = _selectedTag
 
     fun load() {
         viewModelScope.launch {
@@ -39,10 +54,43 @@ class RecipeListViewModel @Inject constructor(
         _query.value = value
     }
 
-    /** The loaded list filtered by the search box (name match, case-insensitive). */
+    fun setSort(value: RecipeSort) {
+        _sort.value = value
+    }
+
+    fun toggleFavoritesOnly() {
+        _favoritesOnly.value = !_favoritesOnly.value
+    }
+
+    fun selectTag(tag: String?) {
+        _selectedTag.value = if (_selectedTag.value == tag) null else tag
+    }
+
+    /** All tags present in the loaded list, most-used first — the filter chip row. */
+    fun availableTags(list: List<RecipeSummaryOut>): List<String> =
+        list.flatMap { it.tags }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+
+    /** The loaded list with search + favorites + tag filters and the chosen sort applied. */
     fun filtered(list: List<RecipeSummaryOut>): List<RecipeSummaryOut> {
         val q = _query.value.trim()
-        if (q.isEmpty()) return list
-        return list.filter { it.name.contains(q, ignoreCase = true) }
+        val tag = _selectedTag.value
+        var out = list
+        if (q.isNotEmpty()) out = out.filter { it.name.contains(q, ignoreCase = true) }
+        if (_favoritesOnly.value) out = out.filter { it.favorite }
+        if (tag != null) out = out.filter { tag in it.tags }
+        return when (_sort.value) {
+            RecipeSort.Name -> out.sortedBy { it.name.lowercase() }
+            // createdAt is ISO-8601, so lexicographic order is chronological.
+            RecipeSort.Newest -> out.sortedByDescending { it.createdAt }
+            RecipeSort.Quickest -> out.sortedBy {
+                val total = (it.prepMinutes ?: 0) + (it.cookMinutes ?: 0)
+                if (total > 0) total else Int.MAX_VALUE
+            }
+        }
     }
 }

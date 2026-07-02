@@ -9,7 +9,9 @@ import com.cookbook.data.remote.LogToPlateRequest
 import com.cookbook.data.remote.LogToPlateResult
 import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeImportRequest
+import com.cookbook.data.remote.RecipeImportUrlRequest
 import com.cookbook.data.remote.RecipeNutritionOut
+import com.cookbook.data.remote.RecipePreviewOut
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.remote.RecipeUpdateRequest
@@ -75,6 +77,23 @@ class RecipeRepositoryImpl @Inject constructor(
 
     override suspend fun discoverRecipes(query: String): List<DiscoveredRecipe> =
         api.discoverRecipes(query)
+
+    override suspend fun previewRecipe(sourceId: String): RecipePreviewOut =
+        api.previewRecipe(sourceId)
+
+    override suspend fun importRecipeFromUrl(url: String): RecipeOut {
+        val imported = api.importRecipeFromUrl(RecipeImportUrlRequest(url))
+        cache.upsertDetail(
+            RecipeDetailCacheEntity(
+                imported.id,
+                json.encodeToString(RecipeOut.serializer(), imported),
+            ),
+        )
+        return imported
+    }
+
+    override suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut =
+        updateRecipe(id, RecipeUpdateRequest(favorite = favorite))
 
     override suspend fun getRecipeNutrition(id: String): RecipeNutritionOut =
         api.getRecipeNutrition(id)

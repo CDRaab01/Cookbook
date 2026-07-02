@@ -294,3 +294,31 @@ Everything above was built in one pass and verified locally. Final state:
   in CI, manual-only, no baselines recorded yet); pushing to GitHub + registering the
   `cookbook` self-hosted runner + Cloudflare hostname (needs credentials only the human
   has — remotes are already set to CDRaab01/{Cookbook,Pulse}).
+
+---
+
+## v0.2 (2026-07-02) — capability-audit round
+
+Everything above shipped, was pushed, and runs at https://cookbook.dragonflymedia.org
+(push-to-deploy live via the `cookbook` runner; Spoonacular + Plate integration configured
+in the deployed `.env`). v0.2 adds, from a user-driven capability audit:
+
+- **Images everywhere** (Coil): recipe cards, detail header, Discover thumbnails; manual
+  recipes take an image URL in the editor ("" clears on PATCH; null leaves untouched).
+- **Discover preview**: tap a hit → bottom sheet with photo, meta, full ingredients, first
+  steps → import. `GET /recipes/discover/{source_id}` fetches without saving.
+- **URL import**: `POST /recipes/import-url` — native schema.org/Recipe JSON-LD parser
+  (`recipes_ext/jsonld.py`: @graph/list/multi-type nodes, ISO-8601 durations, unicode-
+  fraction ingredient-line parsing) with Spoonacular `/recipes/extract` fallback; SSRF
+  guard (http(s) only, no private hosts). **Share-from-browser**: ACTION_SEND text/plain
+  intent → URL plucked from shared prose → import dialog pre-filled (SharedIntentStore).
+- **Shopping UX**: category picker on add + edit; tap-to-edit items (offline-capable —
+  dirty rows now push full state on sync, not just `checked`); autocomplete from a new
+  `item_history` table (migration 0002) which also powers **category recall** (re-adding
+  "milk" lands where you last put it) with a keyword guesser fallback
+  (`lists/categorize.py`) that also auto-categorizes JSON-LD imports; refresh action.
+- **Organization**: `favorite` + `tags` on recipes (migration 0002; tags lowercase,
+  deduped, ≤10); heart toggle on detail, favorites/tag filter chips + Name/Newest/Quickest
+  sort on the list; tag editor chips.
+- **Detail extras**: servings rescaler (display-only ingredient math), Duplicate,
+  Share-as-text; honest cross-app 502 message (identity mismatch vs secret mismatch).

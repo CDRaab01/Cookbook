@@ -3,9 +3,12 @@ package com.cookbook.ui.shopping
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cookbook.data.remote.ShoppingListOut
+import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.data.repository.ShoppingRepository
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -55,17 +58,65 @@ class ShoppingViewModel @Inject constructor(
         }
     }
 
-    fun addItem(name: String, quantity: Double?, unit: String?) {
+    fun addItem(name: String, quantity: Double?, unit: String?, category: String?) {
         val current = (_list.value as? UiState.Success)?.data ?: return
         viewModelScope.launch {
             try {
                 _list.value = UiState.Success(
-                    shoppingRepository.addItem(current.id, name, quantity, unit),
+                    shoppingRepository.addItem(current.id, name, quantity, unit, category),
                 )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't add the item"
             }
         }
+    }
+
+    fun editItem(
+        itemId: String,
+        name: String,
+        quantity: Double?,
+        unit: String?,
+        category: String?,
+    ) {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        viewModelScope.launch {
+            try {
+                _list.value = UiState.Success(
+                    shoppingRepository.editItem(current.id, itemId, name, quantity, unit, category),
+                )
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't update the item"
+            }
+        }
+    }
+
+    // --- Add-dialog autocomplete (v0.2) ---
+
+    private val _suggestions = MutableStateFlow<List<SuggestionOut>>(emptyList())
+    val suggestions: StateFlow<List<SuggestionOut>> = _suggestions
+
+    private var suggestJob: Job? = null
+
+    /** Debounced history lookup as the user types in the add dialog. */
+    fun onAddNameChanged(text: String) {
+        suggestJob?.cancel()
+        if (text.length < 2) {
+            _suggestions.value = emptyList()
+            return
+        }
+        suggestJob = viewModelScope.launch {
+            delay(200)
+            _suggestions.value = try {
+                shoppingRepository.suggest(text)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    fun clearSuggestions() {
+        suggestJob?.cancel()
+        _suggestions.value = emptyList()
     }
 
     fun deleteItem(itemId: String) {

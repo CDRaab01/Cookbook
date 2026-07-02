@@ -41,6 +41,14 @@ data class ShoppingItemUpdateRequest(
     val checked: Boolean? = null,
 )
 
+/** One autocomplete hit for the add dialog, from the user's item history. */
+@Serializable
+data class SuggestionOut(
+    val name: String,
+    val unit: String? = null,
+    val category: String? = null,
+)
+
 @Serializable
 data class AddRecipeToListRequest(
     @SerialName("recipe_id") val recipeId: String,

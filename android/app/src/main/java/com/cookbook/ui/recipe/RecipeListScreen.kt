@@ -9,16 +9,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.Sort
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,10 +41,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.UiState
@@ -53,6 +69,11 @@ fun RecipeListScreen(
 ) {
     val state by viewModel.recipes.collectAsState()
     val query by viewModel.query.collectAsState()
+    val sort by viewModel.sort.collectAsState()
+    val favoritesOnly by viewModel.favoritesOnly.collectAsState()
+    val selectedTag by viewModel.selectedTag.collectAsState()
+    var sortMenuOpen by remember { mutableStateOf(false) }
+    val colors = CookbookTheme.colors
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -61,6 +82,25 @@ fun RecipeListScreen(
             TopAppBar(
                 title = { Text("Recipes", style = MaterialTheme.typography.titleLarge) },
                 actions = {
+                    IconButton(onClick = { sortMenuOpen = true }) {
+                        Icon(Icons.AutoMirrored.Outlined.Sort, contentDescription = "Sort")
+                    }
+                    DropdownMenu(
+                        expanded = sortMenuOpen,
+                        onDismissRequest = { sortMenuOpen = false },
+                    ) {
+                        RecipeSort.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(if (option == sort) "✓ ${option.label}" else option.label)
+                                },
+                                onClick = {
+                                    viewModel.setSort(option)
+                                    sortMenuOpen = false
+                                },
+                            )
+                        }
+                    }
                     IconButton(onClick = onAddRecipe) {
                         Icon(Icons.Outlined.Add, contentDescription = "New recipe")
                     }
@@ -81,7 +121,7 @@ fun RecipeListScreen(
                     Modifier.fillMaxSize().padding(padding),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
-                ) { CircularProgressIndicator(color = CookbookTheme.colors.heat.base) }
+                ) { CircularProgressIndicator(color = colors.heat.base) }
             }
             is UiState.Error -> {
                 EmptyState(
@@ -93,6 +133,7 @@ fun RecipeListScreen(
             }
             is UiState.Success -> {
                 val filtered = viewModel.filtered(s.data)
+                val tags = viewModel.availableTags(s.data)
                 if (s.data.isEmpty()) {
                     EmptyState(
                         icon = Icons.AutoMirrored.Outlined.MenuBook,
@@ -115,6 +156,43 @@ fun RecipeListScreen(
                                 singleLine = true,
                             )
                         }
+                        if (tags.isNotEmpty() || s.data.any { it.favorite }) {
+                            item {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    item {
+                                        FilterChip(
+                                            selected = favoritesOnly,
+                                            onClick = viewModel::toggleFavoritesOnly,
+                                            label = { Text("Favorites") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    if (favoritesOnly) Icons.Filled.Favorite
+                                                    else Icons.Outlined.FavoriteBorder,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = colors.heat.dim,
+                                                selectedLabelColor = colors.heat.base,
+                                                selectedLeadingIconColor = colors.heat.base,
+                                            ),
+                                        )
+                                    }
+                                    items(tags, key = { it }) { tag ->
+                                        FilterChip(
+                                            selected = selectedTag == tag,
+                                            onClick = { viewModel.selectTag(tag) },
+                                            label = { Text(tag) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = colors.plum.dim,
+                                                selectedLabelColor = colors.plum.base,
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         items(filtered, key = { it.id }) { recipe ->
                             RecipeCard(recipe = recipe, onClick = { onRecipeClick(recipe.id) })
                         }
@@ -130,7 +208,28 @@ private fun RecipeCard(recipe: RecipeSummaryOut, onClick: () -> Unit) {
     val colors = CookbookTheme.colors
     PanelCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column {
+            if (recipe.imageUrl != null) {
+                AsyncImage(
+                    model = recipe.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(132.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+                Spacer(Modifier.height(10.dp))
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (recipe.favorite) {
+                    Icon(
+                        Icons.Filled.Favorite,
+                        contentDescription = "Favorite",
+                        tint = colors.heat.base,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
                 Text(
                     recipe.name,
                     style = MaterialTheme.typography.titleMedium,

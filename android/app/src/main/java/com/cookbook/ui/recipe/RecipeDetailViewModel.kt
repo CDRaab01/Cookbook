@@ -3,7 +3,9 @@ package com.cookbook.ui.recipe
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.IngredientIn
 import com.cookbook.data.remote.LogToPlateRequest
+import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeNutritionOut
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.repository.RecipeAlreadyOnListException
@@ -64,6 +66,83 @@ class RecipeDetailViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    // --- Favorite / duplicate / share (v0.2) ---
+
+    fun toggleFavorite() {
+        val current = (_recipe.value as? UiState.Success)?.data ?: return
+        val next = !current.favorite
+        // Optimistic flip; reconciled with the server response or rolled back.
+        _recipe.value = UiState.Success(current.copy(favorite = next))
+        viewModelScope.launch {
+            try {
+                _recipe.value = UiState.Success(recipeRepository.setFavorite(recipeId, next))
+            } catch (e: Exception) {
+                _recipe.value = UiState.Success(current)
+                _error.value = e.message ?: "Couldn't update favorite"
+            }
+        }
+    }
+
+    /** One-shot: id of the duplicated recipe — the screen navigates to it. */
+    private val _duplicated = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val duplicated: SharedFlow<String> = _duplicated
+
+    fun duplicate() {
+        val current = (_recipe.value as? UiState.Success)?.data ?: return
+        viewModelScope.launch {
+            try {
+                val copy = recipeRepository.createRecipe(
+                    RecipeCreateRequest(
+                        name = "${current.name} (copy)",
+                        description = current.description,
+                        servings = current.servings,
+                        prepMinutes = current.prepMinutes,
+                        cookMinutes = current.cookMinutes,
+                        imageUrl = current.imageUrl,
+                        tags = current.tags,
+                        steps = current.steps.map { it.text },
+                        ingredients = current.ingredients.map {
+                            IngredientIn(
+                                name = it.name,
+                                quantity = it.quantity,
+                                unit = it.unit,
+                                category = it.category,
+                                note = it.note,
+                            )
+                        },
+                    ),
+                )
+                _duplicated.tryEmit(copy.id)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't duplicate"
+            }
+        }
+    }
+
+    /** Plain-text rendering for the system share sheet; null until the recipe loads. */
+    fun shareText(): String? {
+        val r = (_recipe.value as? UiState.Success)?.data ?: return null
+        return buildString {
+            appendLine(r.name)
+            if (!r.description.isNullOrBlank()) appendLine(r.description)
+            appendLine()
+            appendLine("Serves ${r.servings}")
+            appendLine()
+            appendLine("Ingredients:")
+            r.ingredients.forEach { ing ->
+                val qty = formatQuantity(ing.quantity, ing.unit)
+                appendLine(if (qty != null) "- $qty ${ing.name}" else "- ${ing.name}")
+            }
+            if (r.steps.isNotEmpty()) {
+                appendLine()
+                appendLine("Steps:")
+                r.steps.forEach { appendLine("${it.order + 1}. ${it.text}") }
+            }
+            appendLine()
+            append("Shared from Cookbook")
+        }
     }
 
     // --- Nutrition via Plate (Phase 7) ---

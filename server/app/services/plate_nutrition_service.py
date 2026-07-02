@@ -92,9 +92,14 @@ async def _plate_post(
     async def _do(c: httpx.AsyncClient) -> dict:
         resp = await c.post(url, json=payload, headers=headers)
         if resp.status_code == 401:
+            # Plate 401s both for a bad secret AND for an email it has no account for — the
+            # latter is far more common in practice (the email is the only identity bridge).
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Plate rejected the cross-app token (secrets out of sync?).",
+                detail=(
+                    "Plate couldn't match your account. Register on Plate with this same "
+                    "email address (or check that CROSS_APP_SECRET matches on both servers)."
+                ),
             )
         resp.raise_for_status()
         return resp.json()
