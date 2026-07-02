@@ -4,7 +4,8 @@ import uuid
 from pydantic import BaseModel, Field, field_validator
 
 from app.limits import QUANTITY_BOUNDS, SCALE_BOUNDS
-from app.schemas.recipe import _normalize_unit, _validate_category
+from app.lists.merge import canonical_unit
+from app.schemas.recipe import _validate_category
 
 
 class ItemCreate(BaseModel):
@@ -25,7 +26,7 @@ class ItemCreate(BaseModel):
     @field_validator("unit")
     @classmethod
     def unit_normalized(cls, v: str | None) -> str | None:
-        return _normalize_unit(v)
+        return canonical_unit(v)
 
     @field_validator("category")
     @classmethod
@@ -54,7 +55,7 @@ class ItemUpdate(BaseModel):
     @field_validator("unit")
     @classmethod
     def unit_normalized(cls, v: str | None) -> str | None:
-        return _normalize_unit(v)
+        return canonical_unit(v)
 
     @field_validator("category")
     @classmethod
@@ -82,11 +83,21 @@ class SuggestionOut(BaseModel):
     category: str | None = None
 
 
+class MeasureOut(BaseModel):
+    """One aggregated amount ("2 tbsp"); unit None is a bare count ("3")."""
+
+    quantity: float
+    unit: str | None = None
+
+
 class ItemOut(BaseModel):
     id: uuid.UUID
     name: str
+    # Legacy single measure (populated when the aggregate has exactly one entry).
     quantity: float | None = None
     unit: str | None = None
+    # The full aggregate across merges — what the row displays ("2 tbsp + 2 tsp").
+    measures: list[MeasureOut] = []
     category: str | None = None
     checked: bool
     checked_at: datetime.datetime | None = None
@@ -95,6 +106,11 @@ class ItemOut(BaseModel):
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("measures", mode="before")
+    @classmethod
+    def measures_never_null(cls, v):
+        return v or []
 
 
 class ListOut(BaseModel):

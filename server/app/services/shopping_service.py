@@ -1,8 +1,10 @@
-"""Shopping-list operations (CLAUDE.md §4, §6, Phase 3).
+"""Shopping-list operations (CLAUDE.md §4, §6, Phase 3; buyable-list semantics since v0.2.1).
 
 All merge decisions delegate to the pure module :mod:`app.lists.merge`; this service only does
 I/O around it. Merging only ever targets **unchecked** items — a checked-off item is history for
-this trip, and folding new needs into it would silently hide them.
+this trip, and folding new needs into it would silently hide them. Line-item identity is the
+normalized *name*; amounts aggregate as measures ("2 tbsp + 2 tsp") rather than pretending to
+sum across units.
 """
 
 import datetime
@@ -16,7 +18,10 @@ from app.limits import MAX_LIST_ITEMS
 from app.lists.categorize import guess_category
 from app.lists.merge import (
     IncomingItem,
-    combine_quantities,
+    Measure,
+    add_measure,
+    canonical_unit,
+    is_purchasable,
     merge_incoming,
     merge_key,
     normalize_name,
@@ -73,22 +78,48 @@ def _guard_capacity(shopping_list: ShoppingList, adding: int) -> None:
         )
 
 
+def _item_measures(item: ShoppingListItem) -> list[Measure]:
+    """The item's aggregate, reading legacy quantity/unit rows (pre-0003) transparently."""
+    if item.measures:
+        return [
+            Measure(quantity=m["quantity"], unit=m.get("unit"))
+            for m in item.measures
+            if isinstance(m, dict) and isinstance(m.get("quantity"), (int, float))
+        ]
+    if item.quantity is not None:
+        return [Measure(quantity=item.quantity, unit=canonical_unit(item.unit))]
+    return []
+
+
+def _store_measures(item: ShoppingListItem, measures: list[Measure]) -> None:
+    """Write the aggregate back, keeping the legacy single-measure columns coherent."""
+    item.measures = [{"quantity": m.quantity, "unit": m.unit} for m in measures]
+    if len(measures) == 1:
+        item.quantity = measures[0].quantity
+        item.unit = measures[0].unit
+    else:
+        item.quantity = None
+        item.unit = None
+
+
 def _merge_into_list(
     shopping_list: ShoppingList,
     incoming: list[IncomingItem],
     recipe_id: uuid.UUID | None,
 ) -> None:
-    """Fold incoming rows into the list: sum into same-key unchecked items, append the rest."""
+    """Fold incoming rows into the list: same-name unchecked items aggregate; the rest append."""
     unchecked_by_key = {
-        merge_key(item.name, item.unit): item for item in shopping_list.items if not item.checked
+        merge_key(item.name): item for item in shopping_list.items if not item.checked
     }
     order = _next_order(shopping_list)
-    appended = 0
     for inc in incoming:
-        key = merge_key(inc.name, inc.unit)
+        key = merge_key(inc.name)
         target = unchecked_by_key.get(key)
         if target is not None:
-            target.quantity = combine_quantities(target.quantity, inc.quantity)
+            measures = _item_measures(target)
+            for m in inc.measures:
+                add_measure(measures, m.quantity, m.unit)
+            _store_measures(target, measures)
             if target.category is None:
                 target.category = inc.category
             # Multi-recipe provenance collapses to "manual/mixed" (NULL) rather than lying.
@@ -97,14 +128,12 @@ def _merge_into_list(
         else:
             new_item = ShoppingListItem(
                 name=inc.name,
-                quantity=inc.quantity,
-                unit=inc.unit,
                 category=inc.category,
                 recipe_id=recipe_id,
                 order=order,
             )
+            _store_measures(new_item, inc.measures)
             order += 1
-            appended += 1
             shopping_list.items.append(new_item)
             unchecked_by_key[key] = new_item
 
@@ -124,13 +153,14 @@ async def _record_history(db: AsyncSession, user_id: uuid.UUID, items: list[Inco
     existing = {row.key: row for row in result.scalars().all()}
     now = datetime.datetime.now(datetime.timezone.utc)
     for key, item in keys.items():
+        unit = item.measures[0].unit if item.measures else canonical_unit(item.unit)
         row = existing.get(key)
         if row is not None:
             row.use_count += 1
             row.last_used = now
             row.name = item.name
-            if item.unit is not None:
-                row.unit = item.unit
+            if unit is not None:
+                row.unit = unit
             if item.category is not None:
                 row.category = item.category
         else:
@@ -139,7 +169,7 @@ async def _record_history(db: AsyncSession, user_id: uuid.UUID, items: list[Inco
                     user_id=user_id,
                     key=key,
                     name=item.name,
-                    unit=item.unit,
+                    unit=unit,
                     category=item.category,
                     last_used=now,
                 )
@@ -227,6 +257,11 @@ async def add_recipe(
             for ing in recipe.ingredients
         ]
     )
+    if not incoming:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nothing on this recipe needs buying (water and the like are skipped).",
+        )
     _guard_capacity(shopping_list, adding=len(incoming))
     _merge_into_list(shopping_list, incoming, recipe_id=recipe.id)
     await _record_history(db, user_id, incoming)
@@ -249,9 +284,16 @@ async def update_item(
     if req.name is not None:
         item.name = req.name
     if req.quantity is not None:
-        item.quantity = req.quantity
-    if req.unit is not None:
-        item.unit = req.unit
+        # An explicit edit replaces the whole aggregate — the user is overriding, not merging.
+        _store_measures(
+            item, [Measure(quantity=req.quantity, unit=canonical_unit(req.unit or item.unit))]
+        )
+    elif req.unit is not None:
+        measures = _item_measures(item)
+        if len(measures) == 1:
+            _store_measures(
+                item, [Measure(quantity=measures[0].quantity, unit=canonical_unit(req.unit))]
+            )
     if req.category is not None:
         item.category = req.category
     if req.checked is not None and req.checked != item.checked:
@@ -278,3 +320,18 @@ async def clear_checked(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID
     shopping_list.items = [i for i in shopping_list.items if not i.checked]
     await db.commit()
     return ListOut.model_validate(await _reload(db, list_id))
+
+
+__all__ = [
+    "add_item",
+    "add_recipe",
+    "clear_checked",
+    "delete_item",
+    "get_default_list",
+    "get_list_out",
+    "is_purchasable",
+    "load_owned_list",
+    "recall_category",
+    "suggest_items",
+    "update_item",
+]

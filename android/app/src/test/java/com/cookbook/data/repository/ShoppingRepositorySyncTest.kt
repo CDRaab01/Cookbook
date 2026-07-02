@@ -167,7 +167,7 @@ class ShoppingRepositorySyncTest {
 
     private fun repository(): ShoppingRepositoryImpl {
         whenever(prefs.shoppingListId).thenReturn(flowOf("list-1"))
-        return ShoppingRepositoryImpl(api, dao, prefs)
+        return ShoppingRepositoryImpl(api, dao, prefs, kotlinx.serialization.json.Json)
     }
 
     @Test

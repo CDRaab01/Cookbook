@@ -55,7 +55,6 @@ import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.ui.recipe.CATEGORY_ORDER
 import com.cookbook.ui.recipe.categoryLabel
-import com.cookbook.ui.recipe.formatQuantity
 import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
@@ -70,6 +69,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val state by viewModel.list.collectAsState()
     val error by viewModel.error.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
+    val undoable by viewModel.undoable.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
@@ -79,6 +79,20 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
         error?.let {
             snackbar.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+    LaunchedEffect(undoable) {
+        undoable?.let { item ->
+            val result = snackbar.showSnackbar(
+                message = "Removed ${item.name}",
+                actionLabel = "Undo",
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete()
+            } else {
+                viewModel.clearUndoable()
+            }
         }
     }
 
@@ -266,6 +280,32 @@ private fun ShoppingListBody(
     }
 }
 
+/** Pretty-print one measure: "2 tbsp", "1.5 cups", "3". */
+internal fun formatMeasure(quantity: Double, unit: String?): String {
+    val q = if (quantity % 1.0 == 0.0) quantity.toInt().toString() else quantity.toString()
+    if (unit == null) return q
+    return "$q ${displayUnit(unit, quantity)}"
+}
+
+private val PLURAL_ES = setOf("box", "pinch", "dash", "bunch")
+private val PLURALIZABLE = setOf(
+    "cup", "can", "clove", "slice", "stick", "package", "head", "piece",
+    "serving", "tub", "bottle", "jar", "bag",
+) + PLURAL_ES
+
+private fun displayUnit(unit: String, quantity: Double): String = when {
+    quantity == 1.0 || unit !in PLURALIZABLE -> unit
+    unit in PLURAL_ES -> unit + "es"
+    else -> unit + "s"
+}
+
+/** The row's secondary line: the aggregate ("2 tbsp + 2 tsp") or the single measure. */
+internal fun ShoppingItemOut.measuresLabel(): String? = when {
+    measures.isNotEmpty() -> measures.joinToString(" + ") { formatMeasure(it.quantity, it.unit) }
+    quantity != null -> formatMeasure(quantity!!, unit)
+    else -> null
+}
+
 @Composable
 private fun ShoppingItemRow(
     item: ShoppingItemOut,
@@ -288,29 +328,26 @@ private fun ShoppingItemRow(
                 checkmarkColor = colors.fresh.on,
             ),
         )
+        // Name leads — it's a list of things to BUY; the recipe amounts are the caption.
         // The text area opens the editor; the checkbox and × keep their own targets.
-        Row(
-            modifier = Modifier.weight(1f).clickable(onClick = onEdit),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val qty = formatQuantity(item.quantity, item.unit)
-            if (qty != null) {
-                DataText(
-                    qty,
-                    style = CookbookTheme.dataType.numeral,
-                    color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant else colors.heat.base,
-                    modifier = Modifier.width(72.dp),
-                )
-            } else {
-                Spacer(Modifier.width(72.dp))
-            }
+        Column(modifier = Modifier.weight(1f).clickable(onClick = onEdit)) {
             Text(
                 item.name,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     textDecoration = if (item.checked) TextDecoration.LineThrough else TextDecoration.None,
                 ),
-                modifier = Modifier.weight(1f),
             )
+            item.measuresLabel()?.let { label ->
+                DataText(
+                    label,
+                    style = CookbookTheme.dataType.numeral,
+                    color = if (item.checked) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        colors.heat.base
+                    },
+                )
+            }
         }
         IconButton(onClick = onDelete) {
             Icon(
@@ -475,16 +512,25 @@ private fun EditItemDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit item") },
         text = {
-            ItemFields(
-                name = name,
-                onName = { name = it },
-                quantity = quantity,
-                onQuantity = { quantity = it },
-                unit = unit,
-                onUnit = { unit = it },
-                category = category,
-                onCategory = { category = it },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (item.measures.size > 1) {
+                    Text(
+                        "Currently ${item.measuresLabel()} — saving replaces this with what you enter.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                ItemFields(
+                    name = name,
+                    onName = { name = it },
+                    quantity = quantity,
+                    onQuantity = { quantity = it },
+                    unit = unit,
+                    onUnit = { unit = it },
+                    category = category,
+                    onCategory = { category = it },
+                )
+            }
         },
         confirmButton = {
             TextButton(

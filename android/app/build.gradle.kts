@@ -26,8 +26,8 @@ android {
         targetSdk = 35
         // CI passes VERSION_CODE (the run number) so each signed release installs cleanly over the
         // previous one; defaults to the last shipped value for local/debug builds.
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
-        versionName = System.getenv("VERSION_NAME") ?: "0.2.0"
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 3
+        versionName = System.getenv("VERSION_NAME") ?: "0.2.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
             "String", "SERVER_URL",

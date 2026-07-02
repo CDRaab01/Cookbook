@@ -2,6 +2,7 @@ package com.cookbook.ui.shopping
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.data.repository.ShoppingRepository
@@ -119,15 +120,51 @@ class ShoppingViewModel @Inject constructor(
         _suggestions.value = emptyList()
     }
 
+    /** The just-deleted item, offered back via the snackbar's Undo (mis-taps happen mid-scroll). */
+    private val _undoable = MutableStateFlow<ShoppingItemOut?>(null)
+    val undoable: StateFlow<ShoppingItemOut?> = _undoable
+
     fun deleteItem(itemId: String) {
         val current = (_list.value as? UiState.Success)?.data ?: return
+        val item = current.items.firstOrNull { it.id == itemId } ?: return
         viewModelScope.launch {
             try {
                 _list.value = UiState.Success(shoppingRepository.deleteItem(current.id, itemId))
+                _undoable.value = item
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't delete the item"
             }
         }
+    }
+
+    fun undoDelete() {
+        val item = _undoable.value ?: return
+        _undoable.value = null
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        viewModelScope.launch {
+            try {
+                // Re-adding each measure rebuilds the aggregate through the normal merge path.
+                var out = current
+                if (item.measures.isEmpty()) {
+                    out = shoppingRepository.addItem(
+                        current.id, item.name, item.quantity, item.unit, item.category,
+                    )
+                } else {
+                    for (m in item.measures) {
+                        out = shoppingRepository.addItem(
+                            current.id, item.name, m.quantity, m.unit, item.category,
+                        )
+                    }
+                }
+                _list.value = UiState.Success(out)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't restore the item"
+            }
+        }
+    }
+
+    fun clearUndoable() {
+        _undoable.value = null
     }
 
     fun clearChecked() {

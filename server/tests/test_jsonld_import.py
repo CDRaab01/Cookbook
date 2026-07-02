@@ -26,6 +26,10 @@ from app.recipes_ext.jsonld import (
         ("1 pinch of saffron", 1.0, "pinch", "saffron"),
         ("2 Tbsp. olive oil", 2.0, "tbsp", "olive oil"),
         ("4 cloves garlic, minced", 4.0, "clove", "garlic, minced"),
+        # Ranges keep the lower bound; the tail must not leak into the name.
+        ("2-3 lbs chicken thighs", 2.0, "lb", "chicken thighs"),
+        ("2 to 3 cups broth", 2.0, "cup", "broth"),
+        ("1 - 1 1/2 pounds shrimp", 1.0, "lb", "shrimp"),
     ],
 )
 def test_parse_ingredient_line(line, quantity, unit, name):

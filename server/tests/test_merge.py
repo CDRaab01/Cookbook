@@ -1,10 +1,17 @@
-"""Table-driven tests for the pure merge module — the shopping list's load-bearing math."""
+"""Table-driven tests for the pure merge module — the shopping list's load-bearing math.
+
+v0.2.1 semantics: identity = normalized name; measures aggregate (same canonical unit sums,
+different units sit side by side); non-purchasables are dropped; units are canonicalized.
+"""
 
 import pytest
 
 from app.lists.merge import (
     IncomingItem,
-    combine_quantities,
+    Measure,
+    add_measure,
+    canonical_unit,
+    is_purchasable,
     merge_incoming,
     merge_key,
     normalize_name,
@@ -44,34 +51,77 @@ def test_normalize_name(raw: str, expected: str):
 
 
 @pytest.mark.parametrize(
-    ("a", "b", "same"),
+    ("raw", "expected"),
     [
-        (("Eggs", None), ("egg", None), True),
-        (("Tomatoes", "lb"), ("tomato", "LB"), True),
-        (("chicken", "lb"), ("chicken", "breast"), False),  # unit mismatch
-        (("chicken", "lb"), ("chicken", None), False),  # missing unit is a different key
-        (("basil", None), ("parsley", None), False),
+        ("cups", "cup"),
+        ("Cup", "cup"),
+        ("teaspoons", "tsp"),
+        ("Tablespoon", "tbsp"),
+        ("tbs", "tbsp"),
+        ("POUNDS", "lb"),
+        ("ounce", "oz"),
+        ("servings", "serving"),
+        ("cans", "can"),
+        ("tbsp.", "tbsp"),
+        (None, None),
+        ("", None),
+        ("weird-unit", "weird-unit"),  # unknown units pass through, self-consistent
     ],
 )
-def test_merge_key(a, b, same):
-    assert (merge_key(*a) == merge_key(*b)) is same
+def test_canonical_unit(raw, expected):
+    assert canonical_unit(raw) == expected
 
 
 @pytest.mark.parametrize(
-    ("a", "b", "expected"),
+    ("a", "b", "same"),
     [
-        (2.0, 1.0, 3.0),
-        (0.5, 0.25, 0.75),
-        # "a number plus 'some' is still 'some'"
-        (None, 2.0, None),
-        (2.0, None, None),
-        (None, None, None),
-        # float noise is rounded away
-        (0.1, 0.2, 0.3),
+        ("Eggs", "egg", True),
+        ("Tomatoes", "tomato", True),
+        # v0.2.1: the unit is NOT part of the identity — you buy one "oil".
+        ("oil", "Oil", True),
+        ("basil", "parsley", False),
     ],
 )
-def test_combine_quantities(a, b, expected):
-    assert combine_quantities(a, b) == expected
+def test_merge_key(a, b, same):
+    assert (merge_key(a) == merge_key(b)) is same
+
+
+@pytest.mark.parametrize(
+    ("name", "purchasable"),
+    [
+        ("water", False),
+        ("Warm water", False),
+        ("cold water", False),
+        ("ice", False),
+        ("Watermelon", True),  # suffix rule needs the word boundary
+        ("chicken", True),
+        # Debatable ones documented as-is: "<x> water" is treated as tap-water phrasing. If a
+        # bottled "coconut water" habit shows up, it belongs on the list via manual add rename.
+        ("coconut water", False),
+    ],
+)
+def test_is_purchasable(name, purchasable):
+    assert is_purchasable(name) is purchasable
+
+
+def test_add_measure_sums_same_unit_and_keeps_mixed_units():
+    measures = add_measure([], 2.0, "tablespoons")
+    measures = add_measure(measures, 2.0, "tsp")
+    measures = add_measure(measures, 1.0, "tbsp")
+    assert measures == [Measure(3.0, "tbsp"), Measure(2.0, "tsp")]
+
+
+def test_add_measure_ignores_unquantified():
+    measures = add_measure([], 2.0, "tbsp")
+    # Bare "oil" adds nothing — presence already means "buy some"; it must NOT erase 2 tbsp.
+    measures = add_measure(measures, None, None)
+    assert measures == [Measure(2.0, "tbsp")]
+
+
+def test_add_measure_bare_counts():
+    measures = add_measure([], 3.0, None)
+    measures = add_measure(measures, 2.0, None)
+    assert measures == [Measure(5.0, None)]
 
 
 @pytest.mark.parametrize(
@@ -88,27 +138,28 @@ def test_scale_quantity(quantity, scale, expected):
     assert scale_quantity(quantity, scale) == expected
 
 
-def test_merge_incoming_collapses_batch_duplicates():
+def test_merge_incoming_collapses_across_units():
     incoming = [
-        IncomingItem(name="Garlic", quantity=2, unit="clove"),
+        IncomingItem(name="Oil", quantity=2, unit="tablespoons"),
         IncomingItem(name="Onion", quantity=1, unit=None),
-        IncomingItem(name="garlic", quantity=3, unit="clove", category="produce"),
+        IncomingItem(name="oil", quantity=2, unit="tsp", category="pantry"),
     ]
     merged = merge_incoming(incoming)
     assert len(merged) == 2
-    garlic = merged[0]
-    assert garlic.name == "Garlic"  # first spelling wins
-    assert garlic.quantity == 5
-    assert garlic.category == "produce"  # first non-null metadata survives the merge
+    oil = merged[0]
+    assert oil.name == "Oil"  # first spelling wins
+    assert oil.measures == [Measure(2.0, "tbsp"), Measure(2.0, "tsp")]
+    assert oil.category == "pantry"  # first non-null metadata survives the merge
     assert merged[1].name == "Onion"
 
 
-def test_merge_incoming_keeps_unit_mismatch_separate():
+def test_merge_incoming_drops_water():
     incoming = [
-        IncomingItem(name="chicken", quantity=2, unit="lb"),
-        IncomingItem(name="chicken", quantity=1, unit="breast"),
+        IncomingItem(name="Warm water", quantity=1.5, unit="cups"),
+        IncomingItem(name="Flour", quantity=4, unit="cups"),
     ]
-    assert len(merge_incoming(incoming)) == 2
+    merged = merge_incoming(incoming)
+    assert [i.name for i in merged] == ["Flour"]
 
 
 def test_merge_incoming_preserves_order():

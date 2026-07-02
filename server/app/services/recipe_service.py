@@ -113,13 +113,15 @@ async def update_recipe(
     if req.name is not None:
         recipe.name = req.name
     if req.description is not None:
-        recipe.description = req.description
+        # Clearing semantics: PATCH null means "leave untouched", so an emptied field must be
+        # expressible — "" clears text, 0 clears minutes (a 0-minute prep is meaningless).
+        recipe.description = req.description.strip() or None
     if req.servings is not None:
         recipe.servings = req.servings
     if req.prep_minutes is not None:
-        recipe.prep_minutes = req.prep_minutes
+        recipe.prep_minutes = req.prep_minutes or None
     if req.cook_minutes is not None:
-        recipe.cook_minutes = req.cook_minutes
+        recipe.cook_minutes = req.cook_minutes or None
     if req.image_url is not None:
         # Sentinel: an explicit empty string clears the image (None means "leave untouched").
         recipe.image_url = req.image_url.strip() or None

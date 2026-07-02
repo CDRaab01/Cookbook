@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -40,8 +40,14 @@ class ShoppingListItem(Base):
         ForeignKey("shopping_lists.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255))
+    # Legacy single measure, kept in sync when `measures` holds exactly one entry (client edit
+    # dialogs and older rows read these); NULL when measures are mixed.
     quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Aggregated amounts across merges: JSON list of {"quantity", "unit"} (v0.2.1). An item you
+    # buy once may be measured many ways across recipes — "2 tbsp + 2 tsp" stays honest instead
+    # of pretending to sum across units.
+    measures: Mapped[list | None] = mapped_column(JSON, nullable=True)
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
     checked: Mapped[bool] = mapped_column(Boolean, default=False)
     checked_at: Mapped[datetime.datetime | None] = mapped_column(

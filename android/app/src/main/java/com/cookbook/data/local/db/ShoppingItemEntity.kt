@@ -21,6 +21,8 @@ data class ShoppingItemEntity(
     val name: String,
     val quantity: Double?,
     val unit: String?,
+    // JSON-encoded List<MeasureOut> — the aggregated amounts the row displays (v0.2.1).
+    val measuresJson: String? = null,
     val category: String?,
     val checked: Boolean,
     val recipeId: String?,

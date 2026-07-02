@@ -183,11 +183,12 @@ class RecipeEditViewModel @Inject constructor(
                         recipeId,
                         RecipeUpdateRequest(
                             name = d.name.trim(),
-                            description = d.description.trim().ifEmpty { null },
+                            // PATCH null means "leave untouched", so cleared fields need their
+                            // clear sentinels: "" for text, 0 for minutes.
+                            description = d.description.trim(),
                             servings = d.servings.toInt(),
-                            prepMinutes = d.prepMinutes.toIntOrNull(),
-                            cookMinutes = d.cookMinutes.toIntOrNull(),
-                            // Trimmed as-is: "" clears the image server-side, null would skip.
+                            prepMinutes = d.prepMinutes.toIntOrNull() ?: 0,
+                            cookMinutes = d.cookMinutes.toIntOrNull() ?: 0,
                             imageUrl = d.imageUrl.trim(),
                             tags = d.tags, // replaces wholesale; empty list clears
                             steps = steps,

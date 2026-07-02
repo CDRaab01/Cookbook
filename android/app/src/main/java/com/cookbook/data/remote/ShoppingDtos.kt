@@ -3,12 +3,22 @@ package com.cookbook.data.remote
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/** One aggregated amount ("2 tbsp"); null unit is a bare count ("3"). */
+@Serializable
+data class MeasureOut(
+    val quantity: Double,
+    val unit: String? = null,
+)
+
 @Serializable
 data class ShoppingItemOut(
     val id: String,
     val name: String,
+    // Legacy single measure (populated when the aggregate has exactly one entry).
     val quantity: Double? = null,
     val unit: String? = null,
+    // The full aggregate across merges — what the row displays ("2 tbsp + 2 tsp").
+    val measures: List<MeasureOut> = emptyList(),
     val category: String? = null,
     val checked: Boolean = false,
     @SerialName("checked_at") val checkedAt: String? = null,

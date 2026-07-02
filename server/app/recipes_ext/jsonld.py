@@ -138,9 +138,17 @@ def _leading_amount(text: str) -> tuple[float | None, str]:
     return (total if found else None), rest
 
 
+# The upper bound of a range, possibly a compound number ("1 1/2"): "- 3", "– 2.5", "to 1 1/2".
+_RANGE_TAIL_RE = re.compile(r"^(?:[-–—]|to\s)\s*(?:\d+(?:\.\d+)?(?:\s*/\s*\d+)?\s*)+")
+
+
 def parse_ingredient_line(line: str) -> NormalizedIngredient:
     original = " ".join(line.split())
     quantity, rest = _leading_amount(original)
+    if quantity is not None:
+        # Ranges ("2-3 lbs", "2 to 3 lbs"): keep the lower bound, drop the upper so the tail
+        # doesn't leak into the name as "-3 lbs chicken".
+        rest = _RANGE_TAIL_RE.sub("", rest)
     unit = None
     if quantity is not None and rest:
         first, _, remainder = rest.partition(" ")

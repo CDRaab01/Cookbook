@@ -9,7 +9,7 @@ import androidx.room.RoomDatabase
         RecipeSummaryCacheEntity::class,
         RecipeDetailCacheEntity::class,
     ],
-    version = 1,
+    version = 2, // v0.2.1: measuresJson on shopping_items (destructive rebuild — it's a mirror)
     exportSchema = false,
 )
 abstract class CookbookDatabase : RoomDatabase() {

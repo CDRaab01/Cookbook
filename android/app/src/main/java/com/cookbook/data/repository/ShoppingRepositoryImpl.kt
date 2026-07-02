@@ -4,6 +4,7 @@ import com.cookbook.data.local.db.ShoppingDao
 import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.MeasureOut
 import com.cookbook.data.remote.ShoppingItemCreateRequest
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingItemUpdateRequest
@@ -11,6 +12,7 @@ import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.util.AppPreferences
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 import java.io.IOException
 import java.util.UUID
@@ -32,6 +34,7 @@ class ShoppingRepositoryImpl @Inject constructor(
     private val api: ApiService,
     private val dao: ShoppingDao,
     private val appPreferences: AppPreferences,
+    private val json: Json,
 ) : ShoppingRepository {
 
     override suspend fun getDefaultList(): ShoppingListOut = try {
@@ -121,7 +124,16 @@ class ShoppingRepositoryImpl @Inject constructor(
     ): ShoppingListOut {
         val row = dao.byLocalId(itemId) ?: return localView()
         dao.update(
-            row.copy(name = name, quantity = quantity, unit = unit, category = category, dirty = true),
+            // An explicit edit overrides the aggregate; drop stale measures so the display
+            // falls back to the edited single quantity/unit until the server reconciles.
+            row.copy(
+                name = name,
+                quantity = quantity,
+                unit = unit,
+                measuresJson = null,
+                category = category,
+                dirty = true,
+            ),
         )
         val serverId = row.serverId ?: return localView() // pushed by sync with the add
         return try {
@@ -256,7 +268,7 @@ class ShoppingRepositoryImpl @Inject constructor(
         dao.upsertAll(
             fresh.items
                 .filter { it.id !in pendingIds }
-                .map { it.toEntity() },
+                .map { it.toEntity(json) },
         )
     }
 
@@ -268,7 +280,7 @@ class ShoppingRepositoryImpl @Inject constructor(
         return ShoppingListOut(
             id = id,
             name = name,
-            items = dao.visibleItems().map { it.toDto() },
+            items = dao.visibleItems().map { it.toDto(json) },
         )
     }
 
@@ -276,23 +288,39 @@ class ShoppingRepositoryImpl @Inject constructor(
         (dao.visibleItems().maxOfOrNull { it.order } ?: -1) + 1
 }
 
-private fun ShoppingItemOut.toEntity() = ShoppingItemEntity(
+private fun ShoppingItemOut.toEntity(json: Json) = ShoppingItemEntity(
     localId = id,
     serverId = id,
     name = name,
     quantity = quantity,
     unit = unit,
+    measuresJson = if (measures.isEmpty()) {
+        null
+    } else {
+        json.encodeToString(
+            kotlinx.serialization.builtins.ListSerializer(MeasureOut.serializer()),
+            measures,
+        )
+    },
     category = category,
     checked = checked,
     recipeId = recipeId,
     order = order,
 )
 
-private fun ShoppingItemEntity.toDto() = ShoppingItemOut(
+private fun ShoppingItemEntity.toDto(json: Json) = ShoppingItemOut(
     id = localId,
     name = name,
     quantity = quantity,
     unit = unit,
+    measures = measuresJson?.let {
+        runCatching {
+            json.decodeFromString(
+                kotlinx.serialization.builtins.ListSerializer(MeasureOut.serializer()),
+                it,
+            )
+        }.getOrDefault(emptyList())
+    } ?: emptyList(),
     category = category,
     checked = checked,
     recipeId = recipeId,

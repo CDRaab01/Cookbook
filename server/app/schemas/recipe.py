@@ -25,11 +25,11 @@ def _validate_category(v: str | None) -> str | None:
 
 
 def _normalize_unit(v: str | None) -> str | None:
-    """Units are free text but normalized lowercase ("Cup" == "cup") for merge math."""
-    if v is None:
-        return None
-    key = v.strip().lower()
-    return key or None
+    """Units are canonicalized ("Cups"/"teaspoons" ⇒ cup/tsp) so merges can't be defeated by
+    spelling — applied at every entry point (manual, Spoonacular, Plate migration, JSON-LD)."""
+    from app.lists.merge import canonical_unit
+
+    return canonical_unit(v)
 
 
 MAX_TAGS = 10
