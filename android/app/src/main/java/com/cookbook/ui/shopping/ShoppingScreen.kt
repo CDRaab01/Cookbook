@@ -8,37 +8,44 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,6 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -220,14 +231,10 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     }
 
     if (showAdd) {
-        AddItemDialog(
+        AddItemSheet(
             suggestions = suggestions,
-            onNameChanged = viewModel::onAddNameChanged,
-            onAdd = { name, qty, unit, category ->
-                viewModel.addItem(name, qty, unit, category)
-                viewModel.clearSuggestions()
-                showAdd = false
-            },
+            onQueryChanged = viewModel::onAddNameChanged,
+            onQuickAdd = { name, unit, category -> viewModel.addItem(name, null, unit, category) },
             onDismiss = {
                 viewModel.clearSuggestions()
                 showAdd = false
@@ -473,10 +480,126 @@ private fun ShoppingItemRow(
     }
 }
 
-/** One-tap staples for the add dialog — the things that go on every list. */
-private val STAPLES = listOf("Milk", "Eggs", "Bread", "Butter", "Bananas", "Coffee", "Paper towels")
+/** Small category glyphs for the quick-add suggestion rows (Family Wall-style aisle hint). */
+private fun categoryEmoji(category: String?): String = when (category) {
+    "produce" -> "🥦" // 🥦
+    "meat" -> "🥩" // 🥩
+    "dairy" -> "🥛" // 🥛
+    "bakery" -> "🍞" // 🍞
+    "frozen" -> "🧊" // 🧊
+    "pantry" -> "🥫" // 🥫
+    else -> "🛒" // 🛒
+}
 
-/** Shared field block for add + edit: name / qty / unit / category chips. */
+/**
+ * Quick-add, Family Wall-style: one search field, live results from your item history as you
+ * type, tap a row to add it instantly and keep going — no quantity/unit/category fields up
+ * front (set those later via tap-to-edit on the row). Stays open across adds so a whole
+ * mental list can be typed out in one sitting.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddItemSheet(
+    suggestions: List<SuggestionOut>,
+    onQueryChanged: (String) -> Unit,
+    onQuickAdd: (name: String, unit: String?, category: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = CookbookTheme.colors
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var query by remember { mutableStateOf("") }
+    val requester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    fun addAndContinue(name: String, unit: String? = null, category: String? = null) {
+        onQuickAdd(name.trim(), unit, category)
+        query = ""
+        onQueryChanged("")
+        requester.requestFocus()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Add items", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text("Done") }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = {
+                        query = it
+                        onQueryChanged(it)
+                    },
+                    modifier = Modifier.weight(1f).focusRequester(requester),
+                    placeholder = { Text("Milk, eggs, paper towels…") },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = { if (query.isNotBlank()) addAndContinue(query) },
+                    ),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledIconButton(
+                    onClick = { if (query.isNotBlank()) addAndContinue(query) },
+                    enabled = query.isNotBlank(),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = colors.heat.base,
+                        contentColor = colors.heat.on,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = "Add")
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            if (suggestions.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                ) {
+                    items(suggestions, key = { it.name }) { hit ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { addAndContinue(hit.name, hit.unit, hit.category) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(categoryEmoji(hit.category), style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                hit.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Caption(categoryLabel(hit.category))
+                        }
+                    }
+                }
+            } else if (query.length >= 2) {
+                Spacer(Modifier.height(12.dp))
+                Caption("No matches in your history — tap + to add it fresh")
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        requester.requestFocus()
+        keyboard?.show()
+    }
+}
+
+/** Shared field block for the edit dialog: name / qty / unit / category chips. */
 @Composable
 private fun ItemFields(
     name: String,
@@ -526,83 +649,6 @@ private fun ItemFields(
             }
         }
     }
-}
-
-@Composable
-private fun AddItemDialog(
-    suggestions: List<SuggestionOut>,
-    onNameChanged: (String) -> Unit,
-    onAdd: (name: String, quantity: Double?, unit: String?, category: String?) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var name by remember { mutableStateOf("") }
-    var quantity by remember { mutableStateOf("") }
-    var unit by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add item") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(STAPLES, key = { it }) { staple ->
-                        SuggestionChip(
-                            onClick = {
-                                name = staple
-                                onNameChanged(staple)
-                            },
-                            label = { Text(staple) },
-                        )
-                    }
-                }
-                ItemFields(
-                    name = name,
-                    onName = {
-                        name = it
-                        onNameChanged(it)
-                    },
-                    quantity = quantity,
-                    onQuantity = { quantity = it },
-                    unit = unit,
-                    onUnit = { unit = it },
-                    category = category,
-                    onCategory = { category = it },
-                )
-                if (suggestions.isNotEmpty()) {
-                    Caption("From your history")
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(suggestions, key = { it.name }) { hit ->
-                            SuggestionChip(
-                                onClick = {
-                                    name = hit.name
-                                    unit = hit.unit.orEmpty()
-                                    category = hit.category
-                                },
-                                label = { Text(hit.name) },
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onAdd(
-                        name.trim(),
-                        quantity.toDoubleOrNull(),
-                        unit.trim().lowercase().ifEmpty { null },
-                        category,
-                    )
-                },
-                enabled = name.isNotBlank(),
-            ) { Text("Add") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
 }
 
 @Composable

@@ -9,6 +9,7 @@ import com.cookbook.util.RecipeDraftStore
 import com.cookbook.util.SharedIntentStore
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -70,28 +71,46 @@ class DiscoverViewModel @Inject constructor(
         }
     }
 
+    private var searchJob: Job? = null
+
+    /** Live search: debounced so every keystroke doesn't fire a request, but no button-press
+     * is required — matches Discover to how the rest of the app searches. */
     fun setQuery(value: String) {
         _query.value = value
+        searchJob?.cancel()
+        val q = value.trim()
+        if (q.isEmpty()) {
+            _results.value = UiState.Idle
+            return
+        }
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(400)
+            runSearch(q)
+        }
     }
 
+    /** Explicit trigger (search-icon tap, IME action) — skips the debounce. */
     fun search() {
+        searchJob?.cancel()
         val q = _query.value.trim()
         if (q.isEmpty()) return
-        viewModelScope.launch {
-            _results.value = UiState.Loading
-            _results.value = try {
-                UiState.Success(recipeRepository.discoverRecipes(q))
-            } catch (e: HttpException) {
-                if (e.code() == 503) {
-                    UiState.Error(
-                        "Discovery isn't set up yet — add a Spoonacular key to the server.",
-                    )
-                } else {
-                    UiState.Error(e.message ?: "Search failed")
-                }
-            } catch (e: Exception) {
+        viewModelScope.launch { runSearch(q) }
+    }
+
+    private suspend fun runSearch(q: String) {
+        _results.value = UiState.Loading
+        _results.value = try {
+            UiState.Success(recipeRepository.discoverRecipes(q))
+        } catch (e: HttpException) {
+            if (e.code() == 503) {
+                UiState.Error(
+                    "Discovery isn't set up yet — add a Spoonacular key to the server.",
+                )
+            } else {
                 UiState.Error(e.message ?: "Search failed")
             }
+        } catch (e: Exception) {
+            UiState.Error(e.message ?: "Search failed")
         }
     }
 

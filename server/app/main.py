@@ -10,7 +10,7 @@ from app.limiter import limiter
 from app.routers import auth, lists, migrate, plan, recipes, users
 
 # Single source for the human-facing version, reused by GET /version below.
-APP_VERSION = "0.3.1"
+APP_VERSION = "0.3.2"
 
 # Interactive docs are handy locally but are an unnecessary surface on a public deployment.
 app = FastAPI(
