@@ -3,10 +3,12 @@ name: CI
 on:
   push:
     branches: ["main", "claude/**"]
-    tags: ["v*"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+
+# Signed release publishing moved to release.yml (auto on main pushes that touch android/**).
+# This workflow is server checks + Android tests + debug build for push/PR only.
 
 # The Android jobs check the repo out into Cookbook/ and the sibling Pulse repo into Pulse/, so
 # the composite build's includeBuild("../../Pulse") (relative to Cookbook/android) resolves inside
@@ -161,86 +163,3 @@ jobs:
           name: cookbook-debug-${{ github.sha }}
           path: Cookbook/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
-
-  # On a v* tag, build a signed release APK and publish it to a GitHub Release. Signs with the CI
-  # release key when the KEYSTORE_* secrets are set; otherwise falls back to the committed stable
-  # key (build.gradle), so a tag always produces an installable, identity-stable APK. This is also
-  # the artifact convention the future app-manager relies on (CLAUDE.md §2).
-  android-release-build:
-    name: "Android — Assemble Release APK"
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    needs: android-test
-    defaults:
-      run:
-        working-directory: Cookbook/android
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: Cookbook
-      - uses: actions/checkout@v4
-        with:
-          repository: CDRaab01/Pulse
-          path: Pulse
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-      - run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "server.url=${{ vars.COOKBOOK_SERVER_URL || 'https://cookbook.dragonflymedia.org/' }}" >> local.properties
-      - name: Build release APK
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          VERSION_CODE: ${{ github.run_number }}
-          VERSION_NAME: ${{ github.ref_name }}
-        run: |
-          # Use the CI release key only when the secret is present; otherwise build.gradle falls
-          # back to the committed stable key (KEYSTORE_PATH unset).
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > app/keystore.jks
-            export KEYSTORE_PATH=keystore.jks
-            echo "Signing with the CI release key."
-          else
-            echo "No KEYSTORE_BASE64 secret; signing with the committed stable key."
-          fi
-          ./gradlew :app:assembleRelease --no-daemon
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cookbook-release-${{ github.sha }}
-          path: Cookbook/android/app/build/outputs/apk/release/app-release.apk
-          retention-days: 30
-
-  publish:
-    name: "Publish — GitHub Release"
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    needs: [android-release-build]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: cookbook-release-${{ github.sha }}
-          path: dist
-      - name: Rename APK with version tag
-        run: mv dist/app-release.apk dist/cookbook-${{ github.ref_name }}.apk
-      # Dragonfly (the suite hub) reads this asset to learn the release's versionCode — the
-      # GitHub API only exposes the tag. Values match the VERSION_CODE/VERSION_NAME the
-      # android-release-build job baked into the APK (same workflow run, same run_number).
-      - name: Generate version.json for Dragonfly
-        run: |
-          SHA256=$(sha256sum dist/cookbook-${{ github.ref_name }}.apk | cut -d' ' -f1)
-          printf '{"versionCode": %d, "versionName": "%s", "sha256": "%s", "minSdk": 26}\n' \
-            "${{ github.run_number }}" "${{ github.ref_name }}" "$SHA256" > dist/version.json
-          cat dist/version.json
-      - uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            dist/cookbook-${{ github.ref_name }}.apk
-            dist/version.json

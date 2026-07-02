@@ -1,0 +1,114 @@
+name: Release
+
+# Automatic release. Any push to main that changes the Android app cuts a signed release APK,
+# generates version.json, and publishes a GitHub Release — so shipping to devices is just pushing
+# to main. Dragonfly (the suite hub) polls releases/latest and diffs versionCode.
+#
+# versionCode = epoch minutes: monotonic across workflow changes and always far above any prior
+# run-number-based code, so a fresh release never looks like a downgrade to Android or the hub.
+# versionName = the app's major.minor from build.gradle + the commit count (readable, monotonic,
+# and won't collide with the old vX.Y.Z tags). The jobs check the repo out into Cookbook/ and the
+# sibling Pulse repo into Pulse/ so the composite build's includeBuild("../../Pulse") resolves.
+# Signs with the CI release key when the KEYSTORE_* secrets are set; else the committed stable key.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: "Android — Unit Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Cookbook/android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Cookbook
+      - uses: actions/checkout@v4
+        with:
+          repository: CDRaab01/Pulse
+          path: Pulse
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "server.url=${{ vars.COOKBOOK_SERVER_URL || 'https://cookbook.dragonflymedia.org/' }}" >> local.properties
+      - run: ./gradlew :app:testDebugUnitTest --no-daemon -PexcludeScreenshots
+
+  release:
+    name: "Android — Release"
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: Cookbook/android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Cookbook
+          fetch-depth: 0 # full history so `git rev-list --count` gives the commit count
+      - uses: actions/checkout@v4
+        with:
+          repository: CDRaab01/Pulse
+          path: Pulse
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "server.url=${{ vars.COOKBOOK_SERVER_URL || 'https://cookbook.dragonflymedia.org/' }}" >> local.properties
+      - name: Derive version
+        id: version
+        run: |
+          BASE=$(sed -n 's/.*VERSION_NAME") ?: "\([0-9]*\.[0-9]*\).*/\1/p' app/build.gradle.kts)
+          if [ -z "$BASE" ]; then echo "::error::could not read major.minor from build.gradle.kts"; exit 1; fi
+          COMMITS=$(git rev-list --count HEAD)
+          CODE=$(( $(date +%s) / 60 ))
+          echo "name=$BASE.$COMMITS" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Releasing $BASE.$COMMITS (versionCode $CODE)"
+      - name: Build signed release APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > app/keystore.jks
+            export KEYSTORE_PATH=keystore.jks
+            echo "Signing with the CI release key."
+          else
+            echo "No KEYSTORE_BASE64 secret; signing with the committed stable key."
+          fi
+          ./gradlew :app:assembleRelease --no-daemon
+      - name: Stage APK + version.json for Dragonfly
+        run: |
+          APK=cookbook-v${{ steps.version.outputs.name }}.apk
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
+          printf '{"versionCode": %d, "versionName": "%s", "sha256": "%s", "minSdk": 26}\n' \
+            "${{ steps.version.outputs.code }}" "${{ steps.version.outputs.name }}" "$SHA256" > version.json
+          cat version.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          generate_release_notes: true
+          files: |
+            Cookbook/android/cookbook-v${{ steps.version.outputs.name }}.apk
+            Cookbook/android/version.json
