@@ -3,6 +3,8 @@ package com.cookbook.ui.recipe
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.LogToPlateRequest
+import com.cookbook.data.remote.RecipeNutritionOut
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.repository.RecipeAlreadyOnListException
 import com.cookbook.data.repository.RecipeRepository
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.time.LocalDate
 import javax.inject.Inject
 
 @HiltViewModel
@@ -60,6 +64,61 @@ class RecipeDetailViewModel @Inject constructor(
 
     fun clearError() {
         _error.value = null
+    }
+
+    // --- Nutrition via Plate (Phase 7) ---
+
+    private val _nutrition = MutableStateFlow<UiState<RecipeNutritionOut>>(UiState.Idle)
+    val nutrition: StateFlow<UiState<RecipeNutritionOut>> = _nutrition
+
+    fun estimateNutrition() {
+        viewModelScope.launch {
+            _nutrition.value = UiState.Loading
+            _nutrition.value = try {
+                UiState.Success(recipeRepository.getRecipeNutrition(recipeId))
+            } catch (e: HttpException) {
+                if (e.code() == 503) {
+                    UiState.Error("Plate integration isn't configured on the server")
+                } else {
+                    UiState.Error("Estimate failed (${e.code()})")
+                }
+            } catch (e: Exception) {
+                UiState.Error(e.message ?: "Estimate failed")
+            }
+        }
+    }
+
+    /** One-shot status line for the log-to-Plate flow. */
+    private val _plateLogStatus = MutableStateFlow<String?>(null)
+    val plateLogStatus: StateFlow<String?> = _plateLogStatus
+
+    fun logToPlate(date: LocalDate, meal: String, servingsEaten: Double) {
+        viewModelScope.launch {
+            _plateLogStatus.value = try {
+                val result = recipeRepository.logRecipeToPlate(
+                    recipeId,
+                    LogToPlateRequest(date.toString(), meal, servingsEaten),
+                )
+                when {
+                    result.logged == 0 -> "Nothing loggable — Plate matched no ingredients"
+                    result.skipped > 0 ->
+                        "Logged ${result.logged} ingredients to Plate (${result.skipped} unmatched)"
+                    else -> "Logged ${result.logged} ingredients to Plate"
+                }
+            } catch (e: HttpException) {
+                if (e.code() == 503) {
+                    "Plate integration isn't configured on the server"
+                } else {
+                    "Logging failed (${e.code()})"
+                }
+            } catch (e: Exception) {
+                e.message ?: "Logging failed"
+            }
+        }
+    }
+
+    fun clearPlateLogStatus() {
+        _plateLogStatus.value = null
     }
 
     /** One-shot: ingredients landed on the list ("Added to your shopping list" snackbar). */

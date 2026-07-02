@@ -5,8 +5,11 @@ import com.cookbook.data.local.db.RecipeDetailCacheEntity
 import com.cookbook.data.local.db.RecipeSummaryCacheEntity
 import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.DiscoveredRecipe
+import com.cookbook.data.remote.LogToPlateRequest
+import com.cookbook.data.remote.LogToPlateResult
 import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeImportRequest
+import com.cookbook.data.remote.RecipeNutritionOut
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.remote.RecipeUpdateRequest
@@ -72,6 +75,12 @@ class RecipeRepositoryImpl @Inject constructor(
 
     override suspend fun discoverRecipes(query: String): List<DiscoveredRecipe> =
         api.discoverRecipes(query)
+
+    override suspend fun getRecipeNutrition(id: String): RecipeNutritionOut =
+        api.getRecipeNutrition(id)
+
+    override suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult =
+        api.logRecipeToPlate(id, req)
 
     override suspend fun importRecipe(sourceId: String): RecipeOut {
         val imported = api.importRecipe(RecipeImportRequest(sourceId))

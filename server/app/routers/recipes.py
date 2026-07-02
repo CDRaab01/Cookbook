@@ -15,6 +15,13 @@ from app.schemas.recipe import (
     RecipeUpdate,
 )
 from app.security import CurrentUser
+from app.services.plate_nutrition_service import (
+    LogToPlateRequest,
+    LogToPlateResult,
+    RecipeNutritionOut,
+    get_recipe_nutrition,
+    log_recipe_to_plate,
+)
 from app.services.recipe_discovery_service import discover_recipes, import_recipe
 from app.services.recipe_service import (
     create_recipe,
@@ -91,3 +98,26 @@ async def update(
 @router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     await delete_recipe(db, current_user.id, recipe_id)
+
+
+@router.get("/{recipe_id}/nutrition", response_model=RecipeNutritionOut)
+@limiter.limit("30/minute")
+async def nutrition(
+    request: Request, recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    """Best-effort macro estimate via Plate (per-ingredient + totals + per-serving).
+    503 until PLATE_BASE_URL + CROSS_APP_SECRET are configured."""
+    return await get_recipe_nutrition(db, current_user, recipe_id)
+
+
+@router.post("/{recipe_id}/log-to-plate", response_model=LogToPlateResult)
+@limiter.limit("30/minute")
+async def log_to_plate(
+    request: Request,
+    recipe_id: uuid.UUID,
+    req: LogToPlateRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+):
+    """Send the eaten share of this recipe to Plate's diary (date + meal + servings eaten)."""
+    return await log_recipe_to_plate(db, current_user, recipe_id, req)

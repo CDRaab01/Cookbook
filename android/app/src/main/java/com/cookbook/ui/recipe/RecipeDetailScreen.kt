@@ -72,15 +72,24 @@ fun RecipeDetailScreen(
     val state by viewModel.recipe.collectAsState()
     val error by viewModel.error.collectAsState()
     val addConflict by viewModel.addConflict.collectAsState()
+    val nutrition by viewModel.nutrition.collectAsState()
+    val plateLogStatus by viewModel.plateLogStatus.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var confirmDelete by remember { mutableStateOf(false) }
     var pickScale by remember { mutableStateOf(false) }
     var lastScale by remember { mutableStateOf(1.0) }
+    var showLogDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(Unit) { viewModel.deleted.collect { onBack() } }
     LaunchedEffect(Unit) {
         viewModel.addedToList.collect { snackbar.showSnackbar("Added to your shopping list") }
+    }
+    LaunchedEffect(plateLogStatus) {
+        plateLogStatus?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearPlateLogStatus()
+        }
     }
     LaunchedEffect(error) {
         error?.let {
@@ -134,9 +143,24 @@ fun RecipeDetailScreen(
             is UiState.Success -> RecipeDetailBody(
                 recipe = s.data,
                 onAddToList = { pickScale = true },
+                nutrition = nutrition,
+                onEstimateNutrition = viewModel::estimateNutrition,
+                onLogToPlate = { showLogDialog = true },
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+
+    if (showLogDialog) {
+        val servings = (state as? UiState.Success)?.data?.servings ?: 1
+        LogToPlateDialog(
+            recipeServings = servings,
+            onLog = { meal, servingsEaten ->
+                showLogDialog = false
+                viewModel.logToPlate(java.time.LocalDate.now(), meal, servingsEaten)
+            },
+            onDismiss = { showLogDialog = false },
+        )
     }
 
     if (pickScale) {
@@ -188,6 +212,9 @@ fun RecipeDetailScreen(
 private fun RecipeDetailBody(
     recipe: RecipeOut,
     onAddToList: () -> Unit,
+    nutrition: UiState<com.cookbook.data.remote.RecipeNutritionOut>,
+    onEstimateNutrition: () -> Unit,
+    onLogToPlate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
@@ -243,6 +270,16 @@ private fun RecipeDetailBody(
             }
         }
 
+        item { SectionHeader("Nutrition · via Plate", channel = colors.fresh.base) }
+        item {
+            NutritionCard(
+                nutrition = nutrition,
+                servings = recipe.servings,
+                onEstimate = onEstimateNutrition,
+                onLogToPlate = onLogToPlate,
+            )
+        }
+
         if (recipe.steps.isNotEmpty()) {
             item { SectionHeader("Steps", channel = colors.plum.base) }
             item {
@@ -268,6 +305,159 @@ private fun RecipeDetailBody(
             }
         }
     }
+}
+
+/**
+ * The Plate-powered macro panel: idle → an estimate CTA; loaded → per-serving macros in the
+ * shared channel colors, match coverage, and the log-to-diary action. Estimates only — the
+ * caption says so, and unmatched ingredients are counted, never guessed.
+ */
+@Composable
+private fun NutritionCard(
+    nutrition: UiState<com.cookbook.data.remote.RecipeNutritionOut>,
+    servings: Int,
+    onEstimate: () -> Unit,
+    onLogToPlate: () -> Unit,
+) {
+    val colors = CookbookTheme.colors
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
+        when (nutrition) {
+            UiState.Idle -> {
+                Column {
+                    Text(
+                        "Estimate calories and macros by matching ingredients against Plate's food database.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PulseButton(
+                        text = "Estimate nutrition",
+                        onClick = onEstimate,
+                        tonal = true,
+                        compact = true,
+                        channel = colors.fresh.base,
+                        onChannel = colors.fresh.on,
+                        dimChannel = colors.fresh.dim,
+                    )
+                }
+            }
+            is UiState.Loading -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        color = colors.fresh.base,
+                        modifier = Modifier.width(24.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text("Asking Plate…", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            is UiState.Error -> {
+                Column {
+                    Text(
+                        nutrition.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PulseButton(
+                        text = "Retry",
+                        onClick = onEstimate,
+                        tonal = true,
+                        compact = true,
+                    )
+                }
+            }
+            is UiState.Success -> {
+                val n = nutrition.data
+                Column {
+                    Caption("Per serving · estimate")
+                    Spacer(Modifier.height(8.dp))
+                    Row {
+                        MacroStat("${n.perServing.kcal.toInt()}", "kcal", colors.heat.base)
+                        Spacer(Modifier.width(20.dp))
+                        MacroStat("${n.perServing.proteinG.toInt()}", "protein g", colors.fresh.base)
+                        Spacer(Modifier.width(20.dp))
+                        MacroStat("${n.perServing.carbsG.toInt()}", "carbs g", colors.info.base)
+                        Spacer(Modifier.width(20.dp))
+                        MacroStat("${n.perServing.fatG.toInt()}", "fat g", colors.plum.base)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "${n.matchedCount} of ${n.totalCount} ingredients matched · " +
+                            "${n.totals.kcal.toInt()} kcal for all $servings servings",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PulseButton(
+                        text = "Log to Plate diary",
+                        onClick = onLogToPlate,
+                        tonal = true,
+                        compact = true,
+                        channel = colors.fresh.base,
+                        onChannel = colors.fresh.on,
+                        dimChannel = colors.fresh.dim,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MacroStat(value: String, label: String, color: androidx.compose.ui.graphics.Color) {
+    Column {
+        DataText(value, style = CookbookTheme.dataType.dataSmall, color = color)
+        Caption(label)
+    }
+}
+
+/** Meal + servings-eaten picker for "Log to Plate diary". Logs to today. */
+@Composable
+private fun LogToPlateDialog(
+    recipeServings: Int,
+    onLog: (meal: String, servingsEaten: Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var meal by remember { mutableStateOf("dinner") }
+    var servingsText by remember { mutableStateOf("1") }
+    val servingsEaten = servingsText.toDoubleOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Log to Plate diary") },
+        text = {
+            Column {
+                Caption("Meal")
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                    listOf("breakfast", "lunch", "dinner", "snack").forEach { option ->
+                        androidx.compose.material3.FilterChip(
+                            selected = meal == option,
+                            onClick = { meal = option },
+                            label = { Text(option.replaceFirstChar { it.uppercase() }) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = servingsText,
+                    onValueChange = { servingsText = it },
+                    label = { Text("Servings eaten (of $recipeServings)") },
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onLog(meal, servingsEaten ?: 1.0) },
+                enabled = servingsEaten != null && servingsEaten > 0,
+            ) { Text("Log it") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 /** Servings multiplier for "Add to shopping list" — ½× to 3× as quick chips. */

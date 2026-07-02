@@ -43,6 +43,16 @@ interface ApiService {
     @DELETE("recipes/{id}")
     suspend fun deleteRecipe(@Path("id") id: String)
 
+    // --- Plate integration (nutrition estimate + log-to-diary) ---
+    @GET("recipes/{id}/nutrition")
+    suspend fun getRecipeNutrition(@Path("id") id: String): RecipeNutritionOut
+
+    @POST("recipes/{id}/log-to-plate")
+    suspend fun logRecipeToPlate(
+        @Path("id") id: String,
+        @Body req: LogToPlateRequest,
+    ): LogToPlateResult
+
     // --- Recipe discovery (Spoonacular via the server) ---
     @GET("recipes/discover")
     suspend fun discoverRecipes(@Query("q") query: String): List<DiscoveredRecipe>

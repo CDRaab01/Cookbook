@@ -85,6 +85,46 @@ data class RecipeImportRequest(
 )
 
 @Serializable
+data class IngredientNutritionOut(
+    val name: String,
+    val matched: Boolean,
+    val kcal: Double? = null,
+    @SerialName("protein_g") val proteinG: Double? = null,
+    @SerialName("carbs_g") val carbsG: Double? = null,
+    @SerialName("fat_g") val fatG: Double? = null,
+)
+
+@Serializable
+data class MacroTotals(
+    val kcal: Double,
+    @SerialName("protein_g") val proteinG: Double,
+    @SerialName("carbs_g") val carbsG: Double,
+    @SerialName("fat_g") val fatG: Double,
+)
+
+@Serializable
+data class RecipeNutritionOut(
+    val items: List<IngredientNutritionOut>,
+    val totals: MacroTotals,
+    @SerialName("per_serving") val perServing: MacroTotals,
+    @SerialName("matched_count") val matchedCount: Int,
+    @SerialName("total_count") val totalCount: Int,
+)
+
+@Serializable
+data class LogToPlateRequest(
+    val date: String,
+    val meal: String,
+    @SerialName("servings_eaten") val servingsEaten: Double = 1.0,
+)
+
+@Serializable
+data class LogToPlateResult(
+    val logged: Int,
+    val skipped: Int,
+)
+
+@Serializable
 data class RecipeSummaryOut(
     val id: String,
     val name: String,
