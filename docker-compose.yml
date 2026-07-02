@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    # Credentials default to cookbook/cookbook for local use; override via the root
+    # .env to rotate. Must stay in sync with DATABASE_URL below (same variables).
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cookbook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cookbook}
+      POSTGRES_DB: ${POSTGRES_DB:-cookbook}
+    # Host port 5434: Spotter owns 5432 and Plate owns 5433 on this host.
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cookbook} -d ${POSTGRES_DB:-cookbook}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    env_file:
+      - ./server/.env
+    environment:
+      # Reach Postgres over the compose network; overrides DATABASE_URL from .env.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cookbook}:${POSTGRES_PASSWORD:-cookbook}@db:5432/${POSTGRES_DB:-cookbook}
+      # Deploy stamp surfaced by GET /version. deploy/redeploy.* exports these before
+      # `compose up`; default to "unknown" for a plain manual `docker compose up`.
+      GIT_SHA: ${GIT_SHA:-unknown}
+      BUILT_AT: ${BUILT_AT:-unknown}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Published on localhost only — cloudflared reaches it over the compose network.
+    # Host port is 8002: Spotter owns 127.0.0.1:8000 and Plate owns 8001. The container
+    # still listens on 8000 internally, so the cloudflared tunnel (server:8000) and
+    # DATABASE_URL (db:5432) are unaffected — only host-side access is remapped.
+    ports:
+      - "127.0.0.1:8002:8000"
+
+  # Public entrypoint. Only started with: docker compose --profile tunnel up -d
+  # Uses a remotely-managed tunnel token (Cloudflare dashboard -> Tunnels -> your tunnel).
+  # In the dashboard, point the public hostname at http://server:8000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run --token ${TUNNEL_TOKEN:-}
+    depends_on:
+      - server
+    profiles:
+      - tunnel
+    # Without this, a tunnel that never connects (bad/missing TUNNEL_TOKEN, Cloudflare
+    # outage) still counts as "up" and a deploy looks green while the public hostname
+    # 530s. `tunnel ready` exits non-zero until the tunnel has live edge connections.
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "localhost:2000", "ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  pgdata:

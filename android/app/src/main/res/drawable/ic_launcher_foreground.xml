@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stylised plate silhouette (circle) centred in the adaptive-icon safe zone (white). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- outer rim -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,26 A28,28 0 0 1 82,54 A28,28 0 0 1 54,82 A28,28 0 0 1 26,54 A28,28 0 0 1 54,26 Z" />
+    <!-- inner well (cut-out via same colour as background — kept opaque for monochrome compat) -->
+    <path
+        android:fillColor="#FF4D7CFF"
+        android:pathData="M54,36 A18,18 0 0 1 72,54 A18,18 0 0 1 54,72 A18,18 0 0 1 36,54 A18,18 0 0 1 54,36 Z" />
+</vector>
