@@ -229,7 +229,18 @@ jobs:
           path: dist
       - name: Rename APK with version tag
         run: mv dist/app-release.apk dist/cookbook-${{ github.ref_name }}.apk
+      # Dragonfly (the suite hub) reads this asset to learn the release's versionCode — the
+      # GitHub API only exposes the tag. Values match the VERSION_CODE/VERSION_NAME the
+      # android-release-build job baked into the APK (same workflow run, same run_number).
+      - name: Generate version.json for Dragonfly
+        run: |
+          SHA256=$(sha256sum dist/cookbook-${{ github.ref_name }}.apk | cut -d' ' -f1)
+          printf '{"versionCode": %d, "versionName": "%s", "sha256": "%s", "minSdk": 26}\n' \
+            "${{ github.run_number }}" "${{ github.ref_name }}" "$SHA256" > dist/version.json
+          cat dist/version.json
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: dist/cookbook-${{ github.ref_name }}.apk
+          files: |
+            dist/cookbook-${{ github.ref_name }}.apk
+            dist/version.json
