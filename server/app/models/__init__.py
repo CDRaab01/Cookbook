@@ -1,5 +1,6 @@
 from app.models.cook_event import CookEvent
 from app.models.item_history import ItemHistory
+from app.models.meal_plan import MealPlanEntry
 from app.models.recipe import Recipe, RecipeIngredient, RecipeStep
 from app.models.shopping_list import ShoppingList, ShoppingListItem
 from app.models.user import User
@@ -7,6 +8,7 @@ from app.models.user import User
 __all__ = [
     "CookEvent",
     "ItemHistory",
+    "MealPlanEntry",
     "Recipe",
     "RecipeIngredient",
     "RecipeStep",

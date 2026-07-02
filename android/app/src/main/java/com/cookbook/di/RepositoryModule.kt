@@ -2,6 +2,8 @@ package com.cookbook.di
 
 import com.cookbook.data.repository.AuthRepository
 import com.cookbook.data.repository.AuthRepositoryImpl
+import com.cookbook.data.repository.PlanRepository
+import com.cookbook.data.repository.PlanRepositoryImpl
 import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.data.repository.RecipeRepositoryImpl
 import com.cookbook.data.repository.ShoppingRepository
@@ -27,4 +29,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindShoppingRepository(impl: ShoppingRepositoryImpl): ShoppingRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPlanRepository(impl: PlanRepositoryImpl): PlanRepository
 }

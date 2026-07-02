@@ -43,6 +43,19 @@ interface ApiService {
     @DELETE("recipes/{id}")
     suspend fun deleteRecipe(@Path("id") id: String)
 
+    // --- Weekly meal planner ---
+    @GET("plan")
+    suspend fun getPlan(@Query("start") start: String, @Query("end") end: String): List<PlanEntryOut>
+
+    @POST("plan")
+    suspend fun createPlanEntry(@Body req: PlanEntryCreateRequest): PlanEntryOut
+
+    @DELETE("plan/{id}")
+    suspend fun deletePlanEntry(@Path("id") id: String)
+
+    @POST("plan/to-list")
+    suspend fun planToList(@Body req: PlanToListRequest): PlanToListResult
+
     // --- Made-it tracking ---
     @POST("recipes/{id}/cooked")
     suspend fun markCooked(@Path("id") id: String): CookedOut

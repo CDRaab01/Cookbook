@@ -9,6 +9,7 @@ sealed class Screen(val route: String) {
     data object Recipes : Screen("recipes")
     data object Shopping : Screen("shopping")
     data object Discover : Screen("discover")
+    data object Plan : Screen("plan")
     data object Settings : Screen("settings")
     data object RecipeDetail : Screen("recipe_detail") {
         const val ARG = "recipeId"

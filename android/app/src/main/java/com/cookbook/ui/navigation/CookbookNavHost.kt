@@ -23,6 +23,7 @@ import com.cookbook.ui.auth.LoginScreen
 import com.cookbook.ui.auth.RegisterScreen
 import com.cookbook.ui.cook.CookModeScreen
 import com.cookbook.ui.discover.DiscoverScreen
+import com.cookbook.ui.plan.PlanScreen
 import com.cookbook.ui.recipe.RecipeDetailScreen
 import com.cookbook.ui.recipe.RecipeEditScreen
 import com.cookbook.ui.recipe.RecipeListScreen
@@ -200,6 +201,11 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                     onImported = { id ->
                         navController.navigate(Screen.RecipeDetail.withId(id))
                     },
+                )
+            }
+            composable(Screen.Plan.route) {
+                PlanScreen(
+                    onOpenRecipe = { id -> navController.navigate(Screen.RecipeDetail.withId(id)) },
                 )
             }
         }

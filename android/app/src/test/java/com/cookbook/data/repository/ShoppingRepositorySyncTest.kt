@@ -13,6 +13,10 @@ import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.LogToPlateRequest
 import com.cookbook.data.remote.LogToPlateResult
 import com.cookbook.data.remote.LoginRequest
+import com.cookbook.data.remote.PlanEntryCreateRequest
+import com.cookbook.data.remote.PlanEntryOut
+import com.cookbook.data.remote.PlanToListRequest
+import com.cookbook.data.remote.PlanToListResult
 import com.cookbook.data.remote.PlateMigrationResult
 import com.cookbook.data.remote.RecipeCreateRequest
 import com.cookbook.data.remote.RecipeImportRequest
@@ -168,6 +172,10 @@ private class FakeApi : ApiService {
     override suspend fun updateRecipe(id: String, req: RecipeUpdateRequest): RecipeOut =
         error("unused")
     override suspend fun deleteRecipe(id: String) = error("unused")
+    override suspend fun getPlan(start: String, end: String): List<PlanEntryOut> = error("unused")
+    override suspend fun createPlanEntry(req: PlanEntryCreateRequest): PlanEntryOut = error("unused")
+    override suspend fun deletePlanEntry(id: String) = error("unused")
+    override suspend fun planToList(req: PlanToListRequest): PlanToListResult = error("unused")
     override suspend fun addRecipeToList(
         listId: String,
         req: AddRecipeToListRequest,
