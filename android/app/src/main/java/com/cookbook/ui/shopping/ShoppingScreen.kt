@@ -280,6 +280,9 @@ private fun ShoppingItemRow(
     }
 }
 
+/** One-tap staples for the add dialog — the things that go on every list. */
+private val STAPLES = listOf("Milk", "Eggs", "Bread", "Butter", "Bananas", "Coffee", "Paper towels")
+
 @Composable
 private fun AddItemSheet(
     onAdd: (name: String, quantity: Double?, unit: String?) -> Unit,
@@ -294,6 +297,16 @@ private fun AddItemSheet(
         title = { Text("Add item") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(STAPLES, key = { it }) { staple ->
+                        androidx.compose.material3.SuggestionChip(
+                            onClick = { name = staple },
+                            label = { Text(staple) },
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

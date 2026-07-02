@@ -261,3 +261,36 @@ starts and keep both sides' cross-app surfaces isolated from session auth.
   validate via CI / smoke script, don't chase it as a Cookbook bug.
 - If this file conflicts with how Plate/Spotter actually do something,
   **the existing apps win** — flag the conflict.
+
+---
+
+## Build log (2026-07-01) — v1 complete, all phases delivered
+
+Everything above was built in one pass and verified locally. Final state:
+
+- **Verification:** server **93 pytest green + ruff clean** (4.6 s — see gotcha below);
+  Android `:app:assembleDebug` + `:app:assembleRelease` + `:app:testDebugUnitTest` green
+  (17 unit tests incl. 7 offline-sync repository tests against in-memory fakes); Alembic
+  0001 applies to a fresh DB; the full Docker stack boots (migrations on entry) and passed
+  an end-to-end smoke (register → recipe → add-to-list ×2 scale → check off → clear).
+  Plate-side changes verified with Plate's full suite (292 green on a throwaway Postgres).
+- **Pulse extracted:** `C:\Code\Pulse` → `design.pulse:pulse-ui`, consumed via composite
+  build. Cookbook is amber-led (heat/fresh/info/plum in `ui/theme/CookbookTheme.kt`).
+  Spotter/Plate still carry in-tree copies — migrating them is a separate task per app.
+- **Plate integration is live in code, dormant in config:** Plate gained
+  `GET /recipes/export` + `POST /cross-app/resolve-foods` + `POST /cross-app/log-recipe`
+  (committed on Plate main, NOT yet pushed/deployed). Both sides 401/503 until
+  `CROSS_APP_SECRET`/`PLATE_BASE_URL` are set — one ecosystem-wide secret shared by all
+  three apps.
+- **Host ports:** API on **127.0.0.1:8003** (8002 was taken by posterizarr), Postgres
+  on 5434. The compose stack is up and version-stamped.
+- **Local-test gotchas fixed at the root** (do not regress): the engine uses **NullPool**
+  under tests (`DB_NULLPOOL`, set in conftest) so pooled asyncpg connections never bind a
+  dead event loop — this was Plate's local-pytest failure; and `DATABASE_URL` must use
+  **127.0.0.1, never localhost** (::1-first resolution + IPv4-only port publish stalls
+  every fresh connection; the suite went 6+ min → 4.6 s).
+- **Deferred:** on-device airplane-mode pass (needs a phone); weekly "what am I making"
+  quick-picks (staples chips shipped instead); Roborazzi screenshot baselines (job exists
+  in CI, manual-only, no baselines recorded yet); pushing to GitHub + registering the
+  `cookbook` self-hosted runner + Cloudflare hostname (needs credentials only the human
+  has — remotes are already set to CDRaab01/{Cookbook,Pulse}).

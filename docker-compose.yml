@@ -35,11 +35,12 @@ services:
       db:
         condition: service_healthy
     # Published on localhost only — cloudflared reaches it over the compose network.
-    # Host port is 8002: Spotter owns 127.0.0.1:8000 and Plate owns 8001. The container
-    # still listens on 8000 internally, so the cloudflared tunnel (server:8000) and
-    # DATABASE_URL (db:5432) are unaffected — only host-side access is remapped.
+    # Host port is 8003: Spotter owns 127.0.0.1:8000, Plate owns 8001, and the Plex
+    # stack's posterizarr squats on 8002. The container still listens on 8000
+    # internally, so the cloudflared tunnel (server:8000) and DATABASE_URL (db:5432)
+    # are unaffected — only host-side access is remapped.
     ports:
-      - "127.0.0.1:8002:8000"
+      - "127.0.0.1:8003:8000"
 
   # Public entrypoint. Only started with: docker compose --profile tunnel up -d
   # Uses a remotely-managed tunnel token (Cloudflare dashboard -> Tunnels -> your tunnel).

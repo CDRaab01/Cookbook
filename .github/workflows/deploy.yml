@@ -1,0 +1,63 @@
+name: Deploy
+
+# Redeploys the self-hosted Cookbook server (Windows + Docker Desktop) on a
+# self-hosted GitHub Actions runner. The runner long-polls GitHub *outbound*, so
+# there are no inbound ports to open on the home network.
+#
+# Auto-deploy fires only after the CI workflow goes green on `main`
+# (workflow_run), so a broken commit never ships. workflow_dispatch is a manual
+# button that doubles as a rollback lever (pass a previous SHA in `ref`).
+#
+# Setup notes live in deploy/README.md.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA or branch to deploy (default: origin/main). Use a prior SHA to roll back."
+        required: false
+        default: "origin/main"
+
+# Never let two deploys run at once; queue the second instead of colliding.
+concurrency:
+  group: cookbook-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Redeploy server
+    # The `cookbook` label is assigned when the runner is registered on the host.
+    runs-on: [self-hosted, cookbook]
+    # Manual runs always proceed; automatic runs require a successful CI run on main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    steps:
+      # No actions/checkout: we deploy the canonical clone on the host
+      # (vars.COOKBOOK_DIR), not the runner's ephemeral _work directory. That clone
+      # owns the .env file and the pgdata Docker volume.
+      #
+      # shell: powershell is the built-in Windows PowerShell (5.1) — no PowerShell 7
+      # (pwsh) install required on the host. GitHub context is passed via env (not
+      # ${{ }} interpolated into code) so values can't break out of the script.
+      - name: Redeploy
+        shell: powershell
+        env:
+          COOKBOOK_DIR: ${{ vars.COOKBOOK_DIR }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_REF: ${{ inputs.ref }}
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:COOKBOOK_DIR)) {
+            throw "COOKBOOK_DIR Actions variable is not set. See deploy/README.md."
+          }
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') { $ref = $env:INPUT_REF }
+          else { $ref = $env:WORKFLOW_SHA }
+          if ([string]::IsNullOrWhiteSpace($ref)) { $ref = 'origin/main' }
+          Write-Host "Deploying ref: $ref"
+          & "$env:COOKBOOK_DIR\deploy\redeploy.ps1" -Ref $ref
