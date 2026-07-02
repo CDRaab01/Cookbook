@@ -322,3 +322,77 @@ in the deployed `.env`). v0.2 adds, from a user-driven capability audit:
   sort on the list; tag editor chips.
 - **Detail extras**: servings rescaler (display-only ingredient math), Duplicate,
   Share-as-text; honest cross-app 502 message (identity mismatch vs secret mismatch).
+
+---
+
+## v0.2.1 (2026-07-02) — buyable-list bug/reasoning audit
+
+A user-reported broken shopping list (duplicate unit-split lines, water on the list,
+measure-led unreadable rows) triggered a full audit, not just the one fix. Root cause:
+the list modeled cooking data, not a buy list.
+
+- **Merge identity is the normalized name only** (was name+unit — the "2 cup" vs
+  "3 tsp oil" duplicate-line bug); amounts aggregate into a `measures` JSON column
+  (migration 0003) as `Measure(quantity, unit)` — same canonical unit sums, mixed units
+  sit side by side ("2 tbsp + 2 tsp"); legacy `quantity`/`unit` kept in sync for
+  single-measure rows.
+- **Canonical units everywhere** (`lists/merge.py::canonical_unit`), not just the
+  JSON-LD path — mismatched spellings could defeat merging.
+- **Non-purchasables filtered** at add-recipe (water/ice/"`<x>` water"); an all-water
+  recipe 400s with a clear message instead of landing a useless line.
+- Unquantified adds no longer erase a known amount (old rule: unknown + known = unknown).
+- Editor PATCH clearing sentinels (`""`/`0`) fixed on both client and server — emptying
+  a field now actually empties it.
+- Android: name-first row layout (measures as caption), delete-undo snackbar rebuilding
+  the aggregate through the normal merge path.
+- URL-import range parsing ("2-3 lbs") keeps the lower bound instead of leaking into
+  the name.
+
+---
+
+## v0.3.0 (2026-07-02) — "come up with whatever would be useful"
+
+Seven features, each built and verified as its own branch/PR, then merged in the
+sequence they were built (each PR was stacked on the last):
+
+- **Recipe notes** (`claude/recipe-notes`): a `notes` TEXT column (migration 0004),
+  separate from `description` so imports never clobber it; PATCH clearing convention
+  (null = untouched, `""` = clear); "My notes" card on the detail screen.
+- **Made-it tracking** (`claude/made-it`): `cook_events` table (migration 0005), one row
+  per "I made this" tap — history, not state, so undo is just deleting the latest row.
+  `times_cooked`/`last_cooked_at` are grouped aggregates. Detail button ties into the
+  existing log-to-Plate dialog; new "Haven't made lately" sort.
+- **Cook mode** (`claude/cook-mode`, Android-only): full-screen step-at-a-time view,
+  screen-awake, tap-to-jump step dots, duration-detected tap-to-start timers
+  (`StepDurations`, elapsedRealtime-anchored per the Spotter drift-free rule).
+- **Multiple named lists** (`claude/multiple-lists`): `GET/POST /lists`,
+  `GET/PATCH/DELETE /lists/{id}`; the default stays "the oldest list" (a regression test
+  caught a hijack bug where a named list created before the first `/default` touch could
+  become the default). Android's Shopping title is now a list switcher; Room rows carry
+  `listId` (schema v3, destructive rebuild — it's a mirror).
+- **Shopping-list widget** (`claude/widget`, Android-only): Glance home-screen widget
+  reading the Room mirror via a Hilt EntryPoint, tap-to-check-off, redraws on any
+  successful list state.
+- **Weekly meal planner** (`claude/meal-planner`): `meal_plan_entries` table (migration
+  0006) — a recipe or a free-text note on a date+slot. `POST /plan/to-list` is the
+  payoff: every planned recipe in a range runs through the *same* merge module the
+  shopping list uses, so a week of dinners becomes one aggregated add. New "Plan" bottom
+  tab; no offline mirror (light-touch calendar, not in-store-critical).
+- **Photo import** (`claude/photo-import`): ports Plate's LM Studio vision pipeline
+  (`app/services/ai/`) to recipe cards/cookbook pages — base64 data-URL image in a
+  multimodal chat message, strict-JSON prompt, a forgiving parser (fence-stripping,
+  widest-object-span salvage, unit canonicalization), transport failures mapped to
+  clean statuses (503/504/502) while content failures degrade to a low-confidence draft
+  instead of erroring. `POST /recipes/import-photo` never saves — the client opens a
+  fresh recipe editor pre-filled via `RecipeDraftStore` (the `SharedIntentStore`
+  idiom), and the user reviews/edits before the normal create endpoint commits it.
+
+**Verified:** server 200 pytest + ruff/format clean; Android `assembleDebug` +
+`testDebugUnitTest` green — both on the fully merged tree, not just per-branch.
+**Gotcha:** amending a pushed commit's message mid-stack (to fix a stale-scratch-file
+copy/paste mistake) orphaned the branches built on top of it until a
+`git rebase --onto <new> <old> <branch>` re-pointed them — remember amend creates a new
+commit object even with an identical tree, so anything already branched off the old one
+needs re-parenting, not just a force-push of the amended branch itself.
+**Deferred:** multi-account household sharing, custom/reorderable aisles, camera-captured
+recipe photos (vs. web images), pantry-based "what can I make".
