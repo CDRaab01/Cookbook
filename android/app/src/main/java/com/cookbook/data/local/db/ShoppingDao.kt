@@ -9,8 +9,8 @@ import androidx.room.Update
 @Dao
 interface ShoppingDao {
 
-    @Query("SELECT * FROM shopping_items WHERE deleted = 0 ORDER BY `order`")
-    suspend fun visibleItems(): List<ShoppingItemEntity>
+    @Query("SELECT * FROM shopping_items WHERE deleted = 0 AND (:listId IS NULL OR listId = :listId) ORDER BY `order`")
+    suspend fun visibleItems(listId: String? = null): List<ShoppingItemEntity>
 
     @Query("SELECT * FROM shopping_items WHERE localId = :localId")
     suspend fun byLocalId(localId: String): ShoppingItemEntity?
@@ -30,7 +30,10 @@ interface ShoppingDao {
     @Query("DELETE FROM shopping_items WHERE localId = :localId")
     suspend fun delete(localId: String)
 
-    /** Reconciliation step: clear every fully-synced row before re-inserting the server list. */
-    @Query("DELETE FROM shopping_items WHERE dirty = 0 AND deleted = 0 AND serverId IS NOT NULL")
-    suspend fun deleteClean(): Int
+    /** Reconciliation step: clear a list's fully-synced rows before re-inserting the server's. */
+    @Query(
+        "DELETE FROM shopping_items WHERE dirty = 0 AND deleted = 0 AND serverId IS NOT NULL " +
+            "AND (:listId IS NULL OR listId = :listId)",
+    )
+    suspend fun deleteClean(listId: String? = null): Int
 }

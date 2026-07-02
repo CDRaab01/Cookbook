@@ -4,6 +4,9 @@ import com.cookbook.data.local.db.ShoppingDao
 import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.ListCreateRequest
+import com.cookbook.data.remote.ListRenameRequest
+import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.MeasureOut
 import com.cookbook.data.remote.ShoppingItemCreateRequest
 import com.cookbook.data.remote.ShoppingItemOut
@@ -37,13 +40,58 @@ class ShoppingRepositoryImpl @Inject constructor(
     private val json: Json,
 ) : ShoppingRepository {
 
-    override suspend fun getDefaultList(): ShoppingListOut = try {
-        val fresh = api.getDefaultList()
-        appPreferences.setShoppingListId(fresh.id)
-        reconcile(fresh)
-        localView(fresh.id, fresh.name)
+    override suspend fun getDefaultList(): ShoppingListOut {
+        val activeId = appPreferences.shoppingListId.firstOrNull()
+        return try {
+            val fresh = if (activeId == null) {
+                api.getDefaultList()
+            } else {
+                try {
+                    api.getList(activeId)
+                } catch (e: HttpException) {
+                    // The active list was deleted elsewhere: fall back to the default.
+                    if (e.code() == 404) api.getDefaultList() else throw e
+                }
+            }
+            appPreferences.setShoppingListId(fresh.id)
+            reconcile(fresh)
+            localView(fresh.id, fresh.name)
+        } catch (_: IOException) {
+            localView(activeId)
+        }
+    }
+
+    override suspend fun lists(): List<ListSummaryOut> = try {
+        api.getLists()
     } catch (_: IOException) {
-        localView()
+        emptyList()
+    }
+
+    override suspend fun setActiveList(listId: String) {
+        appPreferences.setShoppingListId(listId)
+    }
+
+    override suspend fun createList(name: String): ShoppingListOut {
+        val created = api.createList(ListCreateRequest(name))
+        appPreferences.setShoppingListId(created.id)
+        reconcile(created)
+        return localView(created.id, created.name)
+    }
+
+    override suspend fun renameList(listId: String, name: String): ShoppingListOut {
+        val renamed = api.renameList(listId, ListRenameRequest(name))
+        reconcile(renamed)
+        return localView(renamed.id, renamed.name)
+    }
+
+    override suspend fun deleteList(listId: String) {
+        api.deleteList(listId)
+        dao.deleteClean(listId)
+        if (appPreferences.shoppingListId.firstOrNull() == listId) {
+            val fallback = api.getDefaultList()
+            appPreferences.setShoppingListId(fallback.id)
+            reconcile(fallback)
+        }
     }
 
     override suspend fun addItem(
@@ -56,13 +104,14 @@ class ShoppingRepositoryImpl @Inject constructor(
         val row = ShoppingItemEntity(
             localId = UUID.randomUUID().toString(),
             serverId = null,
+            listId = listId,
             name = name,
             quantity = quantity,
             unit = unit,
             category = category,
             checked = false,
             recipeId = null,
-            order = nextLocalOrder(),
+            order = nextLocalOrder(listId),
         )
         dao.upsert(row)
         return try {
@@ -195,11 +244,12 @@ class ShoppingRepositoryImpl @Inject constructor(
      * having changed server-side in the meantime (404s are treated as done).
      */
     suspend fun syncPending() {
-        val listId = appPreferences.shoppingListId.firstOrNull() ?: return
+        val fallbackListId = appPreferences.shoppingListId.firstOrNull() ?: return
         val pending = dao.pendingRows()
         if (pending.isEmpty()) return
 
         for (row in pending) {
+            val listId = row.listId ?: fallbackListId
             try {
                 when {
                     row.deleted && row.serverId != null -> {
@@ -261,14 +311,14 @@ class ShoppingRepositoryImpl @Inject constructor(
         }
     }
 
-    /** Replace every clean mirror row with the server's list; pending rows keep local truth. */
+    /** Replace the list's clean mirror rows with the server's; pending rows keep local truth. */
     private suspend fun reconcile(fresh: ShoppingListOut) {
-        dao.deleteClean()
+        dao.deleteClean(fresh.id)
         val pendingIds = dao.pendingRows().mapNotNull { it.serverId }.toSet()
         dao.upsertAll(
             fresh.items
                 .filter { it.id !in pendingIds }
-                .map { it.toEntity(json) },
+                .map { it.toEntity(json, fresh.id) },
         )
     }
 
@@ -280,17 +330,18 @@ class ShoppingRepositoryImpl @Inject constructor(
         return ShoppingListOut(
             id = id,
             name = name,
-            items = dao.visibleItems().map { it.toDto(json) },
+            items = dao.visibleItems(id.ifEmpty { null }).map { it.toDto(json) },
         )
     }
 
-    private suspend fun nextLocalOrder(): Int =
-        (dao.visibleItems().maxOfOrNull { it.order } ?: -1) + 1
+    private suspend fun nextLocalOrder(listId: String): Int =
+        (dao.visibleItems(listId).maxOfOrNull { it.order } ?: -1) + 1
 }
 
-private fun ShoppingItemOut.toEntity(json: Json) = ShoppingItemEntity(
+private fun ShoppingItemOut.toEntity(json: Json, listId: String) = ShoppingItemEntity(
     localId = id,
     serverId = id,
+    listId = listId,
     name = name,
     quantity = quantity,
     unit = unit,

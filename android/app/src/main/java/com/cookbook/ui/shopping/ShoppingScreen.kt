@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Refresh
@@ -70,9 +71,13 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val error by viewModel.error.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val undoable by viewModel.undoable.collectAsState()
+    val allLists by viewModel.allLists.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
+    var listMenuOpen by remember { mutableStateOf(false) }
+    var namingList by remember { mutableStateOf<String?>(null) } // "new" or "rename"
+    var confirmDeleteList by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(error) {
@@ -99,7 +104,66 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Shopping", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    // The list switcher: current list name + dropdown of all lists.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { listMenuOpen = true },
+                    ) {
+                        Text(
+                            (state as? UiState.Success)?.data?.name ?: "Shopping",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Icon(
+                            Icons.Outlined.ArrowDropDown,
+                            contentDescription = "Switch list",
+                        )
+                    }
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = listMenuOpen,
+                        onDismissRequest = { listMenuOpen = false },
+                    ) {
+                        allLists.forEach { entry ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (entry.uncheckedCount > 0) {
+                                            "${entry.name}  ·  ${entry.uncheckedCount} to buy"
+                                        } else {
+                                            entry.name
+                                        },
+                                    )
+                                },
+                                onClick = {
+                                    listMenuOpen = false
+                                    viewModel.switchList(entry.id)
+                                },
+                            )
+                        }
+                        androidx.compose.material3.HorizontalDivider()
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("New list…") },
+                            onClick = {
+                                listMenuOpen = false
+                                namingList = "new"
+                            },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Rename this list…") },
+                            onClick = {
+                                listMenuOpen = false
+                                namingList = "rename"
+                            },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Delete this list…", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                listMenuOpen = false
+                                confirmDeleteList = true
+                            },
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = viewModel::load) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
@@ -179,6 +243,56 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
                 editing = null
             },
             onDismiss = { editing = null },
+        )
+    }
+
+    namingList?.let { mode ->
+        var name by remember {
+            mutableStateOf(
+                if (mode == "rename") (state as? UiState.Success)?.data?.name.orEmpty() else "",
+            )
+        }
+        AlertDialog(
+            onDismissRequest = { namingList = null },
+            title = { Text(if (mode == "new") "New list" else "Rename list") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("List name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (mode == "new") viewModel.createList(name) else viewModel.renameCurrentList(name)
+                        namingList = null
+                    },
+                    enabled = name.isNotBlank(),
+                ) { Text(if (mode == "new") "Create" else "Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { namingList = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (confirmDeleteList) {
+        val current = (state as? UiState.Success)?.data
+        AlertDialog(
+            onDismissRequest = { confirmDeleteList = false },
+            title = { Text("Delete \"${current?.name}\"?") },
+            text = { Text("Everything on it goes too. The default list recreates itself if this was the last one.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDeleteList = false
+                    viewModel.deleteCurrentList()
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteList = false }) { Text("Cancel") }
+            },
         )
     }
 }

@@ -73,9 +73,27 @@ interface ApiService {
     @POST("recipes/import-url")
     suspend fun importRecipeFromUrl(@Body req: RecipeImportUrlRequest): RecipeOut
 
-    // --- Shopping list ---
+    // --- Shopping lists ---
+    @GET("lists")
+    suspend fun getLists(): List<ListSummaryOut>
+
+    @POST("lists")
+    suspend fun createList(@Body req: ListCreateRequest): ShoppingListOut
+
     @GET("lists/default")
     suspend fun getDefaultList(): ShoppingListOut
+
+    @GET("lists/{listId}")
+    suspend fun getList(@Path("listId") listId: String): ShoppingListOut
+
+    @PATCH("lists/{listId}")
+    suspend fun renameList(
+        @Path("listId") listId: String,
+        @Body req: ListRenameRequest,
+    ): ShoppingListOut
+
+    @DELETE("lists/{listId}")
+    suspend fun deleteList(@Path("listId") listId: String)
 
     @GET("lists/suggest")
     suspend fun suggestItems(@Query("q") query: String): List<SuggestionOut>

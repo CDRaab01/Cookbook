@@ -1,11 +1,21 @@
 package com.cookbook.data.repository
 
+import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 
 /** Shopping-list operations the UI layer depends on. Implemented by [ShoppingRepositoryImpl]. */
 interface ShoppingRepository {
+    /** The ACTIVE list (user-switchable; falls back to the server default). */
     suspend fun getDefaultList(): ShoppingListOut
+
+    /** All lists with to-buy counts; empty when offline. */
+    suspend fun lists(): List<ListSummaryOut>
+
+    suspend fun setActiveList(listId: String)
+    suspend fun createList(name: String): ShoppingListOut
+    suspend fun renameList(listId: String, name: String): ShoppingListOut
+    suspend fun deleteList(listId: String)
     suspend fun addItem(
         listId: String,
         name: String,

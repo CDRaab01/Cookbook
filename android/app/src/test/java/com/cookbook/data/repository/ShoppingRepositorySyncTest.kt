@@ -7,6 +7,9 @@ import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.CookedOut
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.ForgotPasswordRequest
+import com.cookbook.data.remote.ListCreateRequest
+import com.cookbook.data.remote.ListRenameRequest
+import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.LogToPlateRequest
 import com.cookbook.data.remote.LogToPlateResult
 import com.cookbook.data.remote.LoginRequest
@@ -44,8 +47,10 @@ import kotlin.test.assertTrue
 private class FakeShoppingDao : ShoppingDao {
     val rows = linkedMapOf<String, ShoppingItemEntity>()
 
-    override suspend fun visibleItems() =
-        rows.values.filter { !it.deleted }.sortedBy { it.order }
+    override suspend fun visibleItems(listId: String?) =
+        rows.values
+            .filter { !it.deleted && (listId == null || it.listId == listId) }
+            .sortedBy { it.order }
 
     override suspend fun byLocalId(localId: String) = rows[localId]
 
@@ -66,8 +71,11 @@ private class FakeShoppingDao : ShoppingDao {
         rows.remove(localId)
     }
 
-    override suspend fun deleteClean(): Int {
-        val clean = rows.values.filter { !it.dirty && !it.deleted && it.serverId != null }
+    override suspend fun deleteClean(listId: String?): Int {
+        val clean = rows.values.filter {
+            !it.dirty && !it.deleted && it.serverId != null &&
+                (listId == null || it.listId == listId)
+        }
         clean.forEach { rows.remove(it.localId) }
         return clean.size
     }
@@ -89,6 +97,23 @@ private class FakeApi : ApiService {
         gate()
         return list()
     }
+
+    override suspend fun getLists(): List<ListSummaryOut> {
+        gate()
+        return listOf(ListSummaryOut(id = listId, name = "Groceries"))
+    }
+
+    override suspend fun createList(req: ListCreateRequest): ShoppingListOut = error("unused")
+
+    override suspend fun getList(listId: String): ShoppingListOut {
+        gate()
+        return list()
+    }
+
+    override suspend fun renameList(listId: String, req: ListRenameRequest): ShoppingListOut =
+        error("unused")
+
+    override suspend fun deleteList(listId: String) = error("unused")
 
     override suspend fun addShoppingItem(
         listId: String,

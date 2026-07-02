@@ -75,6 +75,39 @@ class AddRecipeRequest(BaseModel):
     force: bool = False
 
 
+class ListCreate(BaseModel):
+    """A named list beyond the default ("Costco", "Party")."""
+
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def name_nonempty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("list name must not be empty")
+        return v.strip()[:255]
+
+
+class ListRename(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def name_nonempty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("list name must not be empty")
+        return v.strip()[:255]
+
+
+class ListSummaryOut(BaseModel):
+    """List-picker projection: name + how much is left to buy on it."""
+
+    id: uuid.UUID
+    name: str
+    unchecked_count: int
+    total_count: int
+
+
 class SuggestionOut(BaseModel):
     """One autocomplete hit for the add dialog (v0.2), from the user's item history."""
 

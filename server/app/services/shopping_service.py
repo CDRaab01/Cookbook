@@ -29,7 +29,16 @@ from app.lists.merge import (
 )
 from app.models.item_history import ItemHistory
 from app.models.shopping_list import ShoppingList, ShoppingListItem
-from app.schemas.shopping import AddRecipeRequest, ItemCreate, ItemUpdate, ListOut, SuggestionOut
+from app.schemas.shopping import (
+    AddRecipeRequest,
+    ItemCreate,
+    ItemUpdate,
+    ListCreate,
+    ListOut,
+    ListRename,
+    ListSummaryOut,
+    SuggestionOut,
+)
 from app.services.recipe_service import load_owned_recipe
 
 DEFAULT_LIST_NAME = "Groceries"
@@ -207,6 +216,59 @@ async def suggest_items(db: AsyncSession, user_id: uuid.UUID, q: str) -> list[Su
 async def get_list_out(db: AsyncSession, user_id: uuid.UUID) -> ListOut:
     shopping_list = await get_default_list(db, user_id)
     return ListOut.model_validate(shopping_list)
+
+
+def _list_summary(shopping_list: ShoppingList) -> ListSummaryOut:
+    unchecked = sum(1 for i in shopping_list.items if not i.checked)
+    return ListSummaryOut(
+        id=shopping_list.id,
+        name=shopping_list.name,
+        unchecked_count=unchecked,
+        total_count=len(shopping_list.items),
+    )
+
+
+async def list_all_lists(db: AsyncSession, user_id: uuid.UUID) -> list[ListSummaryOut]:
+    """Every list, oldest (the default) first — ensures the default exists on first touch."""
+    await get_default_list(db, user_id)
+    result = await db.execute(
+        select(ShoppingList)
+        .where(ShoppingList.user_id == user_id)
+        .order_by(ShoppingList.created_at)
+    )
+    return [_list_summary(sl) for sl in result.scalars().all()]
+
+
+async def create_list(db: AsyncSession, user_id: uuid.UUID, req: ListCreate) -> ListOut:
+    # The default is "the oldest list" — materialize it first so a named list created before
+    # the user's first /default touch can't accidentally become the default.
+    await get_default_list(db, user_id)
+    shopping_list = ShoppingList(user_id=user_id, name=req.name)
+    db.add(shopping_list)
+    await db.commit()
+    return ListOut.model_validate(await _reload(db, shopping_list.id))
+
+
+async def get_one_list(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) -> ListOut:
+    shopping_list = await load_owned_list(db, user_id, list_id)
+    return ListOut.model_validate(shopping_list)
+
+
+async def rename_list(
+    db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, req: ListRename
+) -> ListOut:
+    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list.name = req.name
+    await db.commit()
+    return ListOut.model_validate(await _reload(db, list_id))
+
+
+async def delete_list(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) -> None:
+    """Items cascade with the list. Deleting the last list is fine — the default recreates
+    itself on the next touch."""
+    shopping_list = await load_owned_list(db, user_id, list_id)
+    await db.delete(shopping_list)
+    await db.commit()
 
 
 async def add_item(

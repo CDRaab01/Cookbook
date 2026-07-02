@@ -34,6 +34,21 @@ data class ShoppingListOut(
     val items: List<ShoppingItemOut> = emptyList(),
 )
 
+/** List-picker projection: name + how much is left to buy on it. */
+@Serializable
+data class ListSummaryOut(
+    val id: String,
+    val name: String,
+    @SerialName("unchecked_count") val uncheckedCount: Int = 0,
+    @SerialName("total_count") val totalCount: Int = 0,
+)
+
+@Serializable
+data class ListCreateRequest(val name: String)
+
+@Serializable
+data class ListRenameRequest(val name: String)
+
 @Serializable
 data class ShoppingItemCreateRequest(
     val name: String,

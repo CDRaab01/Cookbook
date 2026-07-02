@@ -2,6 +2,7 @@ package com.cookbook.ui.shopping
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
@@ -26,6 +27,10 @@ class ShoppingViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    /** All lists for the switcher menu (empty while offline). */
+    private val _allLists = MutableStateFlow<List<ListSummaryOut>>(emptyList())
+    val allLists: StateFlow<List<ListSummaryOut>> = _allLists
+
     fun load() {
         viewModelScope.launch {
             if (_list.value !is UiState.Success) _list.value = UiState.Loading
@@ -33,6 +38,55 @@ class ShoppingViewModel @Inject constructor(
                 UiState.Success(shoppingRepository.getDefaultList())
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Couldn't load the list")
+            }
+            _allLists.value = try {
+                shoppingRepository.lists()
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    fun switchList(listId: String) {
+        viewModelScope.launch {
+            shoppingRepository.setActiveList(listId)
+            load()
+        }
+    }
+
+    fun createList(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            try {
+                _list.value = UiState.Success(shoppingRepository.createList(name.trim()))
+                _allLists.value = shoppingRepository.lists()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't create the list"
+            }
+        }
+    }
+
+    fun renameCurrentList(name: String) {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            try {
+                _list.value = UiState.Success(shoppingRepository.renameList(current.id, name.trim()))
+                _allLists.value = shoppingRepository.lists()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't rename the list"
+            }
+        }
+    }
+
+    fun deleteCurrentList() {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        viewModelScope.launch {
+            try {
+                shoppingRepository.deleteList(current.id)
+                load()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't delete the list"
             }
         }
     }

@@ -18,6 +18,8 @@ import androidx.room.PrimaryKey
 data class ShoppingItemEntity(
     @PrimaryKey val localId: String,
     val serverId: String?,
+    // Which list this row belongs to (server list id) — v0.3 multiple named lists.
+    val listId: String? = null,
     val name: String,
     val quantity: Double?,
     val unit: String?,
