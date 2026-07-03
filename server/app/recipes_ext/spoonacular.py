@@ -12,11 +12,17 @@ import re
 import httpx
 
 from app.recipes_ext.base import (
+    IngredientSearchHit,
     NormalizedIngredient,
     NormalizedRecipe,
     RecipeSource,
     RecipeSummary,
 )
+
+# findByIngredients caps: Spoonacular charges per searched ingredient, and past ~20 names
+# extra pantry items stop changing the ranking. Missing-ingredient lists are display-only.
+MAX_SEARCH_INGREDIENTS = 20
+MAX_MISSING_SHOWN = 10
 
 log = logging.getLogger(__name__)
 
@@ -168,6 +174,47 @@ class SpoonacularSource(RecipeSource):
                     image=r.get("image"),
                     ready_in_minutes=r.get("readyInMinutes"),
                     servings=r.get("servings"),
+                )
+            )
+        return out
+
+    async def find_by_ingredients(
+        self, ingredients: list[str], *, limit: int
+    ) -> list[IngredientSearchHit]:
+        """Recipes makeable from a set of ingredient names. ``ranking=2`` minimizes missing
+        ingredients (vs. maximizing used ones); ``ignorePantry`` keeps Spoonacular from
+        double-assuming its own staples list — Cookbook sends the user's staples itself."""
+        resp = await self._client.get(
+            f"{self._base_url}/recipes/findByIngredients",
+            params=self._params(
+                {
+                    "ingredients": ",".join(ingredients[:MAX_SEARCH_INGREDIENTS]),
+                    "number": limit,
+                    "ranking": 2,
+                    "ignorePantry": "true",
+                }
+            ),
+            headers=self._headers,
+        )
+        resp.raise_for_status()
+        out: list[IngredientSearchHit] = []
+        for r in resp.json() or []:
+            rid = r.get("id")
+            if rid is None:
+                continue
+            missing = [
+                (m.get("name") or "").strip()
+                for m in (r.get("missedIngredients") or [])[:MAX_MISSING_SHOWN]
+                if (m.get("name") or "").strip()
+            ]
+            out.append(
+                IngredientSearchHit(
+                    source_id=str(rid),
+                    title=(r.get("title") or "").strip(),
+                    image=r.get("image"),
+                    used_count=r.get("usedIngredientCount") or 0,
+                    missed_count=r.get("missedIngredientCount") or 0,
+                    missing=missing,
                 )
             )
         return out

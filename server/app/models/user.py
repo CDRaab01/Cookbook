@@ -20,6 +20,12 @@ class User(Base):
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When the user first confirmed their pantry staples (NULL = still on the seeded
+    # defaults; GET /pantry/staples reports confirmed=false so the client shows the
+    # one-time review sheet).
+    staples_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     recipes = relationship("Recipe", back_populates="user", lazy="raise")
     shopping_lists = relationship("ShoppingList", back_populates="user", lazy="raise")

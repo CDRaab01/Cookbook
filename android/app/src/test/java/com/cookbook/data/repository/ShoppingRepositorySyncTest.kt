@@ -192,6 +192,21 @@ private class FakeApi : ApiService {
         error("unused")
     override suspend fun suggestItems(query: String): List<SuggestionOut> = error("unused")
     override suspend fun migrateFromPlate(): PlateMigrationResult = error("unused")
+    override suspend fun scanPantry(photo: okhttp3.MultipartBody.Part) = error("unused")
+    override suspend fun getPantry() = error("unused")
+    override suspend fun addPantryItem(req: com.cookbook.data.remote.PantryItemCreateRequest) =
+        error("unused")
+    override suspend fun confirmPantryItems(req: com.cookbook.data.remote.PantryConfirmRequest) =
+        error("unused")
+    override suspend fun updatePantryItem(
+        id: String,
+        req: com.cookbook.data.remote.PantryItemUpdateRequest,
+    ) = error("unused")
+    override suspend fun deletePantryItem(id: String) = error("unused")
+    override suspend fun getStaples() = error("unused")
+    override suspend fun putStaples(req: com.cookbook.data.remote.StaplesPutRequest) =
+        error("unused")
+    override suspend fun getPantrySuggestions(maxMissing: Int) = error("unused")
     override suspend fun markCooked(id: String): CookedOut = error("unused")
     override suspend fun unmarkCooked(id: String): CookedOut = error("unused")
     override suspend fun getRecipeNutrition(id: String): RecipeNutritionOut = error("unused")

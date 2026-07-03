@@ -66,6 +66,7 @@ fun HomeScreen(
     onGoToShopping: () -> Unit,
     onGoToPlan: () -> Unit,
     onGoToDiscover: () -> Unit,
+    onGoToPantry: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -119,6 +120,7 @@ fun HomeScreen(
                     onGoToShopping = onGoToShopping,
                     onGoToPlan = onGoToPlan,
                     onGoToDiscover = onGoToDiscover,
+                    onGoToPantry = onGoToPantry,
                 )
                 else -> EmptyState(
                     icon = Icons.AutoMirrored.Outlined.MenuBook,
@@ -139,6 +141,7 @@ private fun HomeContent(
     onGoToShopping: () -> Unit,
     onGoToPlan: () -> Unit,
     onGoToDiscover: () -> Unit,
+    onGoToPantry: () -> Unit,
 ) {
     val colors = CookbookTheme.colors
     Column(
@@ -197,6 +200,7 @@ private fun HomeContent(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PulseButton("New recipe", onClick = onNewRecipe, modifier = Modifier.weight(1f))
             PulseButton("Discover", onClick = onGoToDiscover, modifier = Modifier.weight(1f), tonal = true)
+            PulseButton("Pantry", onClick = onGoToPantry, modifier = Modifier.weight(1f), tonal = true)
         }
 
         // Recent recipes.

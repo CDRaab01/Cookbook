@@ -25,11 +25,15 @@ import com.cookbook.ui.auth.RegisterScreen
 import com.cookbook.ui.cook.CookModeScreen
 import com.cookbook.ui.discover.DiscoverScreen
 import com.cookbook.ui.home.HomeScreen
+import com.cookbook.ui.pantry.PantryConfirmScreen
+import com.cookbook.ui.pantry.PantryScreen
+import com.cookbook.ui.pantry.PantrySuggestionsScreen
 import com.cookbook.ui.plan.PlanScreen
 import com.cookbook.ui.recipe.RecipeDetailScreen
 import com.cookbook.ui.recipe.RecipeEditScreen
 import com.cookbook.ui.recipe.RecipeListScreen
 import com.cookbook.ui.settings.SettingsScreen
+import com.cookbook.ui.settings.StaplesEditorScreen
 import com.cookbook.ui.shopping.ShoppingScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -141,6 +145,8 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                     onGoToShopping = { goTab(Screen.Shopping.route) },
                     onGoToPlan = { goTab(Screen.Plan.route) },
                     onGoToDiscover = { goTab(Screen.Discover.route) },
+                    // Not a tab (the bar is full at five): plain navigate, back returns Home.
+                    onGoToPantry = { navController.navigate(Screen.Pantry.route) },
                 )
             }
             composable(Screen.Recipes.route) {
@@ -207,7 +213,32 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                    onOpenStaples = { navController.navigate(Screen.StaplesEditor.route) },
                 )
+            }
+            composable(Screen.Pantry.route) {
+                PantryScreen(
+                    onBack = { navController.popBackStack() },
+                    onScanConfirm = { navController.navigate(Screen.PantryConfirm.route) },
+                    onSuggestions = { navController.navigate(Screen.PantrySuggestions.route) },
+                    onEditStaples = { navController.navigate(Screen.StaplesEditor.route) },
+                )
+            }
+            composable(Screen.PantryConfirm.route) {
+                PantryConfirmScreen(
+                    onBack = { navController.popBackStack() },
+                    onConfirmed = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.PantrySuggestions.route) {
+                PantrySuggestionsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenRecipe = { id -> navController.navigate(Screen.RecipeDetail.withId(id)) },
+                    onImported = { id -> navController.navigate(Screen.RecipeDetail.withId(id)) },
+                )
+            }
+            composable(Screen.StaplesEditor.route) {
+                StaplesEditorScreen(onBack = { navController.popBackStack() })
             }
             composable(Screen.Shopping.route) {
                 ShoppingScreen()

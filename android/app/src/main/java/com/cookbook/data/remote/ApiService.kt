@@ -7,6 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -149,6 +150,38 @@ interface ApiService {
 
     @POST("lists/{listId}/clear-checked")
     suspend fun clearCheckedItems(@Path("listId") listId: String): ShoppingListOut
+
+    // --- Pantry ---
+    @Multipart
+    @POST("pantry/scan")
+    suspend fun scanPantry(@Part photo: MultipartBody.Part): PantryScanDraftOut
+
+    @GET("pantry")
+    suspend fun getPantry(): List<PantryItemOut>
+
+    @POST("pantry/items")
+    suspend fun addPantryItem(@Body req: PantryItemCreateRequest): PantryItemOut
+
+    @POST("pantry/confirm")
+    suspend fun confirmPantryItems(@Body req: PantryConfirmRequest): List<PantryItemOut>
+
+    @PATCH("pantry/items/{id}")
+    suspend fun updatePantryItem(
+        @Path("id") id: String,
+        @Body req: PantryItemUpdateRequest,
+    ): PantryItemOut
+
+    @DELETE("pantry/items/{id}")
+    suspend fun deletePantryItem(@Path("id") id: String)
+
+    @GET("pantry/staples")
+    suspend fun getStaples(): StaplesOut
+
+    @PUT("pantry/staples")
+    suspend fun putStaples(@Body req: StaplesPutRequest): StaplesOut
+
+    @GET("pantry/suggestions")
+    suspend fun getPantrySuggestions(@Query("max_missing") maxMissing: Int = 2): PantrySuggestionsOut
 
     // --- Plate migration ---
     @POST("migrate/plate")
