@@ -36,6 +36,11 @@ services:
       # when a redeploy recreates the container without re-reading .env, silently 404ing /auth/suite.
       SUITE_JWKS_URL: https://id.dragonflymedia.org/.well-known/jwks.json
       SUITE_ISSUER: https://id.dragonflymedia.org
+      # LM Studio vision (photo import + pantry scan) runs on the HOST, not in the
+      # compose network — the in-container default of localhost:1234 can never reach it.
+      # Pinned here for the same env_file-reload reason as the SUITE_* values above.
+      LM_STUDIO_BASE_URL: ${LM_STUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
+      LM_STUDIO_VISION_MODEL: ${LM_STUDIO_VISION_MODEL:-google/gemma-4-e4b}
     depends_on:
       db:
         condition: service_healthy
