@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -38,6 +39,15 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- AppAuth (BROKER.md Phase 2c) themes its AuthorizationManagementActivity as AppCompat but
+             leaves RedirectUriReceiverActivity to inherit the app theme, which isn't AppCompat →
+             it can crash on the redirect ("You need to use a Theme.AppCompat theme"). Force an
+             AppCompat translucent theme on it (the same one AppAuth uses for its other activity). -->
+        <activity
+            android:name="net.openid.appauth.RedirectUriReceiverActivity"
+            android:theme="@style/Theme.AppCompat.Translucent.NoTitleBar"
+            tools:node="merge" />
 
         <!-- Home-screen shopping-list widget (v0.3). -->
         <receiver
