@@ -26,6 +26,19 @@ below, which remain the contract for any future AI work here.
    recipe as trusted context. A natural v0.4 follow-on: suggestions that *combine* pantry
    coverage with the meal planner ("plan my week from what I have").
 
+## Cross-app work (approved 2026-07-03 — see Dragonfly/CROSS-APP.md for the full design)
+
+- **Meal plan → Plate** (CROSS-APP item 2): add `GET /cross-app/plan?date=` returning planned
+  entries with per-recipe nutrition (reuse the Plate-resolved data; free-text notes come back
+  name-only) so Plate's coach knows tonight's dinner.
+- **Macro-aware suggestions** (item 3): rank/badge pantry suggestions by fit to Plate's
+  `GET /cross-app/remaining?date=`. Ranking input only — suggestions must keep working with
+  the flag unset.
+- **Digest range read** (item 4): a cook-events/plan range endpoint for the future suite
+  digest.
+- Adopt the contract-fixture rule (CROSS-APP.md infra): consume Plate's committed fixtures
+  for the surfaces Cookbook mocks, and commit fixtures for Cookbook's own provider surfaces.
+
 ## Non-AI work (valuable regardless of the AI round)
 
 1. **Household sharing** — the deferred item that matters most. Two adults, one grocery list is
