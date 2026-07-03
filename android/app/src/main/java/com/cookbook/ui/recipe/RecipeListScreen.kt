@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -69,6 +70,7 @@ import design.pulse.ui.components.PanelCard
 fun RecipeListScreen(
     onRecipeClick: (String) -> Unit,
     onAddRecipe: () -> Unit,
+    onDiscover: () -> Unit,
     onOpenSettings: () -> Unit,
     viewModel: RecipeListViewModel = hiltViewModel(),
 ) {
@@ -115,6 +117,9 @@ fun RecipeListScreen(
                                 },
                             )
                         }
+                    }
+                    IconButton(onClick = onDiscover) {
+                        Icon(Icons.Outlined.TravelExplore, contentDescription = "Discover recipes")
                     }
                     IconButton(onClick = onAddRecipe) {
                         Icon(Icons.Outlined.Add, contentDescription = "New recipe")

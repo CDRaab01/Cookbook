@@ -52,7 +52,6 @@ import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.UiState
 import design.pulse.ui.components.EmptyState
 import design.pulse.ui.components.PanelCard
-import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.StatTile
 
@@ -60,13 +59,10 @@ import design.pulse.ui.components.StatTile
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
-    onNewRecipe: () -> Unit,
     onOpenRecipe: (String) -> Unit,
     onGoToRecipes: () -> Unit,
     onGoToShopping: () -> Unit,
     onGoToPlan: () -> Unit,
-    onGoToDiscover: () -> Unit,
-    onGoToPantry: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -114,13 +110,10 @@ fun HomeScreen(
                 is UiState.Success -> HomeContent(
                     greeting = greeting,
                     data = s.data,
-                    onNewRecipe = onNewRecipe,
                     onOpenRecipe = onOpenRecipe,
                     onGoToRecipes = onGoToRecipes,
                     onGoToShopping = onGoToShopping,
                     onGoToPlan = onGoToPlan,
-                    onGoToDiscover = onGoToDiscover,
-                    onGoToPantry = onGoToPantry,
                 )
                 else -> EmptyState(
                     icon = Icons.AutoMirrored.Outlined.MenuBook,
@@ -135,13 +128,10 @@ fun HomeScreen(
 private fun HomeContent(
     greeting: String,
     data: HomeData,
-    onNewRecipe: () -> Unit,
     onOpenRecipe: (String) -> Unit,
     onGoToRecipes: () -> Unit,
     onGoToShopping: () -> Unit,
     onGoToPlan: () -> Unit,
-    onGoToDiscover: () -> Unit,
-    onGoToPantry: () -> Unit,
 ) {
     val colors = CookbookTheme.colors
     Column(
@@ -196,21 +186,14 @@ private fun HomeContent(
             )
         }
 
-        // Quick actions.
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PulseButton("New recipe", onClick = onNewRecipe, modifier = Modifier.weight(1f))
-            PulseButton("Discover", onClick = onGoToDiscover, modifier = Modifier.weight(1f), tonal = true)
-            PulseButton("Pantry", onClick = onGoToPantry, modifier = Modifier.weight(1f), tonal = true)
-        }
-
         // Recent recipes.
         if (data.recentRecipes.isEmpty()) {
-            PanelCard(Modifier.fillMaxWidth()) {
+            PanelCard(Modifier.fillMaxWidth().clickable(onClick = onGoToRecipes)) {
                 Column {
                     Text("No recipes yet", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Add your first recipe with New recipe, or import one from Discover.",
+                        "Head to Recipes to add your first one or import from Discover.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

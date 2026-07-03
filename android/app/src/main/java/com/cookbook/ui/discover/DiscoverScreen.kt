@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Schedule
@@ -67,6 +68,7 @@ import design.pulse.ui.components.SectionHeader
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiscoverScreen(
+    onBack: () -> Unit,
     onImported: (String) -> Unit,
     onOpenPhotoDraft: () -> Unit = {},
     viewModel: DiscoverViewModel = hiltViewModel(),
@@ -104,6 +106,14 @@ fun DiscoverScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Discover", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "Back",
+                        )
+                    }
+                },
                 actions = {
                     IconButton(
                         onClick = { photoPicker.launch("image/*") },
