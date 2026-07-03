@@ -396,3 +396,127 @@ commit object even with an identical tree, so anything already branched off the 
 needs re-parenting, not just a force-push of the amended branch itself.
 **Deferred:** multi-account household sharing, custom/reorderable aisles, camera-captured
 recipe photos (vs. web images), pantry-based "what can I make".
+
+---
+
+## Suite membership — Dragonfly hub, SSO, releases (2026-07-02/03)
+
+Cookbook is one of five apps in the personal suite; suite-wide architecture lives in the
+**Dragonfly repo** (`CLAUDE.md` + `BROKER.md`). Cookbook was the **pilot app** for suite SSO, so
+its implementation is the reference the others copied.
+
+- **Releases:** `release.yml` publishes a suite-key-signed APK + `version.json` on any
+  `android/**` push to `main` (the release job checks out the sibling **Pulse** repo for the
+  composite build — keep that step when editing the workflow). Post-build `apksigner` guard pins
+  the suite signer (`5a596c9e…`). versionCode = epoch minutes; a local debug build cannot
+  install over a CI release without uninstalling.
+- **Config broker (Phase 1):** `util/SuiteConfigReader` reads
+  `content://com.dragonfly.suiteconfig/config/cookbook` in `App.onCreate` (signature-permission
+  provider; needs a Cookbook process restart to pick up a changed value) and falls back to local
+  prefs when the hub is absent/denied/blank.
+- **SSO (Phases 2b/2c — LIVE, built here first):**
+  - Server: `POST /auth/suite` (`app/routers/suite_auth.py` + `app/services/suite_auth.py`) —
+    validates an RS256 suite access token against https://id.dragonflymedia.org JWKS
+    (cached fetch; `aud=suite`, issuer-checked), find-or-creates the local user **by email**
+    (random unusable password hash), returns normal Cookbook tokens. Feature-flagged on
+    `suite_jwks_url`/`suite_issuer` (unset ⇒ 404; password auth untouched). **The two flag vars
+    are pinned in `docker-compose.yml`'s `environment:` block deliberately** — Compose does not
+    re-read changed `env_file` content on recreate, and an env_file-only flag silently vanishing
+    on redeploy caused production 404s on this endpoint (twice, on Spotter). Secrets stay in
+    `server/.env`; required non-secret config goes in `environment:`.
+  - Client: AppAuth (`net.openid:appauth`) via `data/remote/SuiteAuthManager.kt` — client id
+    `cookbook`, redirect `com.cookbook:/oauth2redirect`, PKCE code flow → `/token` →
+    `/auth/suite` → TokenStore. "Sign in with Dragonfly" on LoginScreen; email/password stays as
+    fallback. The manifest overrides `net.openid.appauth.RedirectUriReceiverActivity` with
+    `Theme.AppCompat.Translucent.NoTitleBar` + `tools:node="merge"` — Cookbook originally dodged
+    the AppAuth-on-Material-theme crash only via `launchMode=singleTask`; the override is the
+    real fix, keep it.
+- **Local server-test recipe** (throwaway DB in the live cookbook-db container is fine):
+  ```powershell
+  docker exec cookbook-db-1 createdb -U cookbook cookbook_scratch
+  $env:DATABASE_URL = "postgresql+asyncpg://cookbook:cookbook@127.0.0.1:5434/cookbook_scratch"
+  $env:DB_NULLPOOL = "true"; $env:SECRET_KEY = "x"
+  cd server; .venv\Scripts\python.exe -m pytest
+  ```
+  (127.0.0.1 not localhost; NullPool per the v1 build-log gotchas. conftest drops bcrypt to 4
+  rounds for the registration-heavy suites — intentional, tests-only.)
+- **Human-gated leftovers:** Roborazzi baselines still unrecorded (CI job exists, manual-only).
+
+---
+
+## v0.4.0 (2026-07-03) — pantry scan (`claude/pantry-scan`, local branch)
+
+Photo of the fridge/pantry → the LM Studio vision pipeline lists the food it sees →
+confirmation screen ("I see these — anything to add?") → confirmed items persist in a new
+per-user **pantry** → "What can I make?" merges local matches over saved recipes with
+Spoonacular `findByIngredients`. Closes the v0.3 deferrals "pantry-based what-can-I-make"
+and "camera-captured photos".
+
+- **Backend** (migration 0007): `pantry_items` + `pantry_staples` +
+  `users.staples_confirmed_at`. `/pantry` router: scan (multipart, 10/min, never persists),
+  CRUD (dedupe by `merge_key` — re-adding "Eggs" updates "eggs"), bulk confirm
+  (merge-or-replace), staples GET/PUT (seeded `DEFAULT_STAPLES`, one-time confirm marker;
+  before confirmation the defaults still count in matching), suggestions (30/min).
+- **Matching** (`app/lists/pantry_match.py`, pure): token-set comparison, subset in either
+  direction ("chicken" covers "boneless chicken breast"; "cheddar cheese" covers "cheese"),
+  descriptor stopwords stripped, water always available; a recipe qualifies with
+  ≤ max_missing missing AND ≥1 non-staple pantry hit (staples alone suggest nothing).
+  Accepted looseness: "milk" ⊆ "coconut milk" — documented in tests.
+- **Vision**: `pantry_scan_prompts.py` mirrors the recipe-photo prompt/salvage pattern;
+  the LM Studio transport in `vision.py` refactored to a shared `_chat_vision`.
+- **Spoonacular**: `find_by_ingredients` (`ranking=2`, `ignorePantry=true`, ≤20 names,
+  pantry before staples) → `IngredientSearchHit`; its `source_id` feeds the existing
+  discover-preview/import, so web suggestions are importable for free. No key / API down ⇒
+  `external_available:false`, local matches survive.
+- **Android**: Pantry via Home quick action (bottom bar stays at five tabs). In-app camera
+  (CAMERA permission + FileProvider `com.cookbook.fileprovider` → `cache/scans/`) plus
+  gallery; **both paths downscale to ≤1600px JPEG** (`util/ImageBytes.kt`) — camera captures
+  exceed the 8 MB cap otherwise. Confirm flow via `PantryDraftStore` (RecipeDraftStore
+  idiom); first-use staples sheet (swipe-away = skip this visit, returns until confirmed);
+  Settings → "Edit pantry staples" persists per edit. No Room mirror (meal-planner precedent).
+- **Deploy fix caught along the way**: the server container's LM Studio default
+  (`localhost:1234`) can never reach the host, so deployed photo import had been silently
+  503ing since v0.3. Compose now pins `LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1`
+  (verified reachable from the running container) and `LM_STUDIO_VISION_MODEL=google/gemma-4-e4b`
+  — the gemma-3-12b weights the code default names are no longer loaded on this machine.
+  If scans 502, check which model LM Studio actually has loaded (`GET :1234/v1/models`).
+- **Verified**: 261 server tests + ruff clean (the lone red test,
+  `test_disabled_by_default_returns_404`, is the known local-only `.env` SUITE_JWKS_URL
+  artifact — green in CI); Android `testDebugUnitTest` (8 new VM tests) + `assembleDebug`;
+  E2E smoke against live LM Studio: a real 4000px fridge photo → 16 items with categories +
+  confidence in ~7s on gemma-4-e4b → confirm → staples PUT → seeded recipe matched 5/6 with
+  `missing: ["heavy cream"]`.
+- **Human-gated**: on-device pass (camera permission flow, confirm UX); push + PR + deploy.
+
+---
+
+## v0.4.0 (2026-07-03) — Pantry scan (the AI round)
+
+Built on branch `claude/pantry-scan` (3 commits), merged to main 2026-07-03. Photo → pantry →
+"what can I make?", following the house AI rules (LM Studio vision, draft-confirm, nothing
+auto-committed, shopping list untouched).
+
+- **Scan:** `POST /pantry/scan` (10/min) — fridge/pantry photo → `estimate_pantry_photo`
+  (`services/ai/vision.py` + `services/ai/pantry_scan_prompts.py`) → a draft candidate list.
+  **Nothing is saved**; the client's confirmation screen posts the reviewed list to
+  `POST /pantry/confirm` (merge by default, replace on request).
+- **Pantry CRUD:** `GET /pantry`, `POST /pantry/items` (re-add by normalized name returns the
+  existing row), `PATCH/DELETE /pantry/items/{id}`. Models in `models/pantry.py`, migration
+  `0007_pantry`.
+- **Staples:** `GET/PUT /pantry/staples` — the always-assumed-available list; first GET returns
+  seeded defaults with `confirmed=false` so the client shows a one-time review sheet.
+- **Suggestions:** `GET /pantry/suggestions?max_missing=0..5` (30/min) — saved recipes coverable
+  by pantry+staples (ingredient matching in `lists/pantry_match.py`, reusing the merge module's
+  normalization) plus Spoonacular find-by-ingredients ideas when configured (silently absent,
+  not an error, when not).
+- **Android:** Pantry tab (list/edit), scan via camera or gallery (`util/ImageBytes.kt`,
+  FileProvider `file_paths.xml`), `PantryConfirmScreen` (review/edit draft →
+  confirm), `PantrySuggestionsScreen`, Settings → `StaplesEditorScreen`;
+  `PantryDraftStore` follows the `SharedIntentStore`/`RecipeDraftStore` idiom.
+- **Compose pin:** the server container's LM Studio host URL + vision model are pinned in
+  `docker-compose.yml` `environment:` (per the suite env_file rule).
+- **Verified at merge time:** server 261/262 pytest green against a throwaway DB (see recipe
+  above). The 1 failure is **env-dependent, pre-existing, green in CI**:
+  `test_suite_auth.py::test_disabled_by_default_returns_404` fails locally whenever the live
+  `server/.env` has `SUITE_JWKS_URL` set (same class as Plate's Spoonacular test). Android was
+  built green on the branch; not re-verified at merge.
