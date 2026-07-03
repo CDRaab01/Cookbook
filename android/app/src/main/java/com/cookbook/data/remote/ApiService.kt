@@ -26,6 +26,10 @@ interface ApiService {
     @POST("auth/reset-password")
     suspend fun resetPassword(@Body req: ResetPasswordRequest)
 
+    // Trade a Dragonfly suite token for a Cookbook session (BROKER.md Phase 2c).
+    @POST("auth/suite")
+    suspend fun suiteLogin(@Body req: SuiteLoginRequest): TokenResponse
+
     // --- Users ---
     @GET("users/me")
     suspend fun getMe(): UserOut

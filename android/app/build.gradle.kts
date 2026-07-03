@@ -29,6 +29,9 @@ android {
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 6
         versionName = System.getenv("VERSION_NAME") ?: "0.3.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // AppAuth's redirect receiver activity binds to this scheme (BROKER.md Phase 2c) — the
+        // custom-scheme half of the com.cookbook:/oauth2redirect URI registered in dragonfly-id.
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.cookbook"
         buildConfigField(
             "String", "SERVER_URL",
             "\"${localProperties.getProperty("server.url", "https://cookbook.dragonflymedia.org/")}\""
@@ -121,6 +124,9 @@ dependencies {
     // PULSE design system (theme tokens + component kit), from the sibling Pulse repo via the
     // composite build declared in settings.gradle.kts.
     implementation(libs.pulse.ui)
+
+    // Suite SSO (BROKER.md Phase 2c): OpenID Connect authorization-code + PKCE via AppAuth.
+    implementation(libs.appauth)
 
     // Recipe images (v0.2) — remote URL loading with caching.
     implementation(libs.coil.compose)

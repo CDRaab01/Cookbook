@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +43,11 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
+    // Result of the Dragonfly (suite SSO) Custom Tab flow.
+    val suiteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result -> viewModel.completeSuiteLogin(result.data) }
+
     LaunchedEffect(authState) {
         if (authState is UiState.Success) onLoginSuccess()
     }
@@ -51,6 +59,7 @@ fun LoginScreen(
         onPasswordChange = { password = it },
         state = authState,
         onSubmit = { viewModel.login(email, password) },
+        onSuiteSignIn = { suiteLauncher.launch(viewModel.suiteAuthorizeIntent()) },
         onNavigateToRegister = onNavigateToRegister,
         onNavigateToForgotPassword = onNavigateToForgotPassword,
     )
@@ -67,6 +76,7 @@ fun LoginContent(
     onSubmit: () -> Unit,
     onNavigateToRegister: () -> Unit,
     onNavigateToForgotPassword: () -> Unit,
+    onSuiteSignIn: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -108,6 +118,14 @@ fun LoginContent(
             onClick = onSubmit,
             enabled = state !is UiState.Loading,
         )
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onSuiteSignIn,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = state !is UiState.Loading,
+        ) {
+            Text("Sign in with Dragonfly")
+        }
         if (state is UiState.Error) {
             Spacer(Modifier.height(8.dp))
             Text(

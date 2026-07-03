@@ -1,5 +1,6 @@
 package com.cookbook.ui.auth
 
+import com.cookbook.data.remote.SuiteAuthManager
 import com.cookbook.data.repository.AuthRepository
 import com.cookbook.util.AuthEventBus
 import com.cookbook.util.UiState
@@ -25,12 +26,13 @@ class AuthViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
     private val repository: AuthRepository = mock()
+    private val suiteAuthManager: SuiteAuthManager = mock()
     private lateinit var viewModel: AuthViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        viewModel = AuthViewModel(repository, AuthEventBus())
+        viewModel = AuthViewModel(repository, suiteAuthManager, AuthEventBus())
     }
 
     @After

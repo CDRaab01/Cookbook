@@ -7,6 +7,7 @@ import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.CookedOut
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.ForgotPasswordRequest
+import com.cookbook.data.remote.SuiteLoginRequest
 import com.cookbook.data.remote.ListCreateRequest
 import com.cookbook.data.remote.ListRenameRequest
 import com.cookbook.data.remote.ListSummaryOut
@@ -166,6 +167,7 @@ private class FakeApi : ApiService {
     override suspend fun login(req: LoginRequest): TokenResponse = error("unused")
     override suspend fun forgotPassword(req: ForgotPasswordRequest) = error("unused")
     override suspend fun resetPassword(req: ResetPasswordRequest) = error("unused")
+    override suspend fun suiteLogin(req: SuiteLoginRequest): TokenResponse = error("unused")
     override suspend fun getMe(): UserOut = error("unused")
     override suspend fun listRecipes(): List<RecipeSummaryOut> = error("unused")
     override suspend fun getRecipe(id: String): RecipeOut = error("unused")

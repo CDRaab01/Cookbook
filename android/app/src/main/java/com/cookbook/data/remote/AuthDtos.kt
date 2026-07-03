@@ -23,6 +23,12 @@ data class RefreshRequest(
 )
 
 @Serializable
+data class SuiteLoginRequest(
+    // A suite access token from the Dragonfly identity server (BROKER.md Phase 2c).
+    @SerialName("suite_token") val suiteToken: String,
+)
+
+@Serializable
 data class ForgotPasswordRequest(
     val email: String,
 )

@@ -1,7 +1,9 @@
 package com.cookbook.ui.auth
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.SuiteAuthManager
 import com.cookbook.data.repository.AuthRepository
 import com.cookbook.util.AuthEventBus
 import com.cookbook.util.UiState
@@ -15,6 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val suiteAuthManager: SuiteAuthManager,
     authEventBus: AuthEventBus,
 ) : ViewModel() {
 
@@ -72,6 +75,22 @@ class AuthViewModel @Inject constructor(
                 UiState.Success(Unit)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Reset failed. Please try again.")
+            }
+        }
+    }
+
+    /** Intent that launches the Dragonfly (suite SSO) sign-in — launch via an ActivityResult. */
+    fun suiteAuthorizeIntent(): Intent = suiteAuthManager.authorizeIntent()
+
+    /** Handle the sign-in result: exchange → /auth/suite → session. Success drives navigation. */
+    fun completeSuiteLogin(data: Intent?) {
+        viewModelScope.launch {
+            _authState.value = UiState.Loading
+            _authState.value = try {
+                suiteAuthManager.complete(data)
+                UiState.Success(Unit)
+            } catch (e: Exception) {
+                UiState.Error(e.message ?: "Dragonfly sign-in failed")
             }
         }
     }
