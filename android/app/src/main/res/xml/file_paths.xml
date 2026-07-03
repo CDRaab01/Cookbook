@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pantry-scan camera captures land in cache/scans/ — transient, cleared by the OS. -->
+<paths>
+    <cache-path name="scans" path="scans/" />
+</paths>

@@ -41,6 +41,7 @@ import design.pulse.ui.components.SectionHeader
 fun SettingsScreen(
     onBack: () -> Unit,
     onLoggedOut: () -> Unit,
+    onOpenStaples: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = CookbookTheme.colors
@@ -145,6 +146,27 @@ fun SettingsScreen(
                         onChannel = colors.fresh.on,
                         dimChannel = colors.fresh.dim,
                         enabled = !migrating,
+                    )
+                }
+            }
+
+            PanelCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Text(
+                        "Pantry staples — the ingredients recipes can always assume you have " +
+                            "(oil, salt, spices…).",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PulseButton(
+                        text = "Edit pantry staples",
+                        onClick = onOpenStaples,
+                        tonal = true,
+                        compact = true,
+                        channel = colors.fresh.base,
+                        onChannel = colors.fresh.on,
+                        dimChannel = colors.fresh.dim,
                     )
                 }
             }

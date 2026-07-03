@@ -5,6 +5,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Pantry scan: in-app camera capture. Declaring CAMERA makes the runtime grant mandatory
+         before launching capture — the screen requests it and falls back to the gallery picker
+         on denial. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <!-- Read suite connection config from the Dragonfly hub (BROKER.md Phase 1). Granted only
          because all suite apps share one signing key; harmless if Dragonfly isn't installed. -->
     <uses-permission android:name="com.dragonfly.permission.READ_SUITE_CONFIG" />
@@ -48,6 +54,18 @@
             android:name="net.openid.appauth.RedirectUriReceiverActivity"
             android:theme="@style/Theme.AppCompat.Translucent.NoTitleBar"
             tools:node="merge" />
+
+        <!-- Hands the camera a cache-dir target for pantry-scan captures (nothing is kept —
+             the photo uploads, gets read, and the file is overwritten by the next scan). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.cookbook.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- Home-screen shopping-list widget (v0.3). -->
         <receiver

@@ -27,4 +27,8 @@ sealed class Screen(val route: String) {
         val routeWithArg = "$route/{$ARG}"
         fun withId(id: String) = "$route/$id"
     }
+    data object Pantry : Screen("pantry")
+    data object PantryConfirm : Screen("pantry_confirm")
+    data object PantrySuggestions : Screen("pantry_suggestions")
+    data object StaplesEditor : Screen("staples")
 }
