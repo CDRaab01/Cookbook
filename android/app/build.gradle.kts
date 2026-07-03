@@ -27,7 +27,7 @@ android {
         // CI passes VERSION_CODE (the run number) so each signed release installs cleanly over the
         // previous one; defaults to the last shipped value for local/debug builds.
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 6
-        versionName = System.getenv("VERSION_NAME") ?: "0.3.2"
+        versionName = System.getenv("VERSION_NAME") ?: "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // AppAuth's redirect receiver activity binds to this scheme (BROKER.md Phase 2c) — the
         // custom-scheme half of the com.cookbook:/oauth2redirect URI registered in dragonfly-id.
