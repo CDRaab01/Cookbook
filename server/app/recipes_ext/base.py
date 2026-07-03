@@ -23,6 +23,20 @@ class RecipeSummary:
 
 
 @dataclass(frozen=True)
+class IngredientSearchHit:
+    """A find-by-ingredients hit: a discovery row plus how well the searched ingredients
+    cover it. ``source_id`` works with the same preview/import endpoints as discovery.
+    Not part of the :class:`RecipeSource` ABC — only Spoonacular supports this search."""
+
+    source_id: str
+    title: str
+    image: str | None = None
+    used_count: int = 0
+    missed_count: int = 0
+    missing: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class NormalizedIngredient:
     """One recipe ingredient as free text: name + amount + optional store category."""
 
