@@ -5,13 +5,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,6 +79,7 @@ fun LoginContent(
     onNavigateToForgotPassword: () -> Unit,
     onSuiteSignIn: () -> Unit = {},
 ) {
+    var showEmailForm by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -95,37 +97,13 @@ fun LoginContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(40.dp))
-        OutlinedTextField(
-            value = email,
-            onValueChange = onEmailChange,
-            label = { Text("Email") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            singleLine = true,
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = password,
-            onValueChange = onPasswordChange,
-            label = { Text("Password") },
-            modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-        )
-        Spacer(Modifier.height(24.dp))
+
+        // Primary action: Dragonfly single sign-on.
         PrimaryButtonFullWidth(
-            text = if (state is UiState.Loading) "Signing in…" else "Sign In",
-            onClick = onSubmit,
+            text = "Sign in with Dragonfly",
+            onClick = onSuiteSignIn,
             enabled = state !is UiState.Loading,
         )
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = onSuiteSignIn,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = state !is UiState.Loading,
-        ) {
-            Text("Sign in with Dragonfly")
-        }
         if (state is UiState.Error) {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -134,12 +112,60 @@ fun LoginContent(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onNavigateToForgotPassword) {
-            Text("Forgot password?")
+
+        Spacer(Modifier.height(16.dp))
+        OrDivider()
+        Spacer(Modifier.height(4.dp))
+        TextButton(onClick = { showEmailForm = !showEmailForm }) {
+            Text(if (showEmailForm) "Hide email sign-in" else "Sign in with email")
         }
-        TextButton(onClick = onNavigateToRegister) {
-            Text("Don't have an account? Create one")
+
+        // Email/password is tucked away by default; revealed on demand.
+        if (showEmailForm) {
+            OutlinedTextField(
+                value = email,
+                onValueChange = onEmailChange,
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                singleLine = true,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                label = { Text("Password") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+            )
+            Spacer(Modifier.height(16.dp))
+            PrimaryButtonFullWidth(
+                text = if (state is UiState.Loading) "Signing in…" else "Sign In",
+                onClick = onSubmit,
+                enabled = state !is UiState.Loading,
+            )
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = onNavigateToForgotPassword) {
+                Text("Forgot password?")
+            }
+            TextButton(onClick = onNavigateToRegister) {
+                Text("Don't have an account? Create one")
+            }
         }
+    }
+}
+
+/** A thin "─── or ───" separator between the SSO button and the email fallback. */
+@Composable
+private fun OrDivider() {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(modifier = Modifier.weight(1f))
+        Text(
+            "  or  ",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f))
     }
 }
