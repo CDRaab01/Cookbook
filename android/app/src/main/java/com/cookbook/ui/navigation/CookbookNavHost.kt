@@ -139,14 +139,10 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             composable(Screen.Home.route) {
                 HomeScreen(
                     onOpenSettings = { navController.navigate(Screen.Settings.route) },
-                    onNewRecipe = { navController.navigate(Screen.RecipeEdit.withId(null)) },
                     onOpenRecipe = { id -> navController.navigate(Screen.RecipeDetail.withId(id)) },
                     onGoToRecipes = { goTab(Screen.Recipes.route) },
                     onGoToShopping = { goTab(Screen.Shopping.route) },
                     onGoToPlan = { goTab(Screen.Plan.route) },
-                    onGoToDiscover = { goTab(Screen.Discover.route) },
-                    // Not a tab (the bar is full at five): plain navigate, back returns Home.
-                    onGoToPantry = { navController.navigate(Screen.Pantry.route) },
                 )
             }
             composable(Screen.Recipes.route) {
@@ -155,6 +151,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                         navController.navigate(Screen.RecipeDetail.withId(id))
                     },
                     onAddRecipe = { navController.navigate(Screen.RecipeEdit.withId(null)) },
+                    onDiscover = { navController.navigate(Screen.Discover.route) },
                     onOpenSettings = { navController.navigate(Screen.Settings.route) },
                 )
             }
@@ -218,7 +215,6 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             }
             composable(Screen.Pantry.route) {
                 PantryScreen(
-                    onBack = { navController.popBackStack() },
                     onScanConfirm = { navController.navigate(Screen.PantryConfirm.route) },
                     onSuggestions = { navController.navigate(Screen.PantrySuggestions.route) },
                     onEditStaples = { navController.navigate(Screen.StaplesEditor.route) },
@@ -245,6 +241,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             }
             composable(Screen.Discover.route) {
                 DiscoverScreen(
+                    onBack = { navController.popBackStack() },
                     onImported = { id ->
                         navController.navigate(Screen.RecipeDetail.withId(id))
                     },
