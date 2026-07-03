@@ -24,6 +24,7 @@ import com.cookbook.ui.auth.LoginScreen
 import com.cookbook.ui.auth.RegisterScreen
 import com.cookbook.ui.cook.CookModeScreen
 import com.cookbook.ui.discover.DiscoverScreen
+import com.cookbook.ui.home.HomeScreen
 import com.cookbook.ui.plan.PlanScreen
 import com.cookbook.ui.recipe.RecipeDetailScreen
 import com.cookbook.ui.recipe.RecipeEditScreen
@@ -47,6 +48,15 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
     val currentRoute = backStackEntry?.destination?.route
     val isTopLevel = TopLevelDestination.entries.any { it.route == currentRoute }
 
+    // Shared tab navigation (bottom-bar semantics) so Home's shortcuts switch tabs cleanly.
+    val goTab: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     // Forced logout (rejected refresh token anywhere in the app) bounces to login.
     val authViewModel: AuthViewModel = hiltViewModel()
     LaunchedEffect(Unit) {
@@ -62,15 +72,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             if (isTopLevel) {
                 CookbookBottomBar(
                     currentRoute = currentRoute,
-                    onNavigate = { destination ->
-                        navController.navigate(destination.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+                    onNavigate = { destination -> goTab(destination.route) },
                 )
             }
         },
@@ -86,7 +88,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                 val gateViewModel: GateViewModel = hiltViewModel()
                 LaunchedEffect(Unit) {
                     val target = if (gateViewModel.isSignedIn()) {
-                        Screen.Recipes.route
+                        Screen.Home.route
                     } else {
                         Screen.Login.route
                     }
@@ -99,7 +101,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             composable(Screen.Login.route) {
                 LoginScreen(
                     onLoginSuccess = {
-                        navController.navigate(Screen.Recipes.route) {
+                        navController.navigate(Screen.Home.route) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
@@ -112,7 +114,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             composable(Screen.Register.route) {
                 RegisterScreen(
                     onRegisterSuccess = {
-                        navController.navigate(Screen.Recipes.route) {
+                        navController.navigate(Screen.Home.route) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
@@ -130,6 +132,17 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                 )
             }
 
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                    onNewRecipe = { navController.navigate(Screen.RecipeEdit.withId(null)) },
+                    onOpenRecipe = { id -> navController.navigate(Screen.RecipeDetail.withId(id)) },
+                    onGoToRecipes = { goTab(Screen.Recipes.route) },
+                    onGoToShopping = { goTab(Screen.Shopping.route) },
+                    onGoToPlan = { goTab(Screen.Plan.route) },
+                    onGoToDiscover = { goTab(Screen.Discover.route) },
+                )
+            }
             composable(Screen.Recipes.route) {
                 RecipeListScreen(
                     onRecipeClick = { id ->
