@@ -31,6 +31,11 @@ services:
       # `compose up`; default to "unknown" for a plain manual `docker compose up`.
       GIT_SHA: ${GIT_SHA:-unknown}
       BUILT_AT: ${BUILT_AT:-unknown}
+      # Suite SSO (BROKER.md Phase 2b) — public, non-secret values pinned here rather than only in
+      # .env: Compose doesn't reload env_file content on `up`, so an env_file-only flag gets dropped
+      # when a redeploy recreates the container without re-reading .env, silently 404ing /auth/suite.
+      SUITE_JWKS_URL: https://id.dragonflymedia.org/.well-known/jwks.json
+      SUITE_ISSUER: https://id.dragonflymedia.org
     depends_on:
       db:
         condition: service_healthy
