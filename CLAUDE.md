@@ -440,7 +440,9 @@ its implementation is the reference the others copied.
   ```
   (127.0.0.1 not localhost; NullPool per the v1 build-log gotchas. conftest drops bcrypt to 4
   rounds for the registration-heavy suites — intentional, tests-only.)
-- **Human-gated leftovers:** Roborazzi baselines still unrecorded (CI job exists, manual-only).
+- **Human-gated leftovers:** Roborazzi baselines: Home light+dark recorded 2026-07-03
+  (`com.cookbook.screenshot.ScreenshotTest`, PR #2); other screens still unrecorded. The
+  screenshots job is manual-only (`workflow_dispatch`), so it doesn't gate PR/deploy.
 
 ---
 
