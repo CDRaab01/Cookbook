@@ -23,6 +23,4 @@ async def export(request: Request, current_user: CurrentUser, db: DbSession) -> 
     """The user's full data export (own-session auth). Returned as a downloadable JSON file."""
     data = await build_export(db, current_user)
     filename = f"cookbook-export-{datetime.date.today().isoformat()}.json"
-    return JSONResponse(
-        data, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
+    return JSONResponse(data, headers={"Content-Disposition": f'attachment; filename="{filename}"'})

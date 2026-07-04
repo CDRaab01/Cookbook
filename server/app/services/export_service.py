@@ -79,18 +79,21 @@ async def build_export(db: AsyncSession, user) -> dict:
         "shopping_lists": [_row(lst) for lst in lists],
         "shopping_list_items": [_row(i) for i in items],
         "meal_plan_entries": [
-            _row(e) for e in await _all(db, select(MealPlanEntry).where(MealPlanEntry.user_id == user.id))
+            _row(e)
+            for e in await _all(db, select(MealPlanEntry).where(MealPlanEntry.user_id == user.id))
         ],
         "cook_events": [
             _row(e) for e in await _all(db, select(CookEvent).where(CookEvent.user_id == user.id))
         ],
         "item_history": [
-            _row(h) for h in await _all(db, select(ItemHistory).where(ItemHistory.user_id == user.id))
+            _row(h)
+            for h in await _all(db, select(ItemHistory).where(ItemHistory.user_id == user.id))
         ],
         "pantry_items": [
             _row(p) for p in await _all(db, select(PantryItem).where(PantryItem.user_id == user.id))
         ],
         "pantry_staples": [
-            _row(p) for p in await _all(db, select(PantryStaple).where(PantryStaple.user_id == user.id))
+            _row(p)
+            for p in await _all(db, select(PantryStaple).where(PantryStaple.user_id == user.id))
         ],
     }
