@@ -206,8 +206,10 @@ private fun SlotRow(
     PanelCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
-            .clickable(enabled = entry == null) { onTap() },
+            .padding(vertical = 2.dp),
+        // Empty slots tap-to-plan with the panel's press-scale; filled slots keep their inner
+        // recipe-name tap + remove button, so the whole card is not a button then.
+        onClick = if (entry == null) onTap else null,
         tint = if (entry != null) colors.heat.dim else null,
     ) {
         Row(

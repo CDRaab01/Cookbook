@@ -330,7 +330,7 @@ private fun PantryList(
                 )
             }
             items(grouped.getValue(category), key = { it.id }) { item ->
-                PanelCard(Modifier.fillMaxWidth().clickable { onEdit(item) }) {
+                PanelCard(Modifier.fillMaxWidth(), onClick = { onEdit(item) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(item.name, style = MaterialTheme.typography.bodyLarge)

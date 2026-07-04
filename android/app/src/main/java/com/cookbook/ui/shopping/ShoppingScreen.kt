@@ -350,7 +350,8 @@ private fun ShoppingListBody(
                 SectionHeader(
                     categoryLabel(category),
                     channel = colors.heat.base,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+                    trailing = { Caption("${grouped.getValue(category).size}") },
                 )
             }
             items(grouped.getValue(category), key = { it.id }) { item ->
@@ -365,29 +366,29 @@ private fun ShoppingListBody(
 
         if (checked.isNotEmpty()) {
             item(key = "header_checked") {
-                Row(
+                SectionHeader(
+                    "In the cart",
                     modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    SectionHeader("In the cart", channel = colors.fresh.base)
-                    Spacer(Modifier.weight(1f))
-                    PulseButton(
-                        text = "Clear checked",
-                        onClick = onClearChecked,
-                        tonal = true,
-                        compact = true,
-                        channel = colors.fresh.base,
-                        onChannel = colors.fresh.on,
-                        dimChannel = colors.fresh.dim,
-                        leadingIcon = {
-                            Icon(
-                                Icons.Outlined.DeleteSweep,
-                                contentDescription = null,
-                                Modifier.width(18.dp),
-                            )
-                        },
-                    )
-                }
+                    channel = colors.fresh.base,
+                    trailing = {
+                        PulseButton(
+                            text = "Clear checked",
+                            onClick = onClearChecked,
+                            tonal = true,
+                            compact = true,
+                            channel = colors.fresh.base,
+                            onChannel = colors.fresh.on,
+                            dimChannel = colors.fresh.dim,
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Outlined.DeleteSweep,
+                                    contentDescription = null,
+                                    Modifier.width(18.dp),
+                                )
+                            },
+                        )
+                    },
+                )
             }
             items(checked, key = { it.id }) { item ->
                 ShoppingItemRow(

@@ -1,6 +1,5 @@
 package com.cookbook.ui.pantry
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -125,7 +124,8 @@ fun PantrySuggestionsScreen(
                                     SectionHeader(
                                         "From your cookbook",
                                         channel = colors.heat.base,
-                                        modifier = Modifier.padding(top = 8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                        trailing = { Caption("${data.cookbook.size}") },
                                     )
                                 }
                                 items(data.cookbook, key = { it.recipeId }) { hit ->
@@ -140,7 +140,8 @@ fun PantrySuggestionsScreen(
                                     SectionHeader(
                                         "Ideas from the web",
                                         channel = colors.info.base,
-                                        modifier = Modifier.padding(top = 12.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                                        trailing = { Caption("${data.external.size}") },
                                     )
                                 }
                                 items(data.external, key = { it.sourceId }) { hit ->
@@ -179,7 +180,7 @@ fun PantrySuggestionsScreen(
 @Composable
 private fun CookbookSuggestionRow(hit: CookbookSuggestion, onClick: () -> Unit) {
     val colors = CookbookTheme.colors
-    PanelCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    PanelCard(Modifier.fillMaxWidth(), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (hit.imageUrl != null) {
                 AsyncImage(
@@ -213,7 +214,7 @@ private fun CookbookSuggestionRow(hit: CookbookSuggestion, onClick: () -> Unit) 
 @Composable
 private fun ExternalSuggestionRow(hit: ExternalSuggestion, onClick: () -> Unit) {
     val colors = CookbookTheme.colors
-    PanelCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    PanelCard(Modifier.fillMaxWidth(), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (hit.image != null) {
                 AsyncImage(
