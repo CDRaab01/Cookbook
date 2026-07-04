@@ -1,0 +1,44 @@
+version: 2
+
+# Weekly dependency updates, grouped into one PR per ecosystem to keep the noise low.
+# See host ROADMAP.md Tier 2 #2. Suite invariant: the Android AGP / Kotlin / Compose-BOM
+# versions must stay aligned with Pulse (composite builds are only binary-compatible on
+# matching versions) — those three are ignored here so Dependabot never opens a per-app
+# bump that would break the composite build. Bumping them is a deliberate, all-repos-in-
+# one-sitting change (see CLAUDE.md).
+
+updates:
+  # Python server dependencies (FastAPI, asyncpg, etc.).
+  - package-ecosystem: "pip"
+    directory: "/server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python:
+        patterns: ["*"]
+
+  # Android app dependencies (OkHttp / AppAuth / Retrofit / Coil / Room / ...) — the
+  # CVE-prone libraries. Suite-pinned build tooling is deliberately excluded.
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "com.android.tools.build:gradle"
+      - dependency-name: "org.jetbrains.kotlin:*"
+      - dependency-name: "androidx.compose:compose-bom"
+    groups:
+      gradle:
+        patterns: ["*"]
+
+  # GitHub Actions used by the workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
