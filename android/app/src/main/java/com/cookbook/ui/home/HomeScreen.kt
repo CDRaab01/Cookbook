@@ -2,7 +2,6 @@ package com.cookbook.ui.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
@@ -164,31 +166,38 @@ private fun HomeContent(
             }
         }
 
-        // Quick counts — each taps through to its tab.
+        // Quick counts — dense metric tiles: each rolls its count up on load, carries a channel
+        // icon, and taps through to its tab with the panel's own press-scale.
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatTile(
-                "Recipes",
-                data.recipeCount.toString(),
-                Modifier.weight(1f).clickable(onClick = onGoToRecipes),
+            CountTile(
+                label = "Recipes",
+                count = data.recipeCount,
                 channel = colors.heat.base,
+                icon = Icons.AutoMirrored.Outlined.MenuBook,
+                onClick = onGoToRecipes,
+                modifier = Modifier.weight(1f),
             )
-            StatTile(
-                "On the list",
-                data.uncheckedItems.toString(),
-                Modifier.weight(1f).clickable(onClick = onGoToShopping),
+            CountTile(
+                label = "To buy",
+                count = data.uncheckedItems,
                 channel = colors.fresh.base,
+                icon = Icons.Outlined.ShoppingCart,
+                onClick = onGoToShopping,
+                modifier = Modifier.weight(1f),
             )
-            StatTile(
-                "Planned",
-                data.plannedThisWeek.toString(),
-                Modifier.weight(1f).clickable(onClick = onGoToPlan),
+            CountTile(
+                label = "Planned",
+                count = data.plannedThisWeek,
                 channel = colors.info.base,
+                icon = Icons.Outlined.CalendarMonth,
+                onClick = onGoToPlan,
+                modifier = Modifier.weight(1f),
             )
         }
 
         // Recent recipes.
         if (data.recentRecipes.isEmpty()) {
-            PanelCard(Modifier.fillMaxWidth().clickable(onClick = onGoToRecipes)) {
+            PanelCard(Modifier.fillMaxWidth(), onClick = onGoToRecipes) {
                 Column {
                     Text("No recipes yet", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
@@ -200,14 +209,12 @@ private fun HomeContent(
                 }
             }
         } else {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SectionHeader("Recent recipes", channel = colors.heat.base)
-                TextButton(onClick = onGoToRecipes) { Text("See all") }
-            }
+            SectionHeader(
+                "Recent recipes",
+                modifier = Modifier.fillMaxWidth(),
+                channel = colors.heat.base,
+                trailing = { TextButton(onClick = onGoToRecipes) { Text("See all") } },
+            )
             data.recentRecipes.forEach { recipe ->
                 RecentRecipeRow(recipe = recipe, onClick = { onOpenRecipe(recipe.id) })
             }
@@ -216,8 +223,35 @@ private fun HomeContent(
 }
 
 @Composable
+private fun CountTile(
+    label: String,
+    count: Int,
+    channel: Color,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    StatTile(
+        label = label,
+        modifier = modifier,
+        channel = channel,
+        dense = true,
+        animatedValue = count,
+        icon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = channel,
+                modifier = Modifier.size(16.dp),
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+@Composable
 private fun RecentRecipeRow(recipe: RecipeSummaryOut, onClick: () -> Unit) {
-    PanelCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    PanelCard(Modifier.fillMaxWidth(), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             recipe.imageUrl?.let { url ->
                 AsyncImage(
