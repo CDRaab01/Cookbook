@@ -107,7 +107,7 @@ tasks.withType<Test>().configureEach {
 dependencies {
     // Hilt 2.60's generated components reference errorprone annotations at compile time; not
     // pulled transitively under AGP 9 / KSP2, so declare it explicitly (compile-only is enough).
-    compileOnly("com.google.errorprone:error_prone_annotations:2.36.0")
+    compileOnly("com.google.errorprone:error_prone_annotations:2.50.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
