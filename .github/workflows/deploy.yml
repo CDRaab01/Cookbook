@@ -64,3 +64,23 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($ref)) { $ref = 'origin/main' }
           Write-Host "Deploying ref: $ref"
           & "$env:COOKBOOK_DIR\deploy\redeploy.ps1" -Ref $ref
+
+      # Post-deploy synthetic smoke (ROADMAP Tier 2 #3): proves auth + DB read/write actually work
+      # against the just-deployed server, not just that /health is up. Registers-or-logs-in a
+      # throwaway account, reads recipes, creates one, verifies it persisted, deletes it. A non-zero
+      # exit fails the deploy run. Invite code (if registration is gated) is read from the deployed
+      # .env on the host, so no secret is duplicated into Actions.
+      - name: Post-deploy smoke
+        shell: powershell
+        env:
+          COOKBOOK_DIR: ${{ vars.COOKBOOK_DIR }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $proj = $env:COOKBOOK_DIR
+          # Run the smoke INSIDE the server container (python is there; the runner has no host
+          # python on PATH), hitting the app on its internal port 8000. REGISTRATION_INVITE_CODE is
+          # already in the container's env, so the script picks it up for the register-or-login.
+          docker compose -f "$proj\docker-compose.yml" cp "$proj\scripts\synthetic_smoke.py" server:/tmp/smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "copying smoke script into container failed" }
+          docker compose -f "$proj\docker-compose.yml" exec -T -e COOKBOOK_URL=http://localhost:8000 server python /tmp/smoke.py
+          if ($LASTEXITCODE -ne 0) { throw "post-deploy smoke FAILED" }
