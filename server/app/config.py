@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # is disabled, which is the case in CI and any deploy without Plate.
     plate_base_url: str | None = None
     cross_app_secret: str | None = None
+    # Cross-app service token (ROADMAP T2 #5, retiring cross_app_secret). When these are set (with
+    # suite_issuer), Cookbook requests a short-lived RS256 token from the Dragonfly identity
+    # server's POST /cross-app/token instead of self-signing an HS256 token — Plate validates it
+    # via the JWKS it already trusts. Falls back to cross_app_secret when unset (dual-accept).
+    cross_app_client_id: str | None = None
+    cross_app_client_secret: str | None = None
     # TTL of the minted cross-app token — only needs to outlive a single request round-trip.
     cross_app_token_ttl_seconds: int = 60
     # Timeout (seconds) for outbound calls to Plate.
