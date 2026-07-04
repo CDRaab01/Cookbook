@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.services.plate_migration_service import mint_cross_app_token
+from app.services.cross_app_token import cross_app_configured, fetch_cross_app_token
 from app.services.recipe_service import load_owned_recipe
 
 log = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class LogToPlateResult(BaseModel):
 
 
 def _guard_configured() -> None:
-    if not settings.plate_base_url or not settings.cross_app_secret:
+    if not settings.plate_base_url or not cross_app_configured():
         raise _DISABLED
 
 
@@ -87,7 +87,7 @@ async def _plate_post(
     path: str, email: str, payload: dict, client: httpx.AsyncClient | None
 ) -> dict:
     url = settings.plate_base_url.rstrip("/") + path
-    headers = {"Authorization": f"Bearer {mint_cross_app_token(email)}"}
+    headers = {"Authorization": f"Bearer {await fetch_cross_app_token(email)}"}
 
     async def _do(c: httpx.AsyncClient) -> dict:
         resp = await c.post(url, json=payload, headers=headers)

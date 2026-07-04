@@ -8,11 +8,9 @@ free-text ingredients derived from the food names + amounts. Idempotent: recipes
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import HTTPException, status
-from jose import jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +19,7 @@ from app.config import settings
 from app.limits import MAX_RECIPE_INGREDIENTS, QUANTITY_BOUNDS
 from app.models.recipe import Recipe
 from app.schemas.recipe import IngredientIn, RecipeCreate
+from app.services.cross_app_token import cross_app_configured, fetch_cross_app_token
 from app.services.recipe_service import create_recipe
 
 log = logging.getLogger(__name__)
@@ -36,19 +35,10 @@ class PlateMigrationResult(BaseModel):
     skipped: int
 
 
-def mint_cross_app_token(email: str) -> str:
-    """The token Plate's ``get_cross_app_user`` validates — same shape Plate mints for Spotter."""
-    expire = datetime.now(timezone.utc) + timedelta(seconds=settings.cross_app_token_ttl_seconds)
-    return jwt.encode(
-        {"email": email, "type": "cross_app", "exp": expire},
-        settings.cross_app_secret,
-        algorithm=settings.algorithm,
-    )
-
-
 async def _fetch_exports(email: str, client: httpx.AsyncClient) -> list[dict]:
     url = settings.plate_base_url.rstrip("/") + "/recipes/export"
-    resp = await client.get(url, headers={"Authorization": f"Bearer {mint_cross_app_token(email)}"})
+    token = await fetch_cross_app_token(email)
+    resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
     if resp.status_code == 401:
         # Plate 401s both for a bad secret AND for an email it has no account for — the latter
         # is far more common in practice (the email is the only identity bridge).
@@ -70,7 +60,7 @@ async def migrate_from_plate(
     client: httpx.AsyncClient | None = None,
 ) -> PlateMigrationResult:
     """Pull the user's Plate recipes across. ``client`` is injectable for tests."""
-    if not settings.plate_base_url or not settings.cross_app_secret:
+    if not settings.plate_base_url or not cross_app_configured():
         raise _DISABLED
 
     if client is not None:
