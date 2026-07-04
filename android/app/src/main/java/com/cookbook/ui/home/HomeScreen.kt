@@ -127,7 +127,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeContent(
+internal fun HomeContent(
     greeting: String,
     data: HomeData,
     onOpenRecipe: (String) -> Unit,
