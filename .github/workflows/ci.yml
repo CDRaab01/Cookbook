@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+  schedule:
+    # Weekly bit-rot check (Mondays 08:00 UTC) so "green" stays meaningful between pushes.
+    # Deploy is guarded against scheduled runs (see deploy.yml) so this never ships.
+    - cron: "0 8 * * 1"
 
 # Signed release publishing moved to release.yml (auto on main pushes that touch android/**).
 # This workflow is server checks + Android tests + debug build for push/PR only.
