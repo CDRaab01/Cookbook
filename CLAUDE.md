@@ -250,6 +250,9 @@ starts and keep both sides' cross-app surfaces isolated from session auth.
 
 ## 9. Conventions & guardrails
 
+- **Update `ARCHITECTURE.md` in the same PR** when a change alters architecture — a module's
+  responsibility, a layer boundary, a cross-app contract, or the data model. Silently-drifting
+  docs are how Spotter's API docs said `/plans` for a round (ROADMAP2 T2 #5c).
 - Match Plate/Spotter code style, package naming (`com.cookbook`), commit style,
   PR scoping. One phase per PR-sized chunk; restate assumptions before coding.
 - Merge/scaling math centralized and pure; clients display, never compute.
