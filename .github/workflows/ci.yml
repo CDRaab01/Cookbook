@@ -138,6 +138,37 @@ jobs:
             Cookbook/android/app/build/outputs/roborazzi/**
           retention-days: 30
 
+  # ── Security / supply chain ───────────────────────────────────────────────
+
+  secret-scan:
+    name: "Secret scan (gitleaks)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # full history so a secret in any past commit is caught
+      # Runs the same gitleaks image used for the baseline history scan. Exit 1 on any
+      # finding fails the job. --redact keeps the secret value out of the public log.
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source /repo --redact --no-banner
+
+  dep-audit:
+    name: "Dependency audit (pip-audit)"
+    runs-on: ubuntu-latest
+    # Weekly-only + advisory: never blocks a push/PR or the deploy (deploy is guarded against
+    # scheduled runs). A red weekly run is the signal to look at advisories.
+    if: github.event_name == 'schedule'
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - run: pip install -e .
+      - run: pip-audit --desc
+
   android-build:
     name: "Android — Assemble Debug APK"
     runs-on: ubuntu-latest
