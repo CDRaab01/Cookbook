@@ -57,6 +57,9 @@ class RecipeNutritionOut(BaseModel):
     per_serving: MacroTotals
     matched_count: int
     total_count: int
+    # Federated awareness Link F (reported by Plate): does one serving fit today's remaining kcal?
+    # None means "Plate didn't say" (integration off / no active goal / unreachable) — no badge.
+    fits_today: bool | None = None
 
 
 class LogToPlateRequest(BaseModel):
@@ -170,12 +173,26 @@ async def get_recipe_nutrition(
         await db.commit()
 
     servings = max(recipe.servings, 1)
+    per_serving = {k: v / servings for k, v in totals.items()}
+
+    # Link F: does one serving fit today's remaining kcal (reported by Plate)? Best-effort — None
+    # when Plate is off / no goal / unreachable, and only meaningful once we've matched some
+    # nutrition to fit against.
+    from app.services.remaining_service import fetch_remaining, fits
+
+    fits_today: bool | None = None
+    if matched:
+        remaining = await fetch_remaining(user.email, datetime.date.today(), client=client)
+        if remaining is not None:
+            fits_today = fits(per_serving["kcal"], remaining)
+
     return RecipeNutritionOut(
         items=items,
         totals=MacroTotals(**totals),
-        per_serving=MacroTotals(**{k: v / servings for k, v in totals.items()}),
+        per_serving=MacroTotals(**per_serving),
         matched_count=matched,
         total_count=len(items),
+        fits_today=fits_today,
     )
 
 
