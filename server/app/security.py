@@ -70,3 +70,34 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[object, Depends(get_current_user)]
+
+
+async def get_cross_app_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Resolve the Cookbook user from a sister-app cross-app token (federated awareness Link A —
+    Magpie reads cooked-meal counts).
+
+    RS256-ONLY: Cookbook's provider surfaces post-date the HS256 retirement plan (CROSS-APP.md —
+    new surfaces skip the legacy path entirely), so there is no shared-secret fallback here. The
+    token must be a dragonfly-id service token with ``aud="cross-app"``; a user's own session
+    token or an SSO token (aud="suite") can never reach this surface.
+    """
+    from app.models.user import User
+    from app.services.suite_auth import verify_cross_app_token
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    email = await verify_cross_app_token(token)
+    if not email:
+        raise credentials_exception
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise credentials_exception
+    return user
