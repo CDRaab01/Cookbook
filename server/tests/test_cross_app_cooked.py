@@ -150,3 +150,52 @@ async def test_cooked_matches_contract_fixture(client, cook_user):
     body = resp.json()
     assert set(body.keys()) == set(fixture.keys()) - {"_comment"}
     assert set(body["events"][0].keys()) == set(fixture["events"][0].keys())
+
+
+# --- planned-meals provider (Link E) ------------------------------------------------------
+
+
+async def test_plan_returns_slot_and_name_only(client, cook_user):
+    from app.models.meal_plan import MealPlanEntry
+    from app.models.recipe import Recipe
+
+    async with AsyncSessionLocal() as session:
+        recipe = Recipe(user_id=cook_user.id, name="Chicken Tikka")
+        session.add(recipe)
+        await session.flush()
+        session.add_all([
+            MealPlanEntry(user_id=cook_user.id, date=TODAY, slot="dinner", recipe_id=recipe.id),
+            MealPlanEntry(user_id=cook_user.id, date=TODAY, slot="lunch", note="Leftovers"),
+            # Another day — must not appear.
+            MealPlanEntry(
+                user_id=cook_user.id, date=TODAY + datetime.timedelta(days=1),
+                slot="dinner", recipe_id=recipe.id,
+            ),
+        ])
+        await session.commit()
+
+    token = _cross_app_token(cook_user.email)
+    resp = await client.get(
+        "/cross-app/plan", params={"date": TODAY.isoformat()},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["date"] == TODAY.isoformat()
+    slots = {e["slot"]: e["recipe_name"] for e in body["entries"]}
+    assert slots == {"dinner": "Chicken Tikka", "lunch": "Leftovers"}  # note falls back to name
+    assert all(set(e.keys()) == {"slot", "recipe_name"} for e in body["entries"])
+
+
+async def test_plan_requires_cross_app_token(client, suite_enabled):
+    resp = await client.get("/cross-app/plan", params={"date": TODAY.isoformat()})
+    assert resp.status_code == 401
+
+
+async def test_plan_empty_day(client, cook_user):
+    token = _cross_app_token(cook_user.email)
+    resp = await client.get(
+        "/cross-app/plan", params={"date": TODAY.isoformat()},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.json()["entries"] == []

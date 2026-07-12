@@ -1,0 +1,8 @@
+{
+  "_comment": "Contract fixture for GET /cross-app/plan?date= (RS256-only). Consumers (Plate plan_source) parse against this exact shape.",
+  "date": "2026-07-11",
+  "entries": [
+    {"slot": "dinner", "recipe_name": "Chicken Tikka"},
+    {"slot": "lunch", "recipe_name": "Leftover stir fry"}
+  ]
+}

@@ -18,6 +18,7 @@ from app.limiter import limiter
 from app.models.user import User
 from app.security import get_cross_app_user
 from app.services.cook_event_service import get_cooked_range
+from app.services.plan_service import get_plan
 
 router = APIRouter(prefix="/cross-app", tags=["cross-app"])
 
@@ -32,3 +33,24 @@ async def cooked_range(
     end: datetime.date = Query(..., description="Range end (inclusive)"),
 ):
     return await get_cooked_range(db, current_user.id, start, end)
+
+
+@router.get("/plan")
+@limiter.limit("60/minute")
+async def planned_meals(
+    request: Request,
+    current_user: Annotated[User, Depends(get_cross_app_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    date: datetime.date = Query(..., description="The day to report planned meals for"),
+):
+    """Tonight's plan for Plate's coach (federated awareness Link E) — slot + recipe name only,
+    reusing `plan_service.get_plan` (single day = start==end). No macros: Plate does nutrition,
+    and CROSS-APP.md #2's "planned dinner ≈ N kcal" belongs to Plate reasoning over the name, not
+    Cookbook guessing here. Free-text notes ride along as the entry's name."""
+    entries = await get_plan(db, current_user.id, date, date)
+    return {
+        "date": date.isoformat(),
+        "entries": [
+            {"slot": e.slot, "recipe_name": e.recipe_name or e.note} for e in entries
+        ],
+    }
