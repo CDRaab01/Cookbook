@@ -165,3 +165,98 @@ async def test_endpoints_503_when_unconfigured(auth_client, monkeypatch):
         json={"date": "2026-07-01", "meal": "dinner"},
     )
     assert resp.status_code == 503
+
+
+# --- Link F: 'fits today' badge from Plate remaining macros --------------------------------
+
+
+def _fake_plate_with_remaining(kcal_remaining: int | None) -> httpx.AsyncClient:
+    """Answers resolve-foods (so nutrition computes) and remaining (kcal_remaining None -> 404)."""
+    beef_id = str(uuid.uuid4())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/cross-app/remaining":
+            if kcal_remaining is None:
+                return httpx.Response(404, json={"detail": "No active goal"})
+            return httpx.Response(200, json={
+                "date": "2026-07-11",
+                "kcal_remaining": kcal_remaining,
+                "protein_g_remaining": 50, "carbs_g_remaining": 40, "fat_g_remaining": 20,
+            })
+        # resolve-foods (POST): match the two known ingredients so per-serving kcal = 350.
+        import json as _json
+        body = _json.loads(request.content)
+        items = []
+        for item in body["items"]:
+            if item["name"] == "Ground beef":
+                items.append({"name": item["name"], "matched": True, "food_id": beef_id,
+                              "kcal": 980.0, "protein_g": 84.0, "carbs_g": 0.0, "fat_g": 68.0})
+            elif item["name"] == "Beans":
+                items.append({"name": item["name"], "matched": True, "food_id": str(uuid.uuid4()),
+                              "kcal": 420.0, "protein_g": 28.0, "carbs_g": 76.0, "fat_g": 2.0})
+            else:
+                items.append({"name": item["name"], "matched": False})
+        return httpx.Response(200, json={"items": items})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_fits_today_true_when_serving_fits_remaining(client, plate_configured):
+    user, _, recipe_id = await _user_with_recipe(client)
+    async with AsyncSessionLocal() as db:
+        result = await get_recipe_nutrition(
+            db, user, uuid.UUID(recipe_id), client=_fake_plate_with_remaining(800)
+        )
+    assert result.per_serving.kcal == pytest.approx(350.0)
+    assert result.fits_today is True  # 350 <= 800
+
+
+async def test_fits_today_false_when_serving_exceeds_remaining(client, plate_configured):
+    user, _, recipe_id = await _user_with_recipe(client)
+    async with AsyncSessionLocal() as db:
+        result = await get_recipe_nutrition(
+            db, user, uuid.UUID(recipe_id), client=_fake_plate_with_remaining(100)
+        )
+    assert result.fits_today is False  # 350 > 100*1.05
+
+
+async def test_fits_today_none_when_plate_has_no_goal(client, plate_configured):
+    user, _, recipe_id = await _user_with_recipe(client)
+    async with AsyncSessionLocal() as db:
+        result = await get_recipe_nutrition(
+            db, user, uuid.UUID(recipe_id), client=_fake_plate_with_remaining(None)  # 404
+        )
+    assert result.fits_today is None  # no badge
+
+
+def _fake_plate_remaining_errors() -> httpx.AsyncClient:
+    """resolve-foods works (so nutrition computes); /remaining 500s (so the badge drops)."""
+    beef_id = str(uuid.uuid4())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/cross-app/remaining":
+            return httpx.Response(500)
+        import json as _json
+
+        body = _json.loads(request.content)
+        items = [
+            {"name": i["name"], "matched": True, "food_id": beef_id,
+             "kcal": 700.0, "protein_g": 40.0, "carbs_g": 40.0, "fat_g": 30.0}
+            if i["name"] in ("Ground beef", "Beans")
+            else {"name": i["name"], "matched": False}
+            for i in body["items"]
+        ]
+        return httpx.Response(200, json={"items": items})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_fits_today_none_when_remaining_call_errors(client, plate_configured):
+    """Nutrition still computes; a failing /remaining just drops the badge (degrade to absence)."""
+    user, _, recipe_id = await _user_with_recipe(client)
+    async with AsyncSessionLocal() as db:
+        result = await get_recipe_nutrition(
+            db, user, uuid.UUID(recipe_id), client=_fake_plate_remaining_errors()
+        )
+    assert result.matched_count > 0  # nutrition still worked
+    assert result.fits_today is None  # badge dropped on the /remaining error
