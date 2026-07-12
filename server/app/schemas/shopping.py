@@ -116,6 +116,15 @@ class SuggestionOut(BaseModel):
     category: str | None = None
 
 
+class GrocerySpendOut(BaseModel):
+    """Grocery dollars spent so far this month, reported by Magpie (federated awareness Link D).
+
+    Whole dollars, never a transaction. Absent (endpoint returns null) when the integration is off."""
+
+    month: str  # ISO first-of-month, e.g. "2026-07-01"
+    spent_dollars: int
+
+
 class MeasureOut(BaseModel):
     """One aggregated amount ("2 tbsp"); unit None is a bare count ("3")."""
 

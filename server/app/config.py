@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     # Timeout (seconds) for outbound calls to Plate.
     plate_timeout_seconds: float = 8.0
 
+    # Magpie integration (federated awareness Link D — grocery actuals). Cookbook reads the
+    # household's grocery spend for the current month from Magpie's cross-app summary to badge the
+    # shopping list ("$Y on groceries this month"). Read-only, RS256-only (reuses the confidential
+    # client above). Unset ⇒ the tile is simply absent, in CI and any deploy without Magpie.
+    magpie_base_url: str | None = None
+    magpie_timeout_seconds: float = 8.0
+
     # Suite SSO (BROKER.md Phase 2b). When suite_jwks_url + suite_issuer are set, POST /auth/suite
     # accepts a suite access token (RS256, from the Dragonfly identity server), validates it
     # against the published JWKS, and trades it for a Cookbook session — linking by email. Unset ⇒

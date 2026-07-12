@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.schemas.shopping import (
     AddRecipeRequest,
+    GrocerySpendOut,
     ItemCreate,
     ItemUpdate,
     ListCreate,
@@ -16,6 +17,7 @@ from app.schemas.shopping import (
     SuggestionOut,
 )
 from app.security import CurrentUser
+from app.services.grocery_spend_service import fetch_month_grocery_spend
 from app.services.shopping_service import (
     add_item,
     add_recipe,
@@ -62,6 +64,21 @@ async def suggest(
     """Autocomplete from the user's own item history (v0.2). Declared before /{list_id} so
     "suggest" never parses as a list id."""
     return await suggest_items(db, current_user.id, q)
+
+
+@router.get("/grocery-spend", response_model=GrocerySpendOut | None)
+async def grocery_spend(current_user: CurrentUser):
+    """This month's grocery dollars spent, reported by Magpie (federated awareness Link D).
+
+    Declared before /{list_id} so "grocery-spend" never parses as a list id. Returns null (not an
+    error) when the Magpie integration is off or unreachable — the shopping tile then just hides
+    (CROSS-APP.md rule 7, degrade to absence)."""
+    import datetime
+
+    spend = await fetch_month_grocery_spend(current_user.email, datetime.date.today())
+    if spend is None:
+        return None
+    return GrocerySpendOut(month=spend.month, spent_dollars=spend.spent_dollars)
 
 
 @router.get("/{list_id}", response_model=ListOut)
