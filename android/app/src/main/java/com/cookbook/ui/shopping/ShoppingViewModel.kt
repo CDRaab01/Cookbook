@@ -2,6 +2,7 @@ package com.cookbook.ui.shopping
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingListOut
@@ -40,6 +41,10 @@ class ShoppingViewModel @Inject constructor(
     private val _allLists = MutableStateFlow<List<ListSummaryOut>>(emptyList())
     val allLists: StateFlow<List<ListSummaryOut>> = _allLists
 
+    /** This month's grocery spend, reported by Magpie; null hides the tile (Link D). */
+    private val _grocerySpend = MutableStateFlow<GrocerySpendOut?>(null)
+    val grocerySpend: StateFlow<GrocerySpendOut?> = _grocerySpend
+
     fun load() {
         viewModelScope.launch {
             if (_list.value !is UiState.Success) _list.value = UiState.Loading
@@ -53,6 +58,8 @@ class ShoppingViewModel @Inject constructor(
             } catch (_: Exception) {
                 emptyList()
             }
+            // Best-effort; the repo already swallows failures to null (tile hides).
+            _grocerySpend.value = shoppingRepository.grocerySpend()
         }
     }
 

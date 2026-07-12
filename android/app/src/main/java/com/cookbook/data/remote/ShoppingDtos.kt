@@ -74,6 +74,13 @@ data class SuggestionOut(
     val category: String? = null,
 )
 
+/** This month's grocery dollars spent, reported by Magpie (federated awareness Link D). */
+@Serializable
+data class GrocerySpendOut(
+    val month: String,
+    @SerialName("spent_dollars") val spentDollars: Int,
+)
+
 @Serializable
 data class AddRecipeToListRequest(
     @SerialName("recipe_id") val recipeId: String,

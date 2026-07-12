@@ -123,6 +123,10 @@ interface ApiService {
     @GET("lists/suggest")
     suspend fun suggestItems(@Query("q") query: String): List<SuggestionOut>
 
+    /** This month's grocery spend from Magpie; body is null when the integration is off. */
+    @GET("lists/grocery-spend")
+    suspend fun getGrocerySpend(): GrocerySpendOut?
+
     @POST("lists/{listId}/items")
     suspend fun addShoppingItem(
         @Path("listId") listId: String,

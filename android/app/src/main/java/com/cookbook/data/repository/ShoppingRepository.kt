@@ -1,5 +1,6 @@
 package com.cookbook.data.repository
 
+import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
@@ -49,6 +50,9 @@ interface ShoppingRepository {
 
     /** Autocomplete from the user's item history; empty when offline. */
     suspend fun suggest(query: String): List<SuggestionOut>
+
+    /** This month's grocery spend from Magpie; null when the integration is off or unreachable. */
+    suspend fun grocerySpend(): GrocerySpendOut?
 }
 
 /** The server's "this recipe is already on the list" 409 — the UI turns it into re-add/skip. */

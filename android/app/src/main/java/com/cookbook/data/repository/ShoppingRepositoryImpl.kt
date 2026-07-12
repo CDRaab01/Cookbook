@@ -4,6 +4,7 @@ import com.cookbook.data.local.db.ShoppingDao
 import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListCreateRequest
 import com.cookbook.data.remote.ListRenameRequest
 import com.cookbook.data.remote.ListSummaryOut
@@ -204,6 +205,12 @@ class ShoppingRepositoryImpl @Inject constructor(
         if (query.isBlank()) emptyList() else api.suggestItems(query)
     } catch (_: IOException) {
         emptyList()
+    }
+
+    override suspend fun grocerySpend(): GrocerySpendOut? = try {
+        api.getGrocerySpend()
+    } catch (_: Exception) {
+        null // integration off / offline / server hiccup — the tile just doesn't show
     }
 
     override suspend fun deleteItem(listId: String, itemId: String): ShoppingListOut {

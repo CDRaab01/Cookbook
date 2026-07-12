@@ -83,6 +83,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val suggestions by viewModel.suggestions.collectAsState()
     val undoable by viewModel.undoable.collectAsState()
     val allLists by viewModel.allLists.collectAsState()
+    val grocerySpend by viewModel.grocerySpend.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
@@ -219,6 +220,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
                 } else {
                     ShoppingListBody(
                         items = items,
+                        grocerySpend = grocerySpend,
                         onToggle = viewModel::toggleChecked,
                         onDelete = viewModel::deleteItem,
                         onEdit = { editing = it },
@@ -307,6 +309,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
 @Composable
 private fun ShoppingListBody(
     items: List<ShoppingItemOut>,
+    grocerySpend: com.cookbook.data.remote.GrocerySpendOut?,
     onToggle: (String, Boolean) -> Unit,
     onDelete: (String) -> Unit,
     onEdit: (ShoppingItemOut) -> Unit,
@@ -322,6 +325,12 @@ private fun ShoppingListBody(
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        grocerySpend?.let { spend ->
+            item(key = "grocery_spend") {
+                GrocerySpendTile(spend)
+                Spacer(Modifier.height(4.dp))
+            }
+        }
         item {
             Row(verticalAlignment = Alignment.Bottom) {
                 DataText(
@@ -398,6 +407,33 @@ private fun ShoppingListBody(
                     onEdit = { onEdit(item) },
                 )
             }
+        }
+    }
+}
+
+/**
+ * Federated-awareness Link D: the household's grocery spend so far this month, reported by Magpie.
+ * A quiet, read-only tile — source-labeled ("via Magpie") per CROSS-APP.md rule 7, and only shown
+ * when Magpie answered (the ViewModel leaves it null otherwise).
+ */
+@Composable
+private fun GrocerySpendTile(spend: com.cookbook.data.remote.GrocerySpendOut) {
+    val colors = CookbookTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DataText(
+            "$${spend.spentDollars}",
+            style = CookbookTheme.dataType.dataMedium,
+            color = colors.fresh.base,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Caption("on groceries this month")
+            Caption("via Magpie", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

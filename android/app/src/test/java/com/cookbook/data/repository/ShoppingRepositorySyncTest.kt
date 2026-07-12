@@ -191,6 +191,7 @@ private class FakeApi : ApiService {
     override suspend fun importRecipeFromUrl(req: RecipeImportUrlRequest): RecipeOut =
         error("unused")
     override suspend fun suggestItems(query: String): List<SuggestionOut> = error("unused")
+    override suspend fun getGrocerySpend(): com.cookbook.data.remote.GrocerySpendOut? = null
     override suspend fun migrateFromPlate(): PlateMigrationResult = error("unused")
     override suspend fun scanPantry(photo: okhttp3.MultipartBody.Part) = error("unused")
     override suspend fun getPantry() = error("unused")
