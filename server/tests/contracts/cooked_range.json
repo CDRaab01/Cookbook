@@ -1,0 +1,12 @@
+{
+  "_comment": "Contract fixture for GET /cross-app/cooked?start=&end= (RS256-only). Consumers (Magpie cross_app_client) parse against this exact shape; the provider test pins the live response to it.",
+  "start": "2026-06-28",
+  "end": "2026-07-11",
+  "count": 3,
+  "distinct_recipes": 2,
+  "events": [
+    {"date": "2026-06-29", "recipe_name": "Chicken Tikka"},
+    {"date": "2026-07-03", "recipe_name": "Chicken Tikka"},
+    {"date": "2026-07-08", "recipe_name": "Veggie Stir Fry"}
+  ]
+}
