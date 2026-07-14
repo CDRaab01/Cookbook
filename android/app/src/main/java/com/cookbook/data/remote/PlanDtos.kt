@@ -22,7 +22,11 @@ data class PlanEntryOut(
     @SerialName("recipe_name") val recipeName: String? = null,
     @SerialName("recipe_image_url") val recipeImageUrl: String? = null,
     val note: String? = null,
+    val eaten: Boolean = false,
 )
+
+@Serializable
+data class PlanEntryUpdateRequest(val eaten: Boolean)
 
 @Serializable
 data class PlanToListRequest(

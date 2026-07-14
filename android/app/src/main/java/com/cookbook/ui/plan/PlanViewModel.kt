@@ -104,6 +104,17 @@ class PlanViewModel @Inject constructor(
         }
     }
 
+    fun setEaten(id: String, eaten: Boolean) {
+        viewModelScope.launch {
+            try {
+                planRepository.setEaten(id, eaten)
+                load()
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't update that"
+            }
+        }
+    }
+
     fun removeEntry(id: String) {
         viewModelScope.launch {
             try {

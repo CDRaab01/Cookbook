@@ -35,6 +35,30 @@ async def test_plan_crud_and_range(auth_client):
     assert len(week) == 1
 
 
+async def test_mark_entry_eaten(auth_client):
+    chili = await _recipe(auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}])
+    created = await auth_client.post(
+        "/plan", json={"date": "2026-07-06", "slot": "dinner", "recipe_id": chili}
+    )
+    entry_id = created.json()["id"]
+    assert created.json()["eaten"] is False
+
+    patched = await auth_client.patch(f"/plan/{entry_id}", json={"eaten": True})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["eaten"] is True
+    # The recipe name must still resolve after the mutate+re-query (async lazy-load guard).
+    assert patched.json()["recipe_name"] == "Chili"
+
+    week = (
+        await auth_client.get("/plan", params={"start": "2026-07-06", "end": "2026-07-06"})
+    ).json()
+    assert week[0]["eaten"] is True
+
+    # Un-eat works too.
+    unpatched = await auth_client.patch(f"/plan/{entry_id}", json={"eaten": False})
+    assert unpatched.json()["eaten"] is False
+
+
 async def test_entry_needs_exactly_one_of_recipe_or_note(auth_client):
     chili = await _recipe(auth_client, "Chili", [{"name": "Beans", "quantity": 2, "unit": "can"}])
     both = await auth_client.post(

@@ -51,6 +51,8 @@ async def planned_meals(
     return {
         "date": date.isoformat(),
         "entries": [
-            {"slot": e.slot, "recipe_name": e.recipe_name or e.note} for e in entries
+            # `eaten` lets Plate's coach tell "planned" from "actually happened" — context only.
+            {"slot": e.slot, "recipe_name": e.recipe_name or e.note, "eaten": e.eaten}
+            for e in entries
         ],
     }

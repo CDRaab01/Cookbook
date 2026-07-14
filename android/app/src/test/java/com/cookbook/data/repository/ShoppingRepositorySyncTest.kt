@@ -16,6 +16,7 @@ import com.cookbook.data.remote.LogToPlateResult
 import com.cookbook.data.remote.LoginRequest
 import com.cookbook.data.remote.PlanEntryCreateRequest
 import com.cookbook.data.remote.PlanEntryOut
+import com.cookbook.data.remote.PlanEntryUpdateRequest
 import com.cookbook.data.remote.PlanToListRequest
 import com.cookbook.data.remote.PlanToListResult
 import com.cookbook.data.remote.PlateMigrationResult
@@ -179,6 +180,7 @@ private class FakeApi : ApiService {
         error("unused")
     override suspend fun getPlan(start: String, end: String): List<PlanEntryOut> = error("unused")
     override suspend fun createPlanEntry(req: PlanEntryCreateRequest): PlanEntryOut = error("unused")
+    override suspend fun updatePlanEntry(id: String, req: PlanEntryUpdateRequest): PlanEntryOut = error("unused")
     override suspend fun deletePlanEntry(id: String) = error("unused")
     override suspend fun planToList(req: PlanToListRequest): PlanToListResult = error("unused")
     override suspend fun addRecipeToList(

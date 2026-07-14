@@ -17,7 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +44,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cookbook.data.remote.MEAL_SLOTS
@@ -127,6 +131,7 @@ fun PlanScreen(
                     onSlotTap = { date, slot -> assigningSlot = date to slot },
                     onRemove = viewModel::removeEntry,
                     onOpenRecipe = onOpenRecipe,
+                    onSetEaten = viewModel::setEaten,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -164,6 +169,7 @@ private fun WeekList(
     onSlotTap: (LocalDate, String) -> Unit,
     onRemove: (String) -> Unit,
     onOpenRecipe: (String) -> Unit,
+    onSetEaten: (String, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val byDate = entries.groupBy { it.date }
@@ -187,6 +193,7 @@ private fun WeekList(
                         onTap = { if (entry == null) onSlotTap(date, slot) },
                         onRemove = { entry?.let { onRemove(it.id) } },
                         onOpenRecipe = onOpenRecipe,
+                        onSetEaten = { eaten -> entry?.let { onSetEaten(it.id, eaten) } },
                     )
                 }
             }
@@ -201,6 +208,7 @@ internal fun SlotRow(
     onTap: () -> Unit,
     onRemove: () -> Unit,
     onOpenRecipe: (String) -> Unit,
+    onSetEaten: (Boolean) -> Unit = {},
 ) {
     val colors = CookbookTheme.colors
     PanelCard(
@@ -222,6 +230,10 @@ internal fun SlotRow(
                 color = colors.heat.base,
                 modifier = Modifier.width(84.dp),
             )
+            val eaten = entry?.eaten == true
+            // Eaten meals read as done: struck through and dimmed.
+            val nameDecoration = if (eaten) TextDecoration.LineThrough else null
+            val nameColor = if (eaten) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified
             when {
                 entry == null -> Text(
                     "Tap to plan",
@@ -231,18 +243,29 @@ internal fun SlotRow(
                 entry.recipeId != null -> Text(
                     entry.recipeName ?: "Recipe",
                     style = MaterialTheme.typography.bodyMedium,
+                    textDecoration = nameDecoration,
+                    color = nameColor,
                     modifier = Modifier.weight(1f).clickable { onOpenRecipe(entry.recipeId) },
                 )
                 else -> Text(
                     entry.note ?: "",
                     style = MaterialTheme.typography.bodyMedium,
+                    textDecoration = nameDecoration,
+                    color = nameColor,
                     modifier = Modifier.weight(1f),
                 )
             }
             if (entry != null) {
                 // The recipe/note Text above already has weight(1f), so it fills the row and pushes
-                // this button to the end. (A Spacer(weight(0f)) used to sit here and crashed on recipe
-                // entries — Compose's Modifier.weight requires a value > 0.)
+                // these buttons to the end. (A Spacer(weight(0f)) used to sit here and crashed on
+                // recipe entries — Compose's Modifier.weight requires a value > 0.)
+                IconButton(onClick = { onSetEaten(!entry.eaten) }) {
+                    Icon(
+                        if (entry.eaten) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
+                        contentDescription = if (entry.eaten) "Eaten — tap to undo" else "Mark as eaten",
+                        tint = if (entry.eaten) colors.fresh.base else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 IconButton(onClick = onRemove) {
                     Icon(Icons.Outlined.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

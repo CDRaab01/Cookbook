@@ -81,9 +81,9 @@ private fun PlanSlotsScene() {
         com.cookbook.ui.plan.SlotRow(
             slot = "lunch",
             entry = com.cookbook.data.remote.PlanEntryOut(
-                id = "2", date = "2026-07-14", slot = "lunch", note = "Leftovers",
+                id = "2", date = "2026-07-14", slot = "lunch", note = "Leftovers", eaten = true,
             ),
-            onTap = {}, onRemove = {}, onOpenRecipe = {},
+            onTap = {}, onRemove = {}, onOpenRecipe = {}, onSetEaten = {},
         )
         com.cookbook.ui.plan.SlotRow(
             slot = "breakfast", entry = null,

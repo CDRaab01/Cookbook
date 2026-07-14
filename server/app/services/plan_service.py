@@ -36,6 +36,7 @@ def _to_out(entry: MealPlanEntry) -> PlanEntryOut:
         recipe_name=entry.recipe.name if entry.recipe is not None else None,
         recipe_image_url=entry.recipe.image_url if entry.recipe is not None else None,
         note=entry.note,
+        eaten=entry.eaten,
     )
 
 
@@ -81,6 +82,23 @@ async def add_entry(db: AsyncSession, user_id: uuid.UUID, req: PlanEntryCreate) 
     db.add(entry)
     await db.commit()
     result = await db.execute(select(MealPlanEntry).where(MealPlanEntry.id == entry.id))
+    return _to_out(result.scalar_one())
+
+
+async def set_eaten(
+    db: AsyncSession, user_id: uuid.UUID, entry_id: uuid.UUID, eaten: bool
+) -> PlanEntryOut:
+    """Mark a planned meal eaten (or un-eat it). Ownership-checked; returns the updated entry."""
+    entry = await db.get(MealPlanEntry, entry_id)
+    if entry is None or entry.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    entry.eaten = eaten
+    await db.commit()
+    # Expire then re-query so the entry loads fresh and its selectin `recipe` relationship fires —
+    # a re-query of the still-mapped instance would return it with `recipe` unloaded, and accessing
+    # it in _to_out would trigger an async lazy load (MissingGreenlet) for recipe entries.
+    db.expire(entry)
+    result = await db.execute(select(MealPlanEntry).where(MealPlanEntry.id == entry_id))
     return _to_out(result.scalar_one())
 
 

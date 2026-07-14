@@ -43,6 +43,13 @@ class PlanEntryOut(BaseModel):
     recipe_name: str | None = None
     recipe_image_url: str | None = None
     note: str | None = None
+    eaten: bool = False
+
+
+class PlanEntryUpdate(BaseModel):
+    """Mark a planned meal eaten (or un-eat it) — the only mutable field on an entry."""
+
+    eaten: bool
 
 
 class PlanToListRequest(BaseModel):

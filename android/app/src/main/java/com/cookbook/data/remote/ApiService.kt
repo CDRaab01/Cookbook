@@ -62,6 +62,12 @@ interface ApiService {
     @POST("plan")
     suspend fun createPlanEntry(@Body req: PlanEntryCreateRequest): PlanEntryOut
 
+    @PATCH("plan/{id}")
+    suspend fun updatePlanEntry(
+        @Path("id") id: String,
+        @Body req: PlanEntryUpdateRequest,
+    ): PlanEntryOut
+
     @DELETE("plan/{id}")
     suspend fun deletePlanEntry(@Path("id") id: String)
 
