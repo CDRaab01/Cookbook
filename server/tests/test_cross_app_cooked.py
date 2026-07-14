@@ -184,7 +184,9 @@ async def test_plan_returns_slot_and_name_only(client, cook_user):
     assert body["date"] == TODAY.isoformat()
     slots = {e["slot"]: e["recipe_name"] for e in body["entries"]}
     assert slots == {"dinner": "Chicken Tikka", "lunch": "Leftovers"}  # note falls back to name
-    assert all(set(e.keys()) == {"slot", "recipe_name"} for e in body["entries"])
+    # slot + name + the eaten flag (so Plate's coach knows planned vs actually-happened); nothing more.
+    assert all(set(e.keys()) == {"slot", "recipe_name", "eaten"} for e in body["entries"])
+    assert all(e["eaten"] is False for e in body["entries"])  # nothing marked eaten yet
 
 
 async def test_plan_requires_cross_app_token(client, suite_enabled):

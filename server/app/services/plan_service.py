@@ -94,10 +94,11 @@ async def set_eaten(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
     entry.eaten = eaten
     await db.commit()
-    # Expire then re-query so the entry loads fresh and its selectin `recipe` relationship fires —
-    # a re-query of the still-mapped instance would return it with `recipe` unloaded, and accessing
-    # it in _to_out would trigger an async lazy load (MissingGreenlet) for recipe entries.
-    db.expire(entry)
+    # Expunge then re-query so the entry loads FRESH (not from the identity map) and its selectin
+    # `recipe` relationship fires — exactly like get_plan. A re-query of the still-mapped instance
+    # returns it with `recipe` unloaded, and accessing it in _to_out would trigger an async lazy
+    # load (MissingGreenlet) for recipe entries.
+    db.expunge(entry)
     result = await db.execute(select(MealPlanEntry).where(MealPlanEntry.id == entry_id))
     return _to_out(result.scalar_one())
 
