@@ -4,6 +4,26 @@
 staples → "what can I make" suggestions — see CLAUDE.md v0.4.0). It followed the ground rules
 below, which remain the contract for any future AI work here.
 
+## Road to 1.0 (suite pivot, 2026-07-13)
+
+The suite entered its **1.0 polish round** (host-level ROADMAP3, C:\Code): every app must pass a
+shared bar — onboarding, designed empty/loading/error states, motion/celebration + dark/light
+parity, defined offline behavior, no dead settings, an on-device pass, gating screenshot
+baselines, icon quality, truthful docs — with `versionName` 1.0.0 as the round's **last** commit.
+
+Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
+
+1. **Household list sharing by invite** (Non-AI #1 below) — the headline. Share a *list*, not
+   accounts; SSO is the identity foundation; the merge kernel already handles concurrent adds.
+   This is the feature that makes the suite read as multi-user and professional.
+2. **Custom/reorderable aisles** (Non-AI #2) — store-walk order.
+3. **Designed empty states** across screens (the Phase-8 leftover) + celebration on
+   list-complete/cook-complete via the Pulse primitives as host Tier P lands them.
+4. **Record the Roborazzi baselines** (Non-AI #4) — the bar makes "record or delete" a gate,
+   not a suggestion.
+5. Version 0.4.0 → **1.0.0** at the gate; the airplane-mode on-device pass happens in the same
+   round (the offline shopping-list promise is the product — prove it on the phone).
+
 ## Ground rules for the incoming AI round (read before building)
 
 1. **Reuse the existing seam.** `app/services/ai/` already holds the LM Studio vision pipeline
@@ -28,12 +48,12 @@ below, which remain the contract for any future AI work here.
 
 ## Cross-app work (approved 2026-07-03 — see Dragonfly/CROSS-APP.md for the full design)
 
-- **Meal plan → Plate** (CROSS-APP item 2): add `GET /cross-app/plan?date=` returning planned
-  entries with per-recipe nutrition (reuse the Plate-resolved data; free-text notes come back
-  name-only) so Plate's coach knows tonight's dinner.
-- **Macro-aware suggestions** (item 3): rank/badge pantry suggestions by fit to Plate's
-  `GET /cross-app/remaining?date=`. Ranking input only — suggestions must keep working with
-  the flag unset.
+- ✓ **Meal plan → Plate — SHIPPED 2026-07-11** (federated-awareness Link E): `GET
+  /cross-app/plan?date=` (slot+name only), consumed by Plate's coach as trusted context.
+- ✓ **Macro-aware suggestions — SHIPPED 2026-07-11** (Link F): recipe nutrition carries
+  `fits_today: bool|None` from Plate's `/cross-app/remaining`; suggestions work with the flag
+  unset, as specced. **Also shipped (Link D consumer, 2026-07-12):** "$Y on groceries · via
+  Magpie" on the shopping list from Magpie's `/cross-app/summary`; absent ⇒ hidden.
 - **Digest range read** (item 4): a cook-events/plan range endpoint for the future suite
   digest.
 - Adopt the contract-fixture rule (CROSS-APP.md infra): consume Plate's committed fixtures
