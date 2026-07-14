@@ -195,7 +195,7 @@ private fun WeekList(
 }
 
 @Composable
-private fun SlotRow(
+internal fun SlotRow(
     slot: String,
     entry: PlanEntryOut?,
     onTap: () -> Unit,
@@ -240,7 +240,9 @@ private fun SlotRow(
                 )
             }
             if (entry != null) {
-                Spacer(Modifier.weight(if (entry.recipeId != null) 0f else 1f))
+                // The recipe/note Text above already has weight(1f), so it fills the row and pushes
+                // this button to the end. (A Spacer(weight(0f)) used to sit here and crashed on recipe
+                // entries — Compose's Modifier.weight requires a value > 0.)
                 IconButton(onClick = onRemove) {
                     Icon(Icons.Outlined.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

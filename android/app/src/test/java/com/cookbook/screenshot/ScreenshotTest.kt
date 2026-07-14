@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
@@ -55,6 +57,39 @@ class ScreenshotTest {
 
     @Test fun home_light() = capture("home_light", dark = false) { HomeScene() }
     @Test fun home_dark() = capture("home_dark", dark = true) { HomeScene() }
+
+    // Regression: a recipe plan entry used to crash SlotRow (Modifier.weight(0f)). Rendering one
+    // proves it doesn't crash and lays out correctly, alongside a note and an empty slot.
+    @Test fun plan_slots_light() = capture("plan_slots_light", dark = false) { PlanSlotsScene() }
+    @Test fun plan_slots_dark() = capture("plan_slots_dark", dark = true) { PlanSlotsScene() }
+}
+
+@Composable
+private fun PlanSlotsScene() {
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        com.cookbook.ui.plan.SlotRow(
+            slot = "dinner",
+            entry = com.cookbook.data.remote.PlanEntryOut(
+                id = "1", date = "2026-07-14", slot = "dinner",
+                recipeId = "r1", recipeName = "Sheet-Pan Chicken & Veg",
+            ),
+            onTap = {}, onRemove = {}, onOpenRecipe = {},
+        )
+        com.cookbook.ui.plan.SlotRow(
+            slot = "lunch",
+            entry = com.cookbook.data.remote.PlanEntryOut(
+                id = "2", date = "2026-07-14", slot = "lunch", note = "Leftovers",
+            ),
+            onTap = {}, onRemove = {}, onOpenRecipe = {},
+        )
+        com.cookbook.ui.plan.SlotRow(
+            slot = "breakfast", entry = null,
+            onTap = {}, onRemove = {}, onOpenRecipe = {},
+        )
+    }
 }
 
 private fun recipe(id: String, name: String, ingredients: Int, prep: Int, cook: Int) = RecipeSummaryOut(
