@@ -33,3 +33,7 @@ docker-compose.override.yml
 
 # DB migrations cache
 server/alembic/versions/*.pyc
+
+# never commit .env backups (they hold live secrets; timestamped .bak slips past *.env)
+.env.bak*
+*.env.bak-*
