@@ -24,6 +24,18 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
 5. Version 0.4.0 → **1.0.0** at the gate; the airplane-mode on-device pass happens in the same
    round (the offline shopping-list promise is the product — prove it on the phone).
 
+**Gap review 2026-07-14 (host ROADMAP3 additions — what a Paprika/AnyList user would expect):**
+
+6. **Recipe scaling** — servings × N with ingredient quantities recomputing (fractions kept
+   human: "1½ cups", not "1.5000"). `servings` is already in the recipe DTOs; the measure
+   normalization in the merge kernel is the parsing precedent. Non-negotiable to recipe-app
+   users; cook mode and plan→list should both respect the chosen scale.
+7. **Keep-screen-on in cook mode** — verify; add `FLAG_KEEP_SCREEN_ON` if absent. Wet hands,
+   dark screen is the classic kitchen failure.
+8. **Post-cook rating/notes prompt** — `cook_events` already records the cook; close the loop
+   with "would make again ★★★★ + one note" on completion. Feeds favorites and "what can I
+   make" ranking for free, and builds the household's own taste memory.
+
 ## Ground rules for the incoming AI round (read before building)
 
 1. **Reuse the existing seam.** `app/services/ai/` already holds the LM Studio vision pipeline
