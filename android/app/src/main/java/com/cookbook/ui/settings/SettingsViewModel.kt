@@ -30,8 +30,11 @@ class SettingsViewModel @Inject constructor(
     private val _serverVersion = MutableStateFlow<String?>(null)
     val serverVersion: StateFlow<String?> = _serverVersion
 
-    private val _userLabel = MutableStateFlow<String?>(null)
-    val userLabel: StateFlow<String?> = _userLabel
+    private val _userName = MutableStateFlow<String?>(null)
+    val userName: StateFlow<String?> = _userName
+
+    private val _userEmail = MutableStateFlow<String?>(null)
+    val userEmail: StateFlow<String?> = _userEmail
 
     fun load() {
         viewModelScope.launch {
@@ -41,11 +44,12 @@ class SettingsViewModel @Inject constructor(
             } catch (_: Exception) {
                 null
             }
-            _userLabel.value = try {
+            try {
                 val me = api.getMe()
-                "${me.name} · ${me.email}"
+                _userName.value = me.name
+                _userEmail.value = me.email
             } catch (_: Exception) {
-                null
+                // Leave name/email null; the header falls back to a neutral label.
             }
         }
     }

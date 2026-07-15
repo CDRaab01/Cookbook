@@ -33,6 +33,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cookbook.ui.theme.CookbookTheme
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.ProfileHeader
 import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 
@@ -47,7 +48,8 @@ fun SettingsScreen(
     val colors = CookbookTheme.colors
     val serverUrl by viewModel.serverUrl.collectAsState()
     val serverVersion by viewModel.serverVersion.collectAsState()
-    val userLabel by viewModel.userLabel.collectAsState()
+    val userName by viewModel.userName.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
     val migrating by viewModel.migrating.collectAsState()
     val migrationStatus by viewModel.migrationStatus.collectAsState()
     var editedUrl by remember(serverUrl) { mutableStateOf(serverUrl) }
@@ -86,21 +88,21 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            ProfileHeader(
+                name = userName ?: "Signed in",
+                email = userEmail ?: "",
+                channel = colors.heat.base,
+                channelDim = colors.heat.dim,
+            )
+
             SectionHeader("Account", channel = colors.heat.base)
             PanelCard(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    Text(
-                        userLabel ?: "Signed in",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    PulseButton(
-                        text = "Sign out",
-                        onClick = { viewModel.logout(onLoggedOut) },
-                        tonal = true,
-                        compact = true,
-                    )
-                }
+                PulseButton(
+                    text = "Sign out",
+                    onClick = { viewModel.logout(onLoggedOut) },
+                    tonal = true,
+                    compact = true,
+                )
             }
 
             SectionHeader("Server", channel = colors.info.base)
