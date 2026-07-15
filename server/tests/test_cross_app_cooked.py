@@ -158,17 +158,27 @@ async def test_cooked_matches_contract_fixture(client, cook_user):
 async def test_plan_returns_slot_and_name_only(client, cook_user):
     from app.models.meal_plan import MealPlanEntry
     from app.models.recipe import Recipe
+    from app.models.shopping_list import ShoppingList
 
     async with AsyncSessionLocal() as session:
         recipe = Recipe(user_id=cook_user.id, name="Chicken Tikka")
-        session.add(recipe)
+        # The plan is scoped to a list; cross-app reports the user's default (oldest) list.
+        default_list = ShoppingList(user_id=cook_user.id, name="Groceries")
+        session.add_all([recipe, default_list])
         await session.flush()
         session.add_all([
-            MealPlanEntry(user_id=cook_user.id, date=TODAY, slot="dinner", recipe_id=recipe.id),
-            MealPlanEntry(user_id=cook_user.id, date=TODAY, slot="lunch", note="Leftovers"),
+            MealPlanEntry(
+                user_id=cook_user.id, list_id=default_list.id, date=TODAY,
+                slot="dinner", recipe_id=recipe.id,
+            ),
+            MealPlanEntry(
+                user_id=cook_user.id, list_id=default_list.id, date=TODAY,
+                slot="lunch", note="Leftovers",
+            ),
             # Another day — must not appear.
             MealPlanEntry(
-                user_id=cook_user.id, date=TODAY + datetime.timedelta(days=1),
+                user_id=cook_user.id, list_id=default_list.id,
+                date=TODAY + datetime.timedelta(days=1),
                 slot="dinner", recipe_id=recipe.id,
             ),
         ])

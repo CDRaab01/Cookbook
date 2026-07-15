@@ -19,8 +19,15 @@ class MealPlanEntry(Base):
     __tablename__ = "meal_plan_entries"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # Who added the entry (attribution). Access is by the LIST, not the user, so a household that
+    # shares a list plans meals together.
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # The list this plan belongs to — shared with everyone on that list (household planning). The
+    # plan and its shopping list are the same household's; plan → shopping-list already funnels here.
+    list_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("shopping_lists.id", ondelete="CASCADE"), index=True
     )
     date: Mapped[datetime.date] = mapped_column(Date, index=True)
     slot: Mapped[str] = mapped_column(String(16))

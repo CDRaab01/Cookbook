@@ -27,14 +27,23 @@ async def read_plan(
     db: DbSession,
     start: Annotated[datetime.date, Query()],
     end: Annotated[datetime.date, Query()],
+    list_id: Annotated[
+        uuid.UUID | None, Query(description="Plan for this list; omit for your own")
+    ] = None,
 ):
-    return await get_plan(db, current_user.id, start, end)
+    """The plan for a list — your own by default, or a shared list you're a member of."""
+    return await get_plan(db, current_user.id, start, end, list_id=list_id)
 
 
 @router.post("", response_model=PlanEntryOut, status_code=status.HTTP_201_CREATED)
-async def create_entry(req: PlanEntryCreate, current_user: CurrentUser, db: DbSession):
-    """Plan a recipe (or a free-text note) into a date+slot."""
-    return await add_entry(db, current_user.id, req)
+async def create_entry(
+    req: PlanEntryCreate,
+    current_user: CurrentUser,
+    db: DbSession,
+    list_id: Annotated[uuid.UUID | None, Query()] = None,
+):
+    """Plan a recipe (or a free-text note) into a date+slot on a list (own or shared)."""
+    return await add_entry(db, current_user.id, req, list_id=list_id)
 
 
 @router.patch("/{entry_id}", response_model=PlanEntryOut)

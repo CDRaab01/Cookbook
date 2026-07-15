@@ -48,14 +48,31 @@ def _validate_range(start: datetime.date, end: datetime.date) -> None:
         )
 
 
+async def _resolve_plan_list(
+    db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID | None
+) -> uuid.UUID:
+    """The list a plan is for: the given one (access-checked, so members can plan too) or, when
+    unspecified, the caller's own default list. This is what makes a shared list's plan collaborative."""
+    if list_id is None:
+        return (await get_default_list(db, user_id)).id
+    await load_accessible_list(db, user_id, list_id)  # owner or member
+    return list_id
+
+
 async def get_plan(
-    db: AsyncSession, user_id: uuid.UUID, start: datetime.date, end: datetime.date
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    start: datetime.date,
+    end: datetime.date,
+    *,
+    list_id: uuid.UUID | None = None,
 ) -> list[PlanEntryOut]:
     _validate_range(start, end)
+    plan_list = await _resolve_plan_list(db, user_id, list_id)
     result = await db.execute(
         select(MealPlanEntry)
         .where(
-            MealPlanEntry.user_id == user_id,
+            MealPlanEntry.list_id == plan_list,
             MealPlanEntry.date >= start,
             MealPlanEntry.date <= end,
         )
@@ -64,16 +81,24 @@ async def get_plan(
     return [_to_out(e) for e in result.scalars().all()]
 
 
-async def add_entry(db: AsyncSession, user_id: uuid.UUID, req: PlanEntryCreate) -> PlanEntryOut:
+async def add_entry(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    req: PlanEntryCreate,
+    *,
+    list_id: uuid.UUID | None = None,
+) -> PlanEntryOut:
     if (req.recipe_id is None) == (req.note is None):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Provide exactly one of recipe_id or note.",
         )
+    plan_list = await _resolve_plan_list(db, user_id, list_id)
     if req.recipe_id is not None:
         await load_owned_recipe(db, user_id, req.recipe_id)  # ownership gate
     entry = MealPlanEntry(
         user_id=user_id,
+        list_id=plan_list,
         date=req.date,
         slot=req.slot,
         recipe_id=req.recipe_id,
@@ -88,10 +113,11 @@ async def add_entry(db: AsyncSession, user_id: uuid.UUID, req: PlanEntryCreate) 
 async def set_eaten(
     db: AsyncSession, user_id: uuid.UUID, entry_id: uuid.UUID, eaten: bool
 ) -> PlanEntryOut:
-    """Mark a planned meal eaten (or un-eat it). Ownership-checked; returns the updated entry."""
+    """Mark a planned meal eaten (or un-eat it). Any member of the entry's list may do so."""
     entry = await db.get(MealPlanEntry, entry_id)
-    if entry is None or entry.user_id != user_id:
+    if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    await load_accessible_list(db, user_id, entry.list_id)  # owner or member
     entry.eaten = eaten
     await db.commit()
     # Expunge then re-query so the entry loads FRESH (not from the identity map) and its selectin
@@ -105,8 +131,9 @@ async def set_eaten(
 
 async def delete_entry(db: AsyncSession, user_id: uuid.UUID, entry_id: uuid.UUID) -> None:
     entry = await db.get(MealPlanEntry, entry_id)
-    if entry is None or entry.user_id != user_id:
+    if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    await load_accessible_list(db, user_id, entry.list_id)  # owner or member
     await db.delete(entry)
     await db.commit()
 
@@ -114,12 +141,14 @@ async def delete_entry(db: AsyncSession, user_id: uuid.UUID, entry_id: uuid.UUID
 async def plan_to_list(
     db: AsyncSession, user_id: uuid.UUID, req: PlanToListRequest
 ) -> PlanToListResult:
-    """Every planned recipe in the range → one merged shopping-list add. A recipe planned on
-    two nights contributes twice (you're cooking it twice)."""
+    """Every planned recipe in the range → one merged add onto that plan's own list. A recipe
+    planned on two nights contributes twice (you're cooking it twice). The plan and its target list
+    are the same household list."""
     _validate_range(req.start, req.end)
+    plan_list = await _resolve_plan_list(db, user_id, req.list_id)
     result = await db.execute(
         select(MealPlanEntry).where(
-            MealPlanEntry.user_id == user_id,
+            MealPlanEntry.list_id == plan_list,
             MealPlanEntry.date >= req.start,
             MealPlanEntry.date <= req.end,
             MealPlanEntry.recipe_id.is_not(None),
@@ -132,10 +161,7 @@ async def plan_to_list(
             detail="No planned recipes in that range.",
         )
 
-    if req.list_id is not None:
-        shopping_list = await load_accessible_list(db, user_id, req.list_id)
-    else:
-        shopping_list = await get_default_list(db, user_id)
+    shopping_list = await load_accessible_list(db, user_id, plan_list)
 
     incoming: list[IncomingItem] = []
     for entry in entries:

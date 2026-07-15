@@ -85,6 +85,48 @@ async def test_member_cannot_manage_or_rename(client):
     assert (await client.delete(f"/lists/{lid}", headers=_h(invitee))).status_code == 404
 
 
+async def test_shared_list_plan_is_collaborative(client):
+    owner, invitee, invitee_email = await _two_users(client)
+    lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
+    await client.post(f"/lists/{lid}/members", json={"email": invitee_email}, headers=_h(owner))
+
+    # Owner and invitee each plan a meal on the shared list.
+    r1 = await client.post(
+        f"/plan?list_id={lid}",
+        json={"date": "2026-07-06", "slot": "dinner", "note": "Tacos"},
+        headers=_h(owner),
+    )
+    assert r1.status_code == 201, r1.text
+    r2 = await client.post(
+        f"/plan?list_id={lid}",
+        json={"date": "2026-07-07", "slot": "dinner", "note": "Pasta"},
+        headers=_h(invitee),
+    )
+    assert r2.status_code == 201, r2.text
+
+    # Both see the same combined household plan.
+    for tok in (owner, invitee):
+        plan = (
+            await client.get(
+                f"/plan?start=2026-07-06&end=2026-07-12&list_id={lid}", headers=_h(tok)
+            )
+        ).json()
+        assert {e["note"] for e in plan} == {"Tacos", "Pasta"}
+
+    # A member can act on the other's entry (mark eaten) — it's a shared plan.
+    assert (
+        await client.patch(f"/plan/{r1.json()['id']}", json={"eaten": True}, headers=_h(invitee))
+    ).status_code == 200
+
+    # A non-member can't read the shared plan.
+    stranger = await _register(client, f"stranger_{uuid.uuid4().hex[:6]}@cookbook.com")
+    assert (
+        await client.get(
+            f"/plan?start=2026-07-06&end=2026-07-12&list_id={lid}", headers=_h(stranger)
+        )
+    ).status_code == 404
+
+
 async def test_member_can_leave(client):
     owner, invitee, invitee_email = await _two_users(client)
     lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
