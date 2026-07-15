@@ -21,6 +21,8 @@ class PlanEntryCreate(BaseModel):
     slot: str
     recipe_id: uuid.UUID | None = None
     note: str | None = None
+    # How much of the recipe to make this night (1.0 = as written); scales its list contribution.
+    scale: float = Field(default=1.0, ge=SCALE_BOUNDS[0], le=SCALE_BOUNDS[1])
 
     @field_validator("slot")
     @classmethod
@@ -43,6 +45,8 @@ class PlanEntryOut(BaseModel):
     recipe_name: str | None = None
     recipe_image_url: str | None = None
     note: str | None = None
+    # Cooking scale for this planned night (1.0 = as written); scales its shopping-list contribution.
+    scale: float = 1.0
     # Per-user (the requesting caller's): whether they've confirmed eating this, and the portion.
     eaten: bool = False
     servings: float = 1.0

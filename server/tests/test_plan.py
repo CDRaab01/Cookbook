@@ -138,3 +138,54 @@ async def test_deleting_recipe_cascades_plan_entries(auth_client):
         await auth_client.get("/plan", params={"start": "2026-07-06", "end": "2026-07-06"})
     ).json()
     assert week == []
+
+
+async def test_plan_entry_scale_scales_its_list_contribution(auth_client):
+    chili = await _recipe(
+        auth_client, "Chili", [{"name": "Beef", "quantity": 1, "unit": "lb", "category": "meat"}]
+    )
+    tacos = await _recipe(
+        auth_client, "Tacos", [{"name": "Tortillas", "quantity": 8, "category": "bakery"}]
+    )
+    # Chili at 2x (cooking for leftovers), tacos as written.
+    await auth_client.post(
+        "/plan", json={"date": "2026-08-03", "slot": "dinner", "recipe_id": chili, "scale": 2}
+    )
+    await auth_client.post(
+        "/plan", json={"date": "2026-08-04", "slot": "dinner", "recipe_id": tacos}
+    )
+
+    body = (
+        await auth_client.post("/plan/to-list", json={"start": "2026-08-03", "end": "2026-08-09"})
+    ).json()
+    items = {i["name"]: i for i in (await auth_client.get(f"/lists/{body['list_id']}")).json()["items"]}
+    assert items["Beef"]["quantity"] == 2.0       # chili 1 lb x2
+    assert items["Tortillas"]["quantity"] == 8.0  # tacos unscaled
+
+
+async def test_plan_entry_scale_composes_with_global_scale(auth_client):
+    chili = await _recipe(
+        auth_client, "Chili", [{"name": "Beef", "quantity": 1, "unit": "lb", "category": "meat"}]
+    )
+    await auth_client.post(
+        "/plan", json={"date": "2026-08-10", "slot": "dinner", "recipe_id": chili, "scale": 2}
+    )
+    body = (
+        await auth_client.post(
+            "/plan/to-list", json={"start": "2026-08-10", "end": "2026-08-16", "scale": 1.5}
+        )
+    ).json()
+    items = {i["name"]: i for i in (await auth_client.get(f"/lists/{body['list_id']}")).json()["items"]}
+    assert items["Beef"]["quantity"] == 3.0  # 1 lb x entry 2 x global 1.5
+
+
+async def test_plan_entry_out_carries_scale(auth_client):
+    chili = await _recipe(auth_client, "Chili", [{"name": "Beef", "quantity": 1, "unit": "lb"}])
+    created = await auth_client.post(
+        "/plan", json={"date": "2026-08-17", "slot": "dinner", "recipe_id": chili, "scale": 2}
+    )
+    assert created.json()["scale"] == 2.0
+    listed = (
+        await auth_client.get("/plan", params={"start": "2026-08-17", "end": "2026-08-17"})
+    ).json()
+    assert listed[0]["scale"] == 2.0

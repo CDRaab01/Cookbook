@@ -43,6 +43,7 @@ def _to_out(entry: MealPlanEntry, confirmation: MealConfirmation | None = None) 
         recipe_name=entry.recipe.name if entry.recipe is not None else None,
         recipe_image_url=entry.recipe.image_url if entry.recipe is not None else None,
         note=entry.note,
+        scale=entry.scale,
         eaten=bool(confirmation and confirmation.eaten),
         servings=confirmation.servings if confirmation else 1.0,
     )
@@ -128,6 +129,7 @@ async def add_entry(
         slot=req.slot,
         recipe_id=req.recipe_id,
         note=req.note,
+        scale=req.scale,
     )
     db.add(entry)
     await db.commit()
@@ -271,11 +273,14 @@ async def plan_to_list(
         recipe = entry.recipe
         if recipe is None:
             continue
+        # Combine the request's global scale with this entry's own cooking scale, so "make the whole
+        # week 2×" and "make just the chili 2×" compose.
+        entry_scale = req.scale * entry.scale
         for ing in recipe.ingredients:
             incoming.append(
                 IncomingItem(
                     name=ing.name,
-                    quantity=scale_quantity(ing.quantity, req.scale),
+                    quantity=scale_quantity(ing.quantity, entry_scale),
                     unit=ing.unit,
                     category=ing.category,
                 )
