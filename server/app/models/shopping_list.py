@@ -1,7 +1,17 @@
 import datetime
 import uuid
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -64,3 +74,26 @@ class ShoppingListItem(Base):
     )
 
     shopping_list = relationship("ShoppingList", back_populates="items")
+
+
+class ListMember(Base):
+    """Household sharing: a user (besides the owner) who can view and edit a shopping list.
+
+    The list's `user_id` remains the owner (rename/delete/manage-members stay owner-only); members
+    get full access to the shopping actions. Membership is by suite user id, resolved from an
+    invite by email (SSO links accounts by email). Deleting the list or the user cascades.
+    """
+
+    __tablename__ = "shopping_list_members"
+    __table_args__ = (UniqueConstraint("list_id", "user_id", name="uq_list_member"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    list_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("shopping_lists.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    added_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

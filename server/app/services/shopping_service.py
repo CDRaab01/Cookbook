@@ -11,7 +11,7 @@ import datetime
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.limits import MAX_LIST_ITEMS
@@ -28,7 +28,8 @@ from app.lists.merge import (
     scale_quantity,
 )
 from app.models.item_history import ItemHistory
-from app.models.shopping_list import ShoppingList, ShoppingListItem
+from app.models.shopping_list import ListMember, ShoppingList, ShoppingListItem
+from app.models.user import User
 from app.schemas.shopping import (
     AddRecipeRequest,
     ItemCreate,
@@ -37,6 +38,7 @@ from app.schemas.shopping import (
     ListOut,
     ListRename,
     ListSummaryOut,
+    MemberOut,
     SuggestionOut,
 )
 from app.services.recipe_service import load_owned_recipe
@@ -69,8 +71,29 @@ async def get_default_list(db: AsyncSession, user_id: uuid.UUID) -> ShoppingList
 
 
 async def load_owned_list(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) -> ShoppingList:
+    """Owner-only access — for rename/delete/manage-members. Shopping actions use
+    :func:`load_accessible_list` so shared members can edit too."""
     shopping_list = await db.get(ShoppingList, list_id)
     if shopping_list is None or shopping_list.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
+    return shopping_list
+
+
+async def load_accessible_list(
+    db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID
+) -> ShoppingList:
+    """Access for the shopping actions: the user owns the list OR is a member (household sharing)."""
+    shopping_list = await db.get(ShoppingList, list_id)
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
+    if shopping_list.user_id == user_id:
+        return shopping_list
+    member = await db.execute(
+        select(ListMember).where(
+            ListMember.list_id == list_id, ListMember.user_id == user_id
+        )
+    )
+    if member.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
     return shopping_list
 
@@ -218,25 +241,136 @@ async def get_list_out(db: AsyncSession, user_id: uuid.UUID) -> ListOut:
     return ListOut.model_validate(shopping_list)
 
 
-def _list_summary(shopping_list: ShoppingList) -> ListSummaryOut:
+def _list_summary(
+    shopping_list: ShoppingList, *, is_owner: bool, shared: bool
+) -> ListSummaryOut:
     unchecked = sum(1 for i in shopping_list.items if not i.checked)
     return ListSummaryOut(
         id=shopping_list.id,
         name=shopping_list.name,
         unchecked_count=unchecked,
         total_count=len(shopping_list.items),
+        shared=shared,
+        is_owner=is_owner,
     )
 
 
 async def list_all_lists(db: AsyncSession, user_id: uuid.UUID) -> list[ListSummaryOut]:
-    """Every list, oldest (the default) first — ensures the default exists on first touch."""
+    """Every list the user can see — their own (oldest/default first) then lists shared with them.
+    Ensures the default exists on first touch."""
     await get_default_list(db, user_id)
-    result = await db.execute(
-        select(ShoppingList)
-        .where(ShoppingList.user_id == user_id)
-        .order_by(ShoppingList.created_at)
-    )
-    return [_list_summary(sl) for sl in result.scalars().all()]
+    owned = (
+        await db.execute(
+            select(ShoppingList)
+            .where(ShoppingList.user_id == user_id)
+            .order_by(ShoppingList.created_at)
+        )
+    ).scalars().all()
+    shared_with_me = (
+        await db.execute(
+            select(ShoppingList)
+            .join(ListMember, ListMember.list_id == ShoppingList.id)
+            .where(ListMember.user_id == user_id)
+            .order_by(ShoppingList.created_at)
+        )
+    ).scalars().all()
+    # Which of my OWN lists have members (so the picker can badge them "shared")?
+    owned_ids = [sl.id for sl in owned]
+    shared_owned_ids: set[uuid.UUID] = set()
+    if owned_ids:
+        shared_owned_ids = set(
+            (
+                await db.execute(
+                    select(ListMember.list_id).where(ListMember.list_id.in_(owned_ids))
+                )
+            ).scalars().all()
+        )
+    return [
+        _list_summary(sl, is_owner=True, shared=sl.id in shared_owned_ids) for sl in owned
+    ] + [
+        _list_summary(sl, is_owner=False, shared=True) for sl in shared_with_me
+    ]
+
+
+async def add_member_by_email(
+    db: AsyncSession, owner_id: uuid.UUID, list_id: uuid.UUID, email: str
+) -> "list[MemberOut]":
+    """Invite a suite user (by their SSO email) to a list. Owner-only. Idempotent — re-inviting an
+    existing member is a no-op. 404s an unknown email (they must have a suite account first)."""
+    await load_owned_list(db, owner_id, list_id)  # owner gate
+    normalized = email.strip().lower()
+    invitee = (
+        await db.execute(select(User).where(func.lower(User.email) == normalized))
+    ).scalar_one_or_none()
+    if invitee is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Dragonfly account uses that email. Ask them to sign in once, then share.",
+        )
+    if invitee.id == owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="You already own this list.",
+        )
+    existing = (
+        await db.execute(
+            select(ListMember).where(
+                ListMember.list_id == list_id, ListMember.user_id == invitee.id
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        db.add(ListMember(list_id=list_id, user_id=invitee.id))
+        await db.commit()
+    return await list_members(db, owner_id, list_id)
+
+
+async def list_members(
+    db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID
+) -> "list[MemberOut]":
+    """Everyone on a list: the owner first, then members. Any member may view."""
+    shopping_list = await load_accessible_list(db, user_id, list_id)
+    owner = await db.get(User, shopping_list.user_id)
+    members = (
+        await db.execute(
+            select(User)
+            .join(ListMember, ListMember.user_id == User.id)
+            .where(ListMember.list_id == list_id)
+            .order_by(ListMember.added_at)
+        )
+    ).scalars().all()
+    out = [
+        MemberOut(user_id=owner.id, email=owner.email, name=owner.name, is_owner=True)
+    ]
+    out += [
+        MemberOut(user_id=u.id, email=u.email, name=u.name, is_owner=False) for u in members
+    ]
+    return out
+
+
+async def remove_member(
+    db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """Remove a member. The owner may remove anyone; a member may remove themselves (leave)."""
+    shopping_list = await db.get(ShoppingList, list_id)
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
+    is_owner = shopping_list.user_id == user_id
+    if not is_owner and member_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the owner can remove other members.",
+        )
+    row = (
+        await db.execute(
+            select(ListMember).where(
+                ListMember.list_id == list_id, ListMember.user_id == member_id
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
 
 
 async def create_list(db: AsyncSession, user_id: uuid.UUID, req: ListCreate) -> ListOut:
@@ -250,7 +384,7 @@ async def create_list(db: AsyncSession, user_id: uuid.UUID, req: ListCreate) -> 
 
 
 async def get_one_list(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) -> ListOut:
-    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
     return ListOut.model_validate(shopping_list)
 
 
@@ -274,7 +408,7 @@ async def delete_list(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) 
 async def add_item(
     db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, req: ItemCreate
 ) -> ListOut:
-    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
     _guard_capacity(shopping_list, adding=1)
     # Uncategorized adds get auto-sorted: the category you used last time, else a keyword guess.
     category = req.category or await recall_category(db, user_id, req.name)
@@ -288,7 +422,7 @@ async def add_item(
 async def add_recipe(
     db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, req: AddRecipeRequest
 ) -> ListOut:
-    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
     recipe = await load_owned_recipe(db, user_id, req.recipe_id)
     if not recipe.ingredients:
         raise HTTPException(
@@ -338,7 +472,7 @@ async def update_item(
     item_id: uuid.UUID,
     req: ItemUpdate,
 ) -> ListOut:
-    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
     item = next((i for i in shopping_list.items if i.id == item_id), None)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -368,7 +502,7 @@ async def update_item(
 async def delete_item(
     db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, item_id: uuid.UUID
 ) -> ListOut:
-    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
     item = next((i for i in shopping_list.items if i.id == item_id), None)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
@@ -378,7 +512,7 @@ async def delete_item(
 
 
 async def clear_checked(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID) -> ListOut:
-    shopping_list = await load_owned_list(db, user_id, list_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
     shopping_list.items = [i for i in shopping_list.items if not i.checked]
     await db.commit()
     return ListOut.model_validate(await _reload(db, list_id))
@@ -386,14 +520,18 @@ async def clear_checked(db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID
 
 __all__ = [
     "add_item",
+    "add_member_by_email",
     "add_recipe",
     "clear_checked",
     "delete_item",
     "get_default_list",
     "get_list_out",
     "is_purchasable",
+    "list_members",
+    "load_accessible_list",
     "load_owned_list",
     "recall_category",
+    "remove_member",
     "suggest_items",
     "update_item",
 ]

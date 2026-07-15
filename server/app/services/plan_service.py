@@ -21,7 +21,7 @@ from app.services.shopping_service import (
     _merge_into_list,
     _record_history,
     get_default_list,
-    load_owned_list,
+    load_accessible_list,
 )
 
 MAX_RANGE_DAYS = 31
@@ -133,7 +133,7 @@ async def plan_to_list(
         )
 
     if req.list_id is not None:
-        shopping_list = await load_owned_list(db, user_id, req.list_id)
+        shopping_list = await load_accessible_list(db, user_id, req.list_id)
     else:
         shopping_list = await get_default_list(db, user_id)
 
@@ -163,7 +163,7 @@ async def plan_to_list(
     await _record_history(db, user_id, merged)
     await db.commit()
 
-    refreshed = await load_owned_list(db, user_id, shopping_list.id)
+    refreshed = await load_accessible_list(db, user_id, shopping_list.id)
     return PlanToListResult(
         recipes_added=len(entries),
         items_on_list=len(refreshed.items),

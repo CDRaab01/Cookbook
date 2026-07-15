@@ -14,12 +14,15 @@ from app.schemas.shopping import (
     ListOut,
     ListRename,
     ListSummaryOut,
+    MemberOut,
+    ShareRequest,
     SuggestionOut,
 )
 from app.security import CurrentUser
 from app.services.grocery_spend_service import fetch_month_grocery_spend
 from app.services.shopping_service import (
     add_item,
+    add_member_by_email,
     add_recipe,
     clear_checked,
     create_list,
@@ -28,6 +31,8 @@ from app.services.shopping_service import (
     get_list_out,
     get_one_list,
     list_all_lists,
+    list_members,
+    remove_member,
     rename_list,
     suggest_items,
     update_item,
@@ -134,3 +139,26 @@ async def remove_item(
 @router.post("/{list_id}/clear-checked", response_model=ListOut)
 async def clear_checked_items(list_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     return await clear_checked(db, current_user.id, list_id)
+
+
+# --- Household sharing ---
+@router.get("/{list_id}/members", response_model=list[MemberOut])
+async def get_members(list_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    """Everyone on a shared list (owner first). Any member may view."""
+    return await list_members(db, current_user.id, list_id)
+
+
+@router.post("/{list_id}/members", response_model=list[MemberOut], status_code=status.HTTP_201_CREATED)
+async def share_list(
+    list_id: uuid.UUID, req: ShareRequest, current_user: CurrentUser, db: DbSession
+):
+    """Invite a suite user (by their SSO email) to a shopping list. Owner-only."""
+    return await add_member_by_email(db, current_user.id, list_id, req.email)
+
+
+@router.delete("/{list_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_list_member(
+    list_id: uuid.UUID, member_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    """Owner removes a member; a member removes themselves (leave)."""
+    await remove_member(db, current_user.id, list_id, member_id)

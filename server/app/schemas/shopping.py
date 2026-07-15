@@ -106,6 +106,25 @@ class ListSummaryOut(BaseModel):
     name: str
     unchecked_count: int
     total_count: int
+    # Household sharing: whether this list is shared (owner or member can see others on it), and
+    # whether the current user owns it (only the owner manages members / renames / deletes).
+    shared: bool = False
+    is_owner: bool = True
+
+
+class MemberOut(BaseModel):
+    """A person on a shared list — the owner plus invited members."""
+
+    user_id: uuid.UUID
+    email: str
+    name: str
+    is_owner: bool
+
+
+class ShareRequest(BaseModel):
+    """Invite a suite user to a list by the email their account is linked by (SSO)."""
+
+    email: str
 
 
 class SuggestionOut(BaseModel):
