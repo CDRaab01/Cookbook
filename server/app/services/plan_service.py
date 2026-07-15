@@ -6,6 +6,7 @@ same merge math as a manual add, so a week of dinners becomes one aggregated lis
 """
 
 import datetime
+import logging
 import uuid
 
 from fastapi import HTTPException, status
@@ -13,7 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.lists.merge import IncomingItem, merge_incoming, scale_quantity
+from app.models.meal_confirmation import MealConfirmation
 from app.models.meal_plan import MealPlanEntry
+from app.models.recipe import Recipe
 from app.schemas.plan import PlanEntryCreate, PlanEntryOut, PlanToListRequest, PlanToListResult
 from app.services.recipe_service import load_owned_recipe
 from app.services.shopping_service import (
@@ -24,10 +27,14 @@ from app.services.shopping_service import (
     load_accessible_list,
 )
 
+log = logging.getLogger(__name__)
+
 MAX_RANGE_DAYS = 31
 
 
-def _to_out(entry: MealPlanEntry) -> PlanEntryOut:
+def _to_out(entry: MealPlanEntry, confirmation: MealConfirmation | None = None) -> PlanEntryOut:
+    # `eaten`/`servings` are the requesting user's own (per-user confirmation), NOT the retired
+    # shared `entry.eaten` column. No confirmation = not yet eaten, default one serving.
     return PlanEntryOut(
         id=entry.id,
         date=entry.date,
@@ -36,8 +43,24 @@ def _to_out(entry: MealPlanEntry) -> PlanEntryOut:
         recipe_name=entry.recipe.name if entry.recipe is not None else None,
         recipe_image_url=entry.recipe.image_url if entry.recipe is not None else None,
         note=entry.note,
-        eaten=entry.eaten,
+        eaten=bool(confirmation and confirmation.eaten),
+        servings=confirmation.servings if confirmation else 1.0,
     )
+
+
+async def _confirmations_for(
+    db: AsyncSession, user_id: uuid.UUID, entry_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, MealConfirmation]:
+    """This user's confirmations for the given entries, keyed by entry_id (for per-user eaten)."""
+    if not entry_ids:
+        return {}
+    result = await db.execute(
+        select(MealConfirmation).where(
+            MealConfirmation.user_id == user_id,
+            MealConfirmation.entry_id.in_(entry_ids),
+        )
+    )
+    return {c.entry_id: c for c in result.scalars().all()}
 
 
 def _validate_range(start: datetime.date, end: datetime.date) -> None:
@@ -78,7 +101,9 @@ async def get_plan(
         )
         .order_by(MealPlanEntry.date, MealPlanEntry.created_at)
     )
-    return [_to_out(e) for e in result.scalars().all()]
+    entries = list(result.scalars().all())
+    confs = await _confirmations_for(db, user_id, [e.id for e in entries])
+    return [_to_out(e, confs.get(e.id)) for e in entries]
 
 
 async def add_entry(
@@ -110,23 +135,101 @@ async def add_entry(
     return _to_out(result.scalar_one())
 
 
+async def _load_recipe(db: AsyncSession, recipe_id: uuid.UUID) -> Recipe:
+    """A recipe with its ingredients, WITHOUT the ownership gate — access is already established by
+    plan-list membership, so a household member can log the planner's recipe into their own diary."""
+    result = await db.execute(select(Recipe).where(Recipe.id == recipe_id))
+    return result.scalar_one()
+
+
+async def _sync_confirmation_to_plate(
+    user,
+    conf: MealConfirmation,
+    *,
+    eaten: bool,
+    recipe: Recipe | None,
+    entry_date: datetime.date,
+    slot: str,
+    ref: str,
+) -> str | None:
+    """Reflect a confirmation in the user's Plate diary and return the plate_ref it should carry.
+    Best-effort and NETWORK-ONLY (no DB writes): on any failure we log and leave the ref unchanged,
+    so a Plate outage never blocks confirming a meal. Returns the new plate_ref (or the old one)."""
+    from app.services import plate_nutrition_service as plate
+
+    if not plate.plate_enabled():
+        return conf.plate_ref
+    try:
+        if eaten and recipe is not None:
+            # Portion change = retract the old log, then re-log at the new servings (same ref).
+            if conf.plate_ref:
+                await plate.retract_confirmation_log(user.email, conf.plate_ref)
+            await plate.log_recipe_for_confirmation(
+                user.email,
+                recipe,
+                servings_eaten=conf.servings,
+                date=entry_date,
+                meal=slot,
+                client_ref=ref,
+            )
+            return ref
+        if not eaten and conf.plate_ref:
+            # Un-eat: retract the diary entries this confirmation created.
+            await plate.retract_confirmation_log(user.email, conf.plate_ref)
+            return None
+    except Exception as e:  # noqa: BLE001 — diary sync is best-effort; the confirmation still stands
+        log.warning("Plate diary sync for confirmation %s failed: %s", ref, e)
+    return conf.plate_ref
+
+
 async def set_eaten(
-    db: AsyncSession, user_id: uuid.UUID, entry_id: uuid.UUID, eaten: bool
+    db: AsyncSession, user, entry_id: uuid.UUID, eaten: bool, servings: float = 1.0
 ) -> PlanEntryOut:
-    """Mark a planned meal eaten (or un-eat it). Any member of the entry's list may do so."""
+    """Confirm (or un-confirm) that THIS user ate a planned meal, at ``servings`` — per-user, so a
+    shared plan tracks each member's own eating. A recipe confirmation also logs to (or, on un-eat,
+    retracts from) this user's Plate diary. Any member of the entry's list may confirm their own."""
     entry = await db.get(MealPlanEntry, entry_id)
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-    await load_accessible_list(db, user_id, entry.list_id)  # owner or member
-    entry.eaten = eaten
+    await load_accessible_list(db, user.id, entry.list_id)  # owner or member
+    # Capture the scalars the Plate sync needs before any commit expires the instance.
+    recipe_id = entry.recipe_id
+    entry_date = entry.date
+    slot = entry.slot
+
+    result = await db.execute(
+        select(MealConfirmation).where(
+            MealConfirmation.entry_id == entry_id,
+            MealConfirmation.user_id == user.id,
+        )
+    )
+    conf = result.scalar_one_or_none()
+    if conf is None:
+        conf = MealConfirmation(entry_id=entry_id, user_id=user.id, eaten=eaten, servings=servings)
+        db.add(conf)
+    else:
+        conf.eaten = eaten
+        if eaten:
+            conf.servings = servings
+
+    # A stable, per-(entry,user) correlation ref so a re-log lands on the same Plate rows.
+    ref = f"cbplan:{entry_id}:{user.id}"
+    recipe = await _load_recipe(db, recipe_id) if (eaten and recipe_id is not None) else None
+    conf.plate_ref = await _sync_confirmation_to_plate(
+        user, conf, eaten=eaten, recipe=recipe, entry_date=entry_date, slot=slot, ref=ref
+    )
+    # Snapshot the per-user values before commit expires `conf` (reading them after would trigger
+    # an async lazy refresh — MissingGreenlet).
+    eaten_final, servings_final = conf.eaten, conf.servings
     await db.commit()
-    # Expunge then re-query so the entry loads FRESH (not from the identity map) and its selectin
-    # `recipe` relationship fires — exactly like get_plan. A re-query of the still-mapped instance
-    # returns it with `recipe` unloaded, and accessing it in _to_out would trigger an async lazy
-    # load (MissingGreenlet) for recipe entries.
+
+    # Re-query the entry FRESH so its selectin `recipe` relationship fires (avoids a MissingGreenlet
+    # async lazy-load in _to_out for recipe entries), exactly like get_plan.
     db.expunge(entry)
-    result = await db.execute(select(MealPlanEntry).where(MealPlanEntry.id == entry_id))
-    return _to_out(result.scalar_one())
+    fresh = await db.execute(select(MealPlanEntry).where(MealPlanEntry.id == entry_id))
+    out = _to_out(fresh.scalar_one(), None)
+    out.eaten, out.servings = eaten_final, servings_final
+    return out
 
 
 async def delete_entry(db: AsyncSession, user_id: uuid.UUID, entry_id: uuid.UUID) -> None:

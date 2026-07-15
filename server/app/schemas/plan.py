@@ -43,13 +43,20 @@ class PlanEntryOut(BaseModel):
     recipe_name: str | None = None
     recipe_image_url: str | None = None
     note: str | None = None
+    # Per-user (the requesting caller's): whether they've confirmed eating this, and the portion.
     eaten: bool = False
+    servings: float = 1.0
 
 
 class PlanEntryUpdate(BaseModel):
-    """Mark a planned meal eaten (or un-eat it) — the only mutable field on an entry."""
+    """Confirm (or un-confirm) that *you* ate this planned meal, at a portion. Per-user: on a
+    shared plan each member confirms their own, and a recipe confirmation logs to their Plate diary.
+    """
 
     eaten: bool
+    # Portion eaten, scaled against the recipe's servings when logging to Plate. Ignored when
+    # un-eating. Defaults to one serving.
+    servings: float = Field(default=1.0, gt=0, le=100)
 
 
 class PlanToListRequest(BaseModel):

@@ -50,8 +50,9 @@ async def create_entry(
 async def update_entry(
     entry_id: uuid.UUID, req: PlanEntryUpdate, current_user: CurrentUser, db: DbSession
 ):
-    """Mark a planned meal eaten (or un-eat it). Plate's coach reads this via cross-app."""
-    return await set_eaten(db, current_user.id, entry_id, req.eaten)
+    """Confirm (or un-confirm) that you ate this meal, at a portion — per-user. A recipe
+    confirmation logs to your Plate diary; Plate's coach also reads eaten via cross-app."""
+    return await set_eaten(db, current_user, entry_id, req.eaten, req.servings)
 
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)

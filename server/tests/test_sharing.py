@@ -127,6 +127,46 @@ async def test_shared_list_plan_is_collaborative(client):
     ).status_code == 404
 
 
+async def test_eaten_is_per_user_on_shared_plan(client):
+    """On a shared plan, confirming a meal is per-person: one member marking eaten (at a portion)
+    must not flip it eaten for the other — calories are per-user."""
+    owner, invitee, invitee_email = await _two_users(client)
+    lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
+    await client.post(f"/lists/{lid}/members", json={"email": invitee_email}, headers=_h(owner))
+
+    entry = await client.post(
+        f"/plan?list_id={lid}",
+        json={"date": "2026-07-08", "slot": "dinner", "note": "Curry"},
+        headers=_h(owner),
+    )
+    eid = entry.json()["id"]
+    assert entry.json()["eaten"] is False and entry.json()["servings"] == 1.0
+
+    # Owner confirms at 2 servings.
+    owned = await client.patch(
+        f"/plan/{eid}", json={"eaten": True, "servings": 2}, headers=_h(owner)
+    )
+    assert owned.status_code == 200, owned.text
+    assert owned.json()["eaten"] is True and owned.json()["servings"] == 2.0
+
+    window = f"/plan?start=2026-07-06&end=2026-07-12&list_id={lid}"
+
+    def _entry(plan):
+        return next(e for e in plan if e["id"] == eid)
+
+    # Invitee sees the SAME shared entry, but as not-yet-eaten (their own confirmation).
+    inv_view = _entry((await client.get(window, headers=_h(invitee))).json())
+    assert inv_view["eaten"] is False
+    # Owner still sees their own confirmation.
+    own_view = _entry((await client.get(window, headers=_h(owner))).json())
+    assert own_view["eaten"] is True and own_view["servings"] == 2.0
+
+    # Invitee confirms independently; owner's confirmation is untouched.
+    await client.patch(f"/plan/{eid}", json={"eaten": True}, headers=_h(invitee))
+    own_after = _entry((await client.get(window, headers=_h(owner))).json())
+    assert own_after["eaten"] is True and own_after["servings"] == 2.0
+
+
 async def test_member_can_leave(client):
     owner, invitee, invitee_email = await _two_users(client)
     lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]

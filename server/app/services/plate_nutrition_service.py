@@ -81,9 +81,32 @@ class LogToPlateResult(BaseModel):
     skipped: int
 
 
+def plate_enabled() -> bool:
+    """Whether the Plate integration is wired (base URL + cross-app auth). Callers that treat the
+    diary sync as best-effort (meal confirmations) check this instead of catching _DISABLED."""
+    return bool(settings.plate_base_url) and cross_app_configured()
+
+
 def _guard_configured() -> None:
-    if not settings.plate_base_url or not cross_app_configured():
+    if not plate_enabled():
         raise _DISABLED
+
+
+async def _plate_delete(
+    path: str, email: str, params: dict, client: httpx.AsyncClient | None
+) -> dict:
+    url = settings.plate_base_url.rstrip("/") + path
+    headers = {"Authorization": f"Bearer {await fetch_cross_app_token(email)}"}
+
+    async def _do(c: httpx.AsyncClient) -> dict:
+        resp = await c.delete(url, params=params, headers=headers)
+        resp.raise_for_status()
+        return resp.json()
+
+    if client is not None:
+        return await _do(client)
+    async with httpx.AsyncClient(timeout=settings.plate_timeout_seconds) as owned:
+        return await _do(owned)
 
 
 async def _plate_post(
@@ -225,3 +248,42 @@ async def log_recipe_to_plate(
         client,
     )
     return LogToPlateResult(logged=body.get("logged", 0), skipped=body.get("skipped", 0))
+
+
+async def log_recipe_for_confirmation(
+    email: str,
+    recipe,
+    *,
+    servings_eaten: float,
+    date: datetime.date,
+    meal: str,
+    client_ref: str,
+    client: httpx.AsyncClient | None = None,
+) -> None:
+    """Log an already-loaded recipe into ``email``'s Plate diary under ``client_ref`` — the diary
+    half of a per-user meal confirmation. Unlike :func:`log_recipe_to_plate` there is no ownership
+    gate (the caller has already gated on plan-list membership), so a household member can log the
+    planner's recipe into their own diary. Caller decides whether to swallow failures."""
+    if not recipe.ingredients:
+        return
+    scale = servings_eaten / max(recipe.servings, 1)
+    await _plate_post(
+        "/cross-app/log-recipe",
+        email,
+        {
+            "date": date.isoformat(),
+            "meal": meal,
+            "recipe_name": recipe.name,
+            "client_ref": client_ref,
+            "items": _items_payload(recipe, scale),
+        },
+        client,
+    )
+
+
+async def retract_confirmation_log(
+    email: str, client_ref: str, *, client: httpx.AsyncClient | None = None
+) -> None:
+    """Remove the diary entries a prior confirmation created under ``client_ref`` (portion change =
+    retract + re-log; un-eat = retract). Idempotent on Plate's side."""
+    await _plate_delete("/cross-app/logged", email, {"client_ref": client_ref}, client)
