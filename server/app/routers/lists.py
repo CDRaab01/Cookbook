@@ -148,7 +148,9 @@ async def get_members(list_id: uuid.UUID, current_user: CurrentUser, db: DbSessi
     return await list_members(db, current_user.id, list_id)
 
 
-@router.post("/{list_id}/members", response_model=list[MemberOut], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{list_id}/members", response_model=list[MemberOut], status_code=status.HTTP_201_CREATED
+)
 async def share_list(
     list_id: uuid.UUID, req: ShareRequest, current_user: CurrentUser, db: DbSession
 ):

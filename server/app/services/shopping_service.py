@@ -89,9 +89,7 @@ async def load_accessible_list(
     if shopping_list.user_id == user_id:
         return shopping_list
     member = await db.execute(
-        select(ListMember).where(
-            ListMember.list_id == list_id, ListMember.user_id == user_id
-        )
+        select(ListMember).where(ListMember.list_id == list_id, ListMember.user_id == user_id)
     )
     if member.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
@@ -241,9 +239,7 @@ async def get_list_out(db: AsyncSession, user_id: uuid.UUID) -> ListOut:
     return ListOut.model_validate(shopping_list)
 
 
-def _list_summary(
-    shopping_list: ShoppingList, *, is_owner: bool, shared: bool
-) -> ListSummaryOut:
+def _list_summary(shopping_list: ShoppingList, *, is_owner: bool, shared: bool) -> ListSummaryOut:
     unchecked = sum(1 for i in shopping_list.items if not i.checked)
     return ListSummaryOut(
         id=shopping_list.id,
@@ -260,34 +256,38 @@ async def list_all_lists(db: AsyncSession, user_id: uuid.UUID) -> list[ListSumma
     Ensures the default exists on first touch."""
     await get_default_list(db, user_id)
     owned = (
-        await db.execute(
-            select(ShoppingList)
-            .where(ShoppingList.user_id == user_id)
-            .order_by(ShoppingList.created_at)
+        (
+            await db.execute(
+                select(ShoppingList)
+                .where(ShoppingList.user_id == user_id)
+                .order_by(ShoppingList.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     shared_with_me = (
-        await db.execute(
-            select(ShoppingList)
-            .join(ListMember, ListMember.list_id == ShoppingList.id)
-            .where(ListMember.user_id == user_id)
-            .order_by(ShoppingList.created_at)
+        (
+            await db.execute(
+                select(ShoppingList)
+                .join(ListMember, ListMember.list_id == ShoppingList.id)
+                .where(ListMember.user_id == user_id)
+                .order_by(ShoppingList.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     # Which of my OWN lists have members (so the picker can badge them "shared")?
     owned_ids = [sl.id for sl in owned]
     shared_owned_ids: set[uuid.UUID] = set()
     if owned_ids:
         shared_owned_ids = set(
-            (
-                await db.execute(
-                    select(ListMember.list_id).where(ListMember.list_id.in_(owned_ids))
-                )
-            ).scalars().all()
+            (await db.execute(select(ListMember.list_id).where(ListMember.list_id.in_(owned_ids))))
+            .scalars()
+            .all()
         )
-    return [
-        _list_summary(sl, is_owner=True, shared=sl.id in shared_owned_ids) for sl in owned
-    ] + [
+    return [_list_summary(sl, is_owner=True, shared=sl.id in shared_owned_ids) for sl in owned] + [
         _list_summary(sl, is_owner=False, shared=True) for sl in shared_with_me
     ]
 
@@ -332,19 +332,19 @@ async def list_members(
     shopping_list = await load_accessible_list(db, user_id, list_id)
     owner = await db.get(User, shopping_list.user_id)
     members = (
-        await db.execute(
-            select(User)
-            .join(ListMember, ListMember.user_id == User.id)
-            .where(ListMember.list_id == list_id)
-            .order_by(ListMember.added_at)
+        (
+            await db.execute(
+                select(User)
+                .join(ListMember, ListMember.user_id == User.id)
+                .where(ListMember.list_id == list_id)
+                .order_by(ListMember.added_at)
+            )
         )
-    ).scalars().all()
-    out = [
-        MemberOut(user_id=owner.id, email=owner.email, name=owner.name, is_owner=True)
-    ]
-    out += [
-        MemberOut(user_id=u.id, email=u.email, name=u.name, is_owner=False) for u in members
-    ]
+        .scalars()
+        .all()
+    )
+    out = [MemberOut(user_id=owner.id, email=owner.email, name=owner.name, is_owner=True)]
+    out += [MemberOut(user_id=u.id, email=u.email, name=u.name, is_owner=False) for u in members]
     return out
 
 
@@ -363,9 +363,7 @@ async def remove_member(
         )
     row = (
         await db.execute(
-            select(ListMember).where(
-                ListMember.list_id == list_id, ListMember.user_id == member_id
-            )
+            select(ListMember).where(ListMember.list_id == list_id, ListMember.user_id == member_id)
         )
     ).scalar_one_or_none()
     if row is not None:
