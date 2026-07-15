@@ -184,8 +184,8 @@ fun PlanScreen(
             date = date,
             slot = slot,
             recipes = recipes,
-            onPickRecipe = { recipeId ->
-                viewModel.addRecipe(date, slot, recipeId)
+            onPickRecipe = { recipeId, scale ->
+                viewModel.addRecipe(date, slot, recipeId, scale)
                 assigningSlot = null
             },
             onNote = { note ->
@@ -355,12 +355,13 @@ private fun AssignDialog(
     date: LocalDate,
     slot: String,
     recipes: List<RecipeSummaryOut>,
-    onPickRecipe: (String) -> Unit,
+    onPickRecipe: (String, Double) -> Unit,
     onNote: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(0) }
     var note by remember { mutableStateOf("") }
+    var scale by remember { mutableStateOf(1.0) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Plan ${slot} — ${date.format(DateTimeFormatter.ofPattern("MMM d"))}") },
@@ -372,14 +373,32 @@ private fun AssignDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 if (tab == 0) {
-                    LazyColumn(Modifier.height(280.dp)) {
+                    // How much to make this night — scales the recipe's contribution to the list.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Make", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(
+                            onClick = { scale = (scale - 0.5).coerceAtLeast(0.5) },
+                            enabled = scale > 0.5,
+                        ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+                        Text(
+                            "×${if (scale % 1.0 == 0.0) scale.toInt() else scale}",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        IconButton(
+                            onClick = { scale = (scale + 0.5).coerceAtMost(8.0) },
+                            enabled = scale < 8.0,
+                        ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    LazyColumn(Modifier.height(240.dp)) {
                         items(recipes) { recipe ->
                             Text(
                                 recipe.name,
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPickRecipe(recipe.id) }
+                                    .clickable { onPickRecipe(recipe.id, scale) }
                                     .padding(vertical = 10.dp),
                             )
                         }

@@ -116,11 +116,13 @@ class PlanViewModel @Inject constructor(
         load()
     }
 
-    fun addRecipe(date: LocalDate, slot: String, recipeId: String) {
+    fun addRecipe(date: LocalDate, slot: String, recipeId: String, scale: Double = 1.0) {
         require(slot in MEAL_SLOTS)
         viewModelScope.launch {
             try {
-                planRepository.addEntry(date.format(fmt), slot, recipeId, null, _selectedListId.value)
+                planRepository.addEntry(
+                    date.format(fmt), slot, recipeId, null, _selectedListId.value, scale,
+                )
                 load()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't add that to the plan"

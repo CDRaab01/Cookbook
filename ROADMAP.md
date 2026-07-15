@@ -36,8 +36,8 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
    into cook mode (scaled ingredient sheet + a "Scaled for N servings" note). **Also DONE:
    per-entry `plan→list` scale** — each planned recipe carries its own cooking `scale` (migration
    `0013`) that scales its shopping-list contribution and composes with the batch's global scale,
-   so "chili at 2× for leftovers, tacos at 1×" works (server core; a client scale control is the
-   small remaining bit).
+   so "chili at 2× for leftovers, tacos at 1×" works — end to end: a ×N stepper in the plan's
+   add-recipe dialog sets each entry's scale, which flows through plan→list.
 7. **Keep-screen-on in cook mode** — verify; add `FLAG_KEEP_SCREEN_ON` if absent. Wet hands,
    dark screen is the classic kitchen failure.
 8. ✓ **Post-cook rating** — DONE 2026-07-15. "I made this" now opens a 1–5 "would make again"

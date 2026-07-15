@@ -11,6 +11,7 @@ data class PlanEntryCreateRequest(
     val slot: String,
     @SerialName("recipe_id") val recipeId: String? = null,
     val note: String? = null,
+    val scale: Double = 1.0,
 )
 
 @Serializable
@@ -22,6 +23,8 @@ data class PlanEntryOut(
     @SerialName("recipe_name") val recipeName: String? = null,
     @SerialName("recipe_image_url") val recipeImageUrl: String? = null,
     val note: String? = null,
+    // Cooking scale for this planned night (1.0 = as written); scales its shopping-list contribution.
+    val scale: Double = 1.0,
     // Per-user (the signed-in caller's): whether they've confirmed eating this, and the portion.
     val eaten: Boolean = false,
     val servings: Double = 1.0,
