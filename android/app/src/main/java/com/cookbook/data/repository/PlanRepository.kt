@@ -20,7 +20,9 @@ interface PlanRepository {
         note: String?,
         listId: String? = null,
     ): PlanEntryOut
-    suspend fun setEaten(id: String, eaten: Boolean): PlanEntryOut
+    /** Confirm (or un-confirm) that you ate this, at [servings] — per-user; a recipe confirmation
+     * logs to your Plate diary at that portion. [servings] is ignored when un-eating. */
+    suspend fun setEaten(id: String, eaten: Boolean, servings: Double = 1.0): PlanEntryOut
     suspend fun deleteEntry(id: String)
     suspend fun sendToList(start: String, end: String, listId: String? = null): PlanToListResult
 }
@@ -41,8 +43,8 @@ class PlanRepositoryImpl @Inject constructor(
     ): PlanEntryOut =
         api.createPlanEntry(PlanEntryCreateRequest(date, slot, recipeId, note), listId)
 
-    override suspend fun setEaten(id: String, eaten: Boolean): PlanEntryOut =
-        api.updatePlanEntry(id, PlanEntryUpdateRequest(eaten))
+    override suspend fun setEaten(id: String, eaten: Boolean, servings: Double): PlanEntryOut =
+        api.updatePlanEntry(id, PlanEntryUpdateRequest(eaten, servings))
 
     override suspend fun deleteEntry(id: String) = api.deletePlanEntry(id)
 

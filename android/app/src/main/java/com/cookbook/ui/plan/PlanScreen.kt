@@ -204,7 +204,7 @@ private fun WeekList(
     onSlotTap: (LocalDate, String) -> Unit,
     onRemove: (String) -> Unit,
     onOpenRecipe: (String) -> Unit,
-    onSetEaten: (String, Boolean) -> Unit,
+    onSetEaten: (String, Boolean, Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val byDate = entries.groupBy { it.date }
@@ -228,7 +228,9 @@ private fun WeekList(
                         onTap = { if (entry == null) onSlotTap(date, slot) },
                         onRemove = { entry?.let { onRemove(it.id) } },
                         onOpenRecipe = onOpenRecipe,
-                        onSetEaten = { eaten -> entry?.let { onSetEaten(it.id, eaten) } },
+                        onSetEaten = { eaten, servings ->
+                            entry?.let { onSetEaten(it.id, eaten, servings) }
+                        },
                     )
                 }
             }
@@ -243,7 +245,7 @@ internal fun SlotRow(
     onTap: () -> Unit,
     onRemove: () -> Unit,
     onOpenRecipe: (String) -> Unit,
-    onSetEaten: (Boolean) -> Unit = {},
+    onSetEaten: (Boolean, Double) -> Unit = { _, _ -> },
 ) {
     val colors = CookbookTheme.colors
     PanelCard(
@@ -292,12 +294,19 @@ internal fun SlotRow(
             }
             if (entry != null) {
                 // The recipe/note Text above already has weight(1f), so it fills the row and pushes
-                // these buttons to the end. (A Spacer(weight(0f)) used to sit here and crashed on
+                // these controls to the end. (A Spacer(weight(0f)) used to sit here and crashed on
                 // recipe entries — Compose's Modifier.weight requires a value > 0.)
-                IconButton(onClick = { onSetEaten(!entry.eaten) }) {
+                // Portion only matters for recipes (notes don't log to Plate); show it once eaten.
+                if (entry.eaten && entry.recipeId != null) {
+                    PortionPicker(
+                        servings = entry.servings,
+                        onPick = { onSetEaten(true, it) },
+                    )
+                }
+                IconButton(onClick = { onSetEaten(!entry.eaten, if (entry.eaten) entry.servings else 1.0) }) {
                     Icon(
                         if (entry.eaten) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
-                        contentDescription = if (entry.eaten) "Eaten — tap to undo" else "Mark as eaten",
+                        contentDescription = if (entry.eaten) "Ate this — tap to undo" else "I ate this",
                         tint = if (entry.eaten) colors.fresh.base else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -308,6 +317,38 @@ internal fun SlotRow(
         }
     }
 }
+
+/** A compact "1×" portion control shown once a meal is eaten: tap to pick how much you ate; the
+ * choice re-logs that portion to your Plate diary. Reserved for recipe entries (notes don't log). */
+@Composable
+private fun PortionPicker(servings: Double, onPick: (Double) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val options = listOf(0.5, 1.0, 1.5, 2.0, 3.0)
+    Box {
+        TextButton(
+            onClick = { open = true },
+            contentPadding = PaddingValues(horizontal = 8.dp),
+        ) {
+            Text(
+                "${fmtServings(servings)}×",
+                style = MaterialTheme.typography.labelLarge,
+                color = CookbookTheme.colors.fresh.base,
+            )
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { s ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("${fmtServings(s)} serving${if (s == 1.0) "" else "s"}") },
+                    onClick = { open = false; onPick(s) },
+                )
+            }
+        }
+    }
+}
+
+/** "1", "1.5", "0.5" — drop a trailing .0 so whole servings read cleanly. */
+private fun fmtServings(s: Double): String =
+    if (s == s.toLong().toDouble()) s.toLong().toString() else s.toString()
 
 @Composable
 private fun AssignDialog(

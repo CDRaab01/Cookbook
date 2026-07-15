@@ -65,9 +65,16 @@ class PlanViewModel @Inject constructor(
         }
         viewModelScope.launch {
             // Only shared lists are offered as plan contexts ("My plan" covers your own).
-            _sharedLists.value = runCatching {
+            val shared = runCatching {
                 shoppingRepository.lists().filter { it.shared }
             }.getOrDefault(emptyList())
+            _sharedLists.value = shared
+            // Default to the shared household plan when one exists, so a partner's planning shows
+            // up without the user having to switch contexts. They can still pick "My plan".
+            if (_selectedListId.value == null && shared.isNotEmpty()) {
+                _selectedListId.value = shared.first().id
+                load()
+            }
         }
     }
 
@@ -133,10 +140,10 @@ class PlanViewModel @Inject constructor(
         }
     }
 
-    fun setEaten(id: String, eaten: Boolean) {
+    fun setEaten(id: String, eaten: Boolean, servings: Double = 1.0) {
         viewModelScope.launch {
             try {
-                planRepository.setEaten(id, eaten)
+                planRepository.setEaten(id, eaten, servings)
                 load()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't update that"

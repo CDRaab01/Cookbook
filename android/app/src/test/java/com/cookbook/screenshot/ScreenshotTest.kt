@@ -102,7 +102,16 @@ private fun PlanSlotsScene() {
             entry = com.cookbook.data.remote.PlanEntryOut(
                 id = "2", date = "2026-07-14", slot = "lunch", note = "Leftovers", eaten = true,
             ),
-            onTap = {}, onRemove = {}, onOpenRecipe = {}, onSetEaten = {},
+            onTap = {}, onRemove = {}, onOpenRecipe = {}, onSetEaten = { _, _ -> },
+        )
+        // An eaten recipe entry shows the per-user portion picker ("2×").
+        com.cookbook.ui.plan.SlotRow(
+            slot = "dinner",
+            entry = com.cookbook.data.remote.PlanEntryOut(
+                id = "3", date = "2026-07-14", slot = "dinner",
+                recipeId = "r2", recipeName = "Beef Chili", eaten = true, servings = 2.0,
+            ),
+            onTap = {}, onRemove = {}, onOpenRecipe = {}, onSetEaten = { _, _ -> },
         )
         com.cookbook.ui.plan.SlotRow(
             slot = "breakfast", entry = null,
