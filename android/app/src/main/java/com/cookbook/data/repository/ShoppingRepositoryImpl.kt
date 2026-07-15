@@ -5,6 +5,7 @@ import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.GrocerySpendOut
+import com.cookbook.data.remote.ShareRequest
 import com.cookbook.data.remote.ListCreateRequest
 import com.cookbook.data.remote.ListRenameRequest
 import com.cookbook.data.remote.ListSummaryOut
@@ -212,6 +213,17 @@ class ShoppingRepositoryImpl @Inject constructor(
     } catch (_: Exception) {
         null // integration off / offline / server hiccup — the tile just doesn't show
     }
+
+    // Sharing is online-only (no offline mirror) — a light-touch, connectivity-required flow.
+    override suspend fun listMembers(listId: String) = api.getListMembers(listId)
+
+    override suspend fun shareList(listId: String, email: String) =
+        api.shareList(listId, ShareRequest(email))
+
+    override suspend fun removeMember(listId: String, memberId: String) =
+        api.removeListMember(listId, memberId)
+
+    override suspend fun me() = api.getMe()
 
     override suspend fun deleteItem(listId: String, itemId: String): ShoppingListOut {
         val row = dao.byLocalId(itemId) ?: return localView()

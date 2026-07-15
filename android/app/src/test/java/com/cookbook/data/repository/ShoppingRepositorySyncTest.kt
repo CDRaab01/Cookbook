@@ -181,6 +181,9 @@ private class FakeApi : ApiService {
     override suspend fun getPlan(start: String, end: String): List<PlanEntryOut> = error("unused")
     override suspend fun createPlanEntry(req: PlanEntryCreateRequest): PlanEntryOut = error("unused")
     override suspend fun updatePlanEntry(id: String, req: PlanEntryUpdateRequest): PlanEntryOut = error("unused")
+    override suspend fun getListMembers(listId: String) = error("unused")
+    override suspend fun shareList(listId: String, req: com.cookbook.data.remote.ShareRequest) = error("unused")
+    override suspend fun removeListMember(listId: String, memberId: String) = error("unused")
     override suspend fun deletePlanEntry(id: String) = error("unused")
     override suspend fun planToList(req: PlanToListRequest): PlanToListResult = error("unused")
     override suspend fun addRecipeToList(

@@ -41,7 +41,20 @@ data class ListSummaryOut(
     val name: String,
     @SerialName("unchecked_count") val uncheckedCount: Int = 0,
     @SerialName("total_count") val totalCount: Int = 0,
+    val shared: Boolean = false,
+    @SerialName("is_owner") val isOwner: Boolean = true,
 )
+
+@Serializable
+data class MemberOut(
+    @SerialName("user_id") val userId: String,
+    val email: String,
+    val name: String,
+    @SerialName("is_owner") val isOwner: Boolean,
+)
+
+@Serializable
+data class ShareRequest(val email: String)
 
 @Serializable
 data class ListCreateRequest(val name: String)

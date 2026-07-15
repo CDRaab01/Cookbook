@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
+import com.cookbook.data.remote.MemberOut
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
@@ -244,6 +245,63 @@ class ShoppingViewModel @Inject constructor(
                 _list.value = UiState.Success(shoppingRepository.clearChecked(current.id))
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't clear checked items"
+            }
+        }
+    }
+
+    // --- Household sharing ---
+
+    private val _members = MutableStateFlow<List<MemberOut>>(emptyList())
+    val members: StateFlow<List<MemberOut>> = _members
+
+    /** The signed-in user's id, so the share sheet can mark "you" and enable Leave. */
+    private val _currentUserId = MutableStateFlow<String?>(null)
+    val currentUserId: StateFlow<String?> = _currentUserId
+
+    /** Load the active list's members (call when opening the share sheet). Also caches "me". */
+    fun loadMembers() {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        viewModelScope.launch {
+            if (_currentUserId.value == null) {
+                _currentUserId.value = runCatching { shoppingRepository.me().id }.getOrNull()
+            }
+            _members.value = try {
+                shoppingRepository.listMembers(current.id)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    fun shareWith(email: String) {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        if (email.isBlank()) return
+        viewModelScope.launch {
+            try {
+                _members.value = shoppingRepository.shareList(current.id, email.trim())
+                _allLists.value = shoppingRepository.lists() // refresh the "shared" badge
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't share the list"
+            }
+        }
+    }
+
+    /** Remove a member (owner) or leave (a member removing their own id). */
+    fun removeMember(memberId: String) {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        val leaving = memberId == _currentUserId.value
+        viewModelScope.launch {
+            try {
+                shoppingRepository.removeMember(current.id, memberId)
+                if (leaving) {
+                    _members.value = emptyList()
+                    load() // lost access — reload (the list drops out of the index)
+                } else {
+                    _members.value = shoppingRepository.listMembers(current.id)
+                    _allLists.value = shoppingRepository.lists()
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't update sharing"
             }
         }
     }

@@ -161,6 +161,22 @@ interface ApiService {
     @POST("lists/{listId}/clear-checked")
     suspend fun clearCheckedItems(@Path("listId") listId: String): ShoppingListOut
 
+    // --- Household sharing ---
+    @GET("lists/{listId}/members")
+    suspend fun getListMembers(@Path("listId") listId: String): List<MemberOut>
+
+    @POST("lists/{listId}/members")
+    suspend fun shareList(
+        @Path("listId") listId: String,
+        @Body req: ShareRequest,
+    ): List<MemberOut>
+
+    @DELETE("lists/{listId}/members/{memberId}")
+    suspend fun removeListMember(
+        @Path("listId") listId: String,
+        @Path("memberId") memberId: String,
+    )
+
     // --- Pantry ---
     @Multipart
     @POST("pantry/scan")
