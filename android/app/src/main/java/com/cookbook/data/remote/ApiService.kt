@@ -57,10 +57,17 @@ interface ApiService {
 
     // --- Weekly meal planner ---
     @GET("plan")
-    suspend fun getPlan(@Query("start") start: String, @Query("end") end: String): List<PlanEntryOut>
+    suspend fun getPlan(
+        @Query("start") start: String,
+        @Query("end") end: String,
+        @Query("list_id") listId: String? = null,
+    ): List<PlanEntryOut>
 
     @POST("plan")
-    suspend fun createPlanEntry(@Body req: PlanEntryCreateRequest): PlanEntryOut
+    suspend fun createPlanEntry(
+        @Body req: PlanEntryCreateRequest,
+        @Query("list_id") listId: String? = null,
+    ): PlanEntryOut
 
     @PATCH("plan/{id}")
     suspend fun updatePlanEntry(

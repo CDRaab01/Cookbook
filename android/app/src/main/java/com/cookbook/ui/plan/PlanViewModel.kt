@@ -2,11 +2,13 @@ package com.cookbook.ui.plan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.MEAL_SLOTS
 import com.cookbook.data.remote.PlanEntryOut
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.repository.PlanRepository
 import com.cookbook.data.repository.RecipeRepository
+import com.cookbook.data.repository.ShoppingRepository
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,9 +26,18 @@ import javax.inject.Inject
 class PlanViewModel @Inject constructor(
     private val planRepository: PlanRepository,
     private val recipeRepository: RecipeRepository,
+    private val shoppingRepository: ShoppingRepository,
 ) : ViewModel() {
 
     private val fmt = DateTimeFormatter.ISO_LOCAL_DATE
+
+    /** Which list's plan is shown: null = your own; a shared list's id = that household's plan. */
+    private val _selectedListId = MutableStateFlow<String?>(null)
+    val selectedListId: StateFlow<String?> = _selectedListId
+
+    /** Shared lists you can plan on (for the plan-context picker); "My plan" covers your own. */
+    private val _sharedLists = MutableStateFlow<List<ListSummaryOut>>(emptyList())
+    val sharedLists: StateFlow<List<ListSummaryOut>> = _sharedLists
 
     // The Monday of the visible week — a stable anchor the UI pages by whole weeks.
     private val _weekStart = MutableStateFlow(
@@ -52,13 +63,31 @@ class PlanViewModel @Inject constructor(
         viewModelScope.launch {
             _recipes.value = runCatching { recipeRepository.listRecipes() }.getOrDefault(emptyList())
         }
+        viewModelScope.launch {
+            // Only shared lists are offered as plan contexts ("My plan" covers your own).
+            _sharedLists.value = runCatching {
+                shoppingRepository.lists().filter { it.shared }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Switch which list's plan is shown ("My plan" = null, or a shared list's id). */
+    fun selectList(listId: String?) {
+        _selectedListId.value = listId
+        load()
     }
 
     private fun load() {
         viewModelScope.launch {
             _entries.value = try {
                 val start = _weekStart.value
-                UiState.Success(planRepository.getPlan(start.format(fmt), start.plusDays(6).format(fmt)))
+                UiState.Success(
+                    planRepository.getPlan(
+                        start.format(fmt),
+                        start.plusDays(6).format(fmt),
+                        _selectedListId.value,
+                    ),
+                )
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Couldn't load the plan")
             }
@@ -84,7 +113,7 @@ class PlanViewModel @Inject constructor(
         require(slot in MEAL_SLOTS)
         viewModelScope.launch {
             try {
-                planRepository.addEntry(date.format(fmt), slot, recipeId, null)
+                planRepository.addEntry(date.format(fmt), slot, recipeId, null, _selectedListId.value)
                 load()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't add that to the plan"
@@ -96,7 +125,7 @@ class PlanViewModel @Inject constructor(
         if (note.isBlank()) return
         viewModelScope.launch {
             try {
-                planRepository.addEntry(date.format(fmt), slot, null, note.trim())
+                planRepository.addEntry(date.format(fmt), slot, null, note.trim(), _selectedListId.value)
                 load()
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't add that to the plan"
@@ -130,7 +159,11 @@ class PlanViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val start = _weekStart.value
-                val result = planRepository.sendToList(start.format(fmt), start.plusDays(6).format(fmt))
+                val result = planRepository.sendToList(
+                    start.format(fmt),
+                    start.plusDays(6).format(fmt),
+                    _selectedListId.value,
+                )
                 _sentToList.tryEmit(result.itemsOnList)
             } catch (e: Exception) {
                 _error.value = e.message ?: "Nothing to send — plan a recipe first"

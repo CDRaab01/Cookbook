@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.AlertDialog
@@ -74,6 +75,9 @@ fun PlanScreen(
     val snackbar = remember { SnackbarHostState() }
     val colors = CookbookTheme.colors
     var assigningSlot by remember { mutableStateOf<Pair<LocalDate, String>?>(null) }
+    val selectedListId by viewModel.selectedListId.collectAsState()
+    val sharedLists by viewModel.sharedLists.collectAsState()
+    var planMenuOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(error) {
         error?.let { snackbar.showSnackbar(it); viewModel.clearError() }
@@ -88,7 +92,38 @@ fun PlanScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("Plan", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    if (sharedLists.isEmpty()) {
+                        Text("Plan", style = MaterialTheme.typography.titleLarge)
+                    } else {
+                        val selectedName = sharedLists.firstOrNull { it.id == selectedListId }?.name
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { planMenuOpen = true },
+                        ) {
+                            Text(
+                                selectedName ?: "My plan",
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Icon(Icons.Outlined.ArrowDropDown, contentDescription = "Switch plan")
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = planMenuOpen,
+                            onDismissRequest = { planMenuOpen = false },
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("My plan") },
+                                onClick = { planMenuOpen = false; viewModel.selectList(null) },
+                            )
+                            sharedLists.forEach { l ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("${l.name}  ·  shared") },
+                                    onClick = { planMenuOpen = false; viewModel.selectList(l.id) },
+                                )
+                            }
+                        }
+                    }
+                },
             )
         },
     ) { padding ->

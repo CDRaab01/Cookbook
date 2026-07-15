@@ -178,8 +178,8 @@ private class FakeApi : ApiService {
     override suspend fun deleteRecipe(id: String) = error("unused")
     override suspend fun importPhoto(photo: okhttp3.MultipartBody.Part): RecipePhotoDraftOut =
         error("unused")
-    override suspend fun getPlan(start: String, end: String): List<PlanEntryOut> = error("unused")
-    override suspend fun createPlanEntry(req: PlanEntryCreateRequest): PlanEntryOut = error("unused")
+    override suspend fun getPlan(start: String, end: String, listId: String?): List<PlanEntryOut> = error("unused")
+    override suspend fun createPlanEntry(req: PlanEntryCreateRequest, listId: String?): PlanEntryOut = error("unused")
     override suspend fun updatePlanEntry(id: String, req: PlanEntryUpdateRequest): PlanEntryOut = error("unused")
     override suspend fun getListMembers(listId: String) = error("unused")
     override suspend fun shareList(listId: String, req: com.cookbook.data.remote.ShareRequest) = error("unused")
