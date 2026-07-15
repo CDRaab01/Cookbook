@@ -5,6 +5,7 @@ import com.cookbook.data.local.db.ShoppingItemEntity
 import com.cookbook.data.remote.AddRecipeToListRequest
 import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.CookedOut
+import com.cookbook.data.remote.CookedRequest
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.ForgotPasswordRequest
 import com.cookbook.data.remote.SuiteLoginRequest
@@ -213,7 +214,7 @@ private class FakeApi : ApiService {
     override suspend fun putStaples(req: com.cookbook.data.remote.StaplesPutRequest) =
         error("unused")
     override suspend fun getPantrySuggestions(maxMissing: Int) = error("unused")
-    override suspend fun markCooked(id: String): CookedOut = error("unused")
+    override suspend fun markCooked(id: String, body: CookedRequest): CookedOut = error("unused")
     override suspend fun unmarkCooked(id: String): CookedOut = error("unused")
     override suspend fun getRecipeNutrition(id: String): RecipeNutritionOut = error("unused")
     override suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult =

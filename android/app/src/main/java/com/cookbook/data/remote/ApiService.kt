@@ -83,7 +83,7 @@ interface ApiService {
 
     // --- Made-it tracking ---
     @POST("recipes/{id}/cooked")
-    suspend fun markCooked(@Path("id") id: String): CookedOut
+    suspend fun markCooked(@Path("id") id: String, @Body body: CookedRequest): CookedOut
 
     @DELETE("recipes/{id}/cooked/last")
     suspend fun unmarkCooked(@Path("id") id: String): CookedOut

@@ -34,9 +34,10 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
    `plan→list` propagating the scale (add-to-list already has its own ½–3× picker).
 7. **Keep-screen-on in cook mode** — verify; add `FLAG_KEEP_SCREEN_ON` if absent. Wet hands,
    dark screen is the classic kitchen failure.
-8. **Post-cook rating/notes prompt** — `cook_events` already records the cook; close the loop
-   with "would make again ★★★★ + one note" on completion. Feeds favorites and "what can I
-   make" ranking for free, and builds the household's own taste memory.
+8. ✓ **Post-cook rating** — DONE 2026-07-15. "I made this" now opens a 1–5 "would make again"
+   star pick (Skip rates nothing); `cook_events.rating` (migration `0012`, backward-compatible)
+   and the recipe detail/list surface `avg_rating` (★ N.N). *Still open:* a free-text per-cook
+   note, and wiring rating into the "what can I make" ranking.
 
 ## Ground rules for the incoming AI round (read before building)
 

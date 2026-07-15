@@ -5,6 +5,7 @@ import com.cookbook.data.local.db.RecipeDetailCacheEntity
 import com.cookbook.data.local.db.RecipeSummaryCacheEntity
 import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.CookedOut
+import com.cookbook.data.remote.CookedRequest
 import com.cookbook.data.remote.DiscoveredRecipe
 import com.cookbook.data.remote.LogToPlateRequest
 import com.cookbook.data.remote.LogToPlateResult
@@ -100,7 +101,8 @@ class RecipeRepositoryImpl @Inject constructor(
     override suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut =
         updateRecipe(id, RecipeUpdateRequest(favorite = favorite))
 
-    override suspend fun markCooked(id: String): CookedOut = api.markCooked(id)
+    override suspend fun markCooked(id: String, rating: Int?): CookedOut =
+        api.markCooked(id, CookedRequest(rating = rating))
 
     override suspend fun unmarkCooked(id: String): CookedOut = api.unmarkCooked(id)
 

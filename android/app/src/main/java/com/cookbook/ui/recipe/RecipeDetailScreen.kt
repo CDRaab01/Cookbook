@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
@@ -95,6 +96,7 @@ fun RecipeDetailScreen(
     var pickScale by remember { mutableStateOf(false) }
     var lastScale by remember { mutableStateOf(1.0) }
     var showLogDialog by remember { mutableStateOf(false) }
+    var showRating by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
     var editingNotes by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -221,7 +223,7 @@ fun RecipeDetailScreen(
             is UiState.Success -> RecipeDetailBody(
                 recipe = s.data,
                 onAddToList = { pickScale = true },
-                onMadeIt = viewModel::markCooked,
+                onMadeIt = { showRating = true },
                 onStartCooking = { servings -> onStartCooking(viewModel.recipeId, servings) },
                 nutrition = nutrition,
                 onEstimateNutrition = viewModel::estimateNutrition,
@@ -240,6 +242,16 @@ fun RecipeDetailScreen(
                 viewModel.saveNotes(text)
             },
             onDismiss = { editingNotes = null },
+        )
+    }
+
+    if (showRating) {
+        RateDialog(
+            onRate = { rating ->
+                showRating = false
+                viewModel.markCooked(rating) // null when skipped
+            },
+            onDismiss = { showRating = false },
         )
     }
 
@@ -374,6 +386,15 @@ private fun RecipeDetailBody(
                             label = com.cookbook.util.relativeDays(recipe.lastCookedAt)
                                 ?.let { "made · $it" } ?: "made",
                             color = colors.fresh.base,
+                        )
+                    }
+                    recipe.avgRating?.let { rating ->
+                        Spacer(Modifier.width(20.dp))
+                        val shown = if (rating % 1.0 == 0.0) "${rating.toInt()}" else "%.1f".format(rating)
+                        MetaStat(
+                            value = "★ $shown",
+                            label = "would make again",
+                            color = colors.heat.base,
                         )
                     }
                 }
@@ -716,6 +737,35 @@ private fun ScalePickerDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
+    )
+}
+
+/** "Would you make it again?" — a 1–5 star pick after "I made this". Skip rates nothing. */
+@Composable
+private fun RateDialog(onRate: (Int?) -> Unit, onDismiss: () -> Unit) {
+    var selected by remember { mutableStateOf(0) }
+    val colors = CookbookTheme.colors
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Made it! Would you make it again?") },
+        text = {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                (1..5).forEach { star ->
+                    androidx.compose.material3.IconButton(onClick = { selected = star }) {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = "$star star${if (star == 1) "" else "s"}",
+                            tint = if (star <= selected) colors.heat.base
+                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onRate(selected) }, enabled = selected > 0) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = { onRate(null) }) { Text("Skip") } },
     )
 }
 

@@ -24,7 +24,7 @@ interface RecipeRepository {
     suspend fun importRecipe(sourceId: String): RecipeOut
     suspend fun importRecipeFromUrl(url: String): RecipeOut
     suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut
-    suspend fun markCooked(id: String): CookedOut
+    suspend fun markCooked(id: String, rating: Int? = null): CookedOut
     suspend fun unmarkCooked(id: String): CookedOut
     suspend fun getRecipeNutrition(id: String): RecipeNutritionOut
     suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult

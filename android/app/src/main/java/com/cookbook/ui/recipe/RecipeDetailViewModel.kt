@@ -89,16 +89,17 @@ class RecipeDetailViewModel @Inject constructor(
     private val _madeIt = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val madeIt: SharedFlow<Int> = _madeIt
 
-    fun markCooked() {
+    fun markCooked(rating: Int? = null) {
         viewModelScope.launch {
             try {
-                val result = recipeRepository.markCooked(recipeId)
+                val result = recipeRepository.markCooked(recipeId, rating)
                 val current = (_recipe.value as? UiState.Success)?.data
                 if (current != null) {
                     _recipe.value = UiState.Success(
                         current.copy(
                             timesCooked = result.timesCooked,
                             lastCookedAt = result.lastCookedAt,
+                            avgRating = result.avgRating,
                         ),
                     )
                 }
