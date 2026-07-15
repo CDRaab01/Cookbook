@@ -1,18 +1,23 @@
 """Phase 7: recipe nutrition + log-to-diary via a faked Plate (httpx.MockTransport)."""
 
 import uuid
+from datetime import date
 
 import httpx
 import pytest
 from jose import jwt
+from sqlalchemy import select
 
 from app.config import settings
 from app.database import AsyncSessionLocal
+from app.models.recipe import Recipe
 from app.models.user import User
 from app.services.plate_nutrition_service import (
     LogToPlateRequest,
     get_recipe_nutrition,
+    log_recipe_for_confirmation,
     log_recipe_to_plate,
+    retract_confirmation_log,
 )
 
 SECRET = "shared-cross-app-secret"
@@ -151,6 +156,63 @@ async def test_log_to_plate_scales_by_servings_eaten(client, plate_configured):
     beef = next(i for i in logged["body"]["items"] if i["name"] == "Ground beef")
     # 1 lb for 4 servings, 2 servings eaten ⇒ 0.5 lb.
     assert beef["quantity"] == pytest.approx(0.5)
+
+
+def _fake_plate_capture(seen: list[dict]) -> httpx.AsyncClient:
+    """Records every cross-app request (method/path/query/body) and acks log + unlog."""
+    import json as _json
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "query": dict(request.url.params),
+                "body": _json.loads(request.content) if request.content else None,
+            }
+        )
+        if request.url.path == "/cross-app/log-recipe":
+            return httpx.Response(200, json={"logged": 2, "skipped": 1})
+        if request.url.path == "/cross-app/logged":
+            return httpx.Response(200, json={"removed": 2})
+        return httpx.Response(404)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_confirmation_logs_and_retracts_with_client_ref(client, plate_configured):
+    """A meal confirmation logs the recipe under a client_ref (portion-scaled), and the retract
+    hits DELETE /cross-app/logged with that same ref — the confirm/adjust/un-eat correlation."""
+    user, _, recipe_id = await _user_with_recipe(client)
+    ref = f"cbplan:{recipe_id}:{user.id}"
+    seen: list[dict] = []
+
+    async with AsyncSessionLocal() as db:
+        recipe = (
+            await db.execute(select(Recipe).where(Recipe.id == uuid.UUID(recipe_id)))
+        ).scalar_one()
+        fake = _fake_plate_capture(seen)
+        await log_recipe_for_confirmation(
+            user.email,
+            recipe,
+            servings_eaten=2.0,
+            date=date(2026, 7, 8),
+            meal="dinner",
+            client_ref=ref,
+            client=fake,
+        )
+        await retract_confirmation_log(user.email, ref, client=fake)
+
+    logged = next(r for r in seen if r["path"] == "/cross-app/log-recipe")
+    assert logged["method"] == "POST"
+    assert logged["body"]["client_ref"] == ref
+    assert logged["body"]["meal"] == "dinner"
+    beef = next(i for i in logged["body"]["items"] if i["name"] == "Ground beef")
+    assert beef["quantity"] == pytest.approx(0.5)  # 1 lb / 4 servings * 2 eaten
+
+    retracted = next(r for r in seen if r["path"] == "/cross-app/logged")
+    assert retracted["method"] == "DELETE"
+    assert retracted["query"]["client_ref"] == ref
 
 
 async def test_endpoints_503_when_unconfigured(auth_client, monkeypatch):
