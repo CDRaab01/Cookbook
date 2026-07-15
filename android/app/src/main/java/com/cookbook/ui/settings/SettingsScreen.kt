@@ -43,6 +43,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onLoggedOut: () -> Unit,
     onOpenStaples: () -> Unit,
+    onOpenAisleOrder: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = CookbookTheme.colors
@@ -169,6 +170,27 @@ fun SettingsScreen(
                         channel = colors.fresh.base,
                         onChannel = colors.fresh.on,
                         dimChannel = colors.fresh.dim,
+                    )
+                }
+            }
+
+            PanelCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Text(
+                        "Aisle order — arrange store categories to match how you walk your store; " +
+                            "the shopping list groups items in that order.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PulseButton(
+                        text = "Edit aisle order",
+                        onClick = onOpenAisleOrder,
+                        tonal = true,
+                        compact = true,
+                        channel = colors.heat.base,
+                        onChannel = colors.heat.on,
+                        dimChannel = colors.heat.dim,
                     )
                 }
             }

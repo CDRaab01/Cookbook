@@ -35,4 +35,5 @@ sealed class Screen(val route: String) {
     data object PantryConfirm : Screen("pantry_confirm")
     data object PantrySuggestions : Screen("pantry_suggestions")
     data object StaplesEditor : Screen("staples")
+    data object AisleOrder : Screen("aisle_order")
 }

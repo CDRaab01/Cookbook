@@ -13,8 +13,11 @@ import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import com.cookbook.util.DEFAULT_AISLE_ORDER
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -22,10 +25,15 @@ import javax.inject.Inject
 class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
     private val widgetRefresher: com.cookbook.widget.WidgetRefresher,
+    appPreferences: com.cookbook.util.AppPreferences,
 ) : ViewModel() {
 
     private val _list = MutableStateFlow<UiState<ShoppingListOut>>(UiState.Loading)
     val list: StateFlow<UiState<ShoppingListOut>> = _list
+
+    /** The user's store-walk aisle order, for grouping list items (falls back to the default). */
+    val aisleOrder: StateFlow<List<String>> = appPreferences.aisleOrder
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_AISLE_ORDER)
 
     init {
         // Any successful list state (load or mutation) redraws the home-screen widget, so it

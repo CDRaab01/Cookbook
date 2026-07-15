@@ -88,6 +88,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val undoable by viewModel.undoable.collectAsState()
     val allLists by viewModel.allLists.collectAsState()
     val grocerySpend by viewModel.grocerySpend.collectAsState()
+    val aisleOrder by viewModel.aisleOrder.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
@@ -243,6 +244,7 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
                         onDelete = viewModel::deleteItem,
                         onEdit = { editing = it },
                         onClearChecked = viewModel::clearChecked,
+                        aisleOrder = aisleOrder,
                         modifier = Modifier.padding(padding),
                     )
                 }
@@ -437,6 +439,7 @@ private fun ShoppingListBody(
     onDelete: (String) -> Unit,
     onEdit: (ShoppingItemOut) -> Unit,
     onClearChecked: () -> Unit,
+    aisleOrder: List<String> = CATEGORY_ORDER,
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
@@ -477,7 +480,7 @@ private fun ShoppingListBody(
             Spacer(Modifier.height(8.dp))
         }
 
-        CATEGORY_ORDER.filter { grouped.containsKey(it) }.forEach { category ->
+        aisleOrder.filter { grouped.containsKey(it) }.forEach { category ->
             item(key = "header_$category") {
                 SectionHeader(
                     categoryLabel(category),

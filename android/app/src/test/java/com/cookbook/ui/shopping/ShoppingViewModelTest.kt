@@ -39,7 +39,11 @@ class ShoppingViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        viewModel = ShoppingViewModel(repository, mock())
+        val prefs = org.mockito.kotlin.mock<com.cookbook.util.AppPreferences> {
+            org.mockito.kotlin.whenever(it.aisleOrder)
+                .thenReturn(kotlinx.coroutines.flow.flowOf(com.cookbook.util.DEFAULT_AISLE_ORDER))
+        }
+        viewModel = ShoppingViewModel(repository, mock(), prefs)
     }
 
     @After

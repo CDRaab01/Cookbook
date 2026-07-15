@@ -27,6 +27,17 @@ class AppPreferences @Inject constructor(
     companion object {
         private val SERVER_URL = stringPreferencesKey("pref_server_url")
         private val SHOPPING_LIST_ID = stringPreferencesKey("pref_shopping_list_id")
+        private val AISLE_ORDER = stringPreferencesKey("pref_aisle_order")
+    }
+
+    /** The user's store-walk aisle order (reconciled against the canonical set); default order when unset. */
+    val aisleOrder: Flow<List<String>> = context.prefsDataStore.data.map { prefs ->
+        val saved = prefs[AISLE_ORDER]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+        reconcileAisleOrder(saved ?: emptyList())
+    }
+
+    suspend fun setAisleOrder(order: List<String>) {
+        context.prefsDataStore.edit { it[AISLE_ORDER] = order.joinToString(",") }
     }
 
     /** Base URL of the Cookbook server. Defaults to the build-time value when unset. */

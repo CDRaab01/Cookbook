@@ -16,7 +16,10 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
 1. **Household list sharing by invite** (Non-AI #1 below) — the headline. Share a *list*, not
    accounts; SSO is the identity foundation; the merge kernel already handles concurrent adds.
    This is the feature that makes the suite read as multi-user and professional.
-2. **Custom/reorderable aisles** (Non-AI #2) — store-walk order.
+2. ✓ **Custom/reorderable aisles** (Non-AI #2) — DONE 2026-07-15. Settings → "Edit aisle order"
+   reorders the store categories (move up/down + reset); the order persists in DataStore
+   (`AppPreferences.aisleOrder`, reconciled against the canonical set) and the shopping list
+   groups items in that walk order. Client-only; 5 unit tests on the reconcile logic.
 3. **Designed empty states** across screens (the Phase-8 leftover) + celebration on
    list-complete/cook-complete via the Pulse primitives as host Tier P lands them.
 4. **Record the Roborazzi baselines** (Non-AI #4) — the bar makes "record or delete" a gate,

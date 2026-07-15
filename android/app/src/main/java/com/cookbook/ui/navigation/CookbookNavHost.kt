@@ -217,6 +217,7 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                         }
                     },
                     onOpenStaples = { navController.navigate(Screen.StaplesEditor.route) },
+                    onOpenAisleOrder = { navController.navigate(Screen.AisleOrder.route) },
                 )
             }
             composable(Screen.Pantry.route) {
@@ -241,6 +242,9 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             }
             composable(Screen.StaplesEditor.route) {
                 StaplesEditorScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Screen.AisleOrder.route) {
+                com.cookbook.ui.settings.AisleOrderScreen(onBack = { navController.popBackStack() })
             }
             composable(Screen.Shopping.route) {
                 ShoppingScreen()

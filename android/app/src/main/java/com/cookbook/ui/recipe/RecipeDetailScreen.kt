@@ -62,9 +62,8 @@ import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 
-/** Order categories the way you walk a store; uncategorized last. */
-internal val CATEGORY_ORDER =
-    listOf("produce", "meat", "dairy", "bakery", "frozen", "pantry", "other")
+/** Default store-walk order for grouping ingredients/items; users can customize it (aisle order). */
+internal val CATEGORY_ORDER = com.cookbook.util.DEFAULT_AISLE_ORDER
 
 internal fun categoryLabel(category: String?): String =
     (category ?: "other").replaceFirstChar { it.uppercase() }
