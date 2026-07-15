@@ -182,6 +182,7 @@ class RecipeOut(BaseModel):
     notes: str | None = None
     times_cooked: int = 0
     last_cooked_at: datetime.datetime | None = None
+    avg_rating: float | None = None
     created_at: datetime.datetime
     steps: list[StepOut]
     ingredients: list[IngredientOut]
@@ -275,9 +276,16 @@ class RecipeSummaryOut(BaseModel):
     tags: list[str] = []
     times_cooked: int = 0
     last_cooked_at: datetime.datetime | None = None
+    avg_rating: float | None = None
     created_at: datetime.datetime
     ingredient_count: int
     step_count: int
+
+
+class CookedRequest(BaseModel):
+    """Optional payload for "I made this": a 1–5 "would make again" rating (omit to rate nothing)."""
+
+    rating: int | None = Field(default=None, ge=1, le=5)
 
 
 class CookedOut(BaseModel):
@@ -285,3 +293,5 @@ class CookedOut(BaseModel):
 
     times_cooked: int
     last_cooked_at: datetime.datetime | None = None
+    # Average of the 1–5 ratings across this recipe's cook events; null when none are rated.
+    avg_rating: float | None = None

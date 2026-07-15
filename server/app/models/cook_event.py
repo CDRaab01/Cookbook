@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, func
+from sqlalchemy import DateTime, ForeignKey, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -23,3 +23,5 @@ class CookEvent(Base):
     cooked_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Optional 1–5 "would make again" rating captured at cook time; null = rated nothing.
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)

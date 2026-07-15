@@ -57,26 +57,37 @@ def _build_ingredients(items: list[IngredientIn]) -> list[RecipeIngredient]:
 
 async def _cook_stats(
     db: AsyncSession, user_id: uuid.UUID, recipe_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, tuple[int, datetime.datetime]]:
-    """(times_cooked, last_cooked_at) per recipe, one grouped query for a whole listing."""
+) -> dict[uuid.UUID, tuple[int, datetime.datetime, float | None]]:
+    """(times_cooked, last_cooked_at, avg_rating) per recipe, one grouped query for a listing.
+    avg_rating is null when no cook of that recipe carried a rating (SQL avg ignores nulls)."""
     if not recipe_ids:
         return {}
     result = await db.execute(
-        select(CookEvent.recipe_id, func.count(), func.max(CookEvent.cooked_at))
+        select(
+            CookEvent.recipe_id,
+            func.count(),
+            func.max(CookEvent.cooked_at),
+            func.avg(CookEvent.rating),
+        )
         .where(CookEvent.user_id == user_id, CookEvent.recipe_id.in_(recipe_ids))
         .group_by(CookEvent.recipe_id)
     )
-    return {recipe_id: (count, last) for recipe_id, count, last in result.all()}
+    return {
+        recipe_id: (count, last, round(float(avg), 1) if avg is not None else None)
+        for recipe_id, count, last, avg in result.all()
+    }
 
 
-async def mark_cooked(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> CookedOut:
-    """One "I made this" tap → one history row."""
+async def mark_cooked(
+    db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID, rating: int | None = None
+) -> CookedOut:
+    """One "I made this" tap → one history row, optionally carrying a 1–5 rating."""
     await load_owned_recipe(db, user_id, recipe_id)
-    db.add(CookEvent(user_id=user_id, recipe_id=recipe_id))
+    db.add(CookEvent(user_id=user_id, recipe_id=recipe_id, rating=rating))
     await db.commit()
     stats = await _cook_stats(db, user_id, [recipe_id])
-    count, last = stats.get(recipe_id, (0, None))
-    return CookedOut(times_cooked=count, last_cooked_at=last)
+    count, last, avg = stats.get(recipe_id, (0, None, None))
+    return CookedOut(times_cooked=count, last_cooked_at=last, avg_rating=avg)
 
 
 async def unmark_cooked(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> CookedOut:
@@ -94,8 +105,8 @@ async def unmark_cooked(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UU
     await db.delete(latest)
     await db.commit()
     stats = await _cook_stats(db, user_id, [recipe_id])
-    count, last = stats.get(recipe_id, (0, None))
-    return CookedOut(times_cooked=count, last_cooked_at=last)
+    count, last, avg = stats.get(recipe_id, (0, None, None))
+    return CookedOut(times_cooked=count, last_cooked_at=last, avg_rating=avg)
 
 
 def _summary(recipe: Recipe) -> RecipeSummaryOut:
@@ -148,18 +159,22 @@ async def list_recipes(db: AsyncSession, user_id: uuid.UUID) -> list[RecipeSumma
     stats = await _cook_stats(db, user_id, [r.id for r in recipes])
     out = []
     for r in recipes:
-        count, last = stats.get(r.id, (0, None))
+        count, last, avg = stats.get(r.id, (0, None, None))
         summary = _summary(r)
-        out.append(summary.model_copy(update={"times_cooked": count, "last_cooked_at": last}))
+        out.append(
+            summary.model_copy(
+                update={"times_cooked": count, "last_cooked_at": last, "avg_rating": avg}
+            )
+        )
     return out
 
 
 async def get_recipe(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> RecipeOut:
     recipe = await load_owned_recipe(db, user_id, recipe_id)
     stats = await _cook_stats(db, user_id, [recipe_id])
-    count, last = stats.get(recipe_id, (0, None))
+    count, last, avg = stats.get(recipe_id, (0, None, None))
     return RecipeOut.model_validate(recipe).model_copy(
-        update={"times_cooked": count, "last_cooked_at": last}
+        update={"times_cooked": count, "last_cooked_at": last, "avg_rating": avg}
     )
 
 

@@ -43,6 +43,43 @@ async def test_undo_removes_latest(auth_client):
     assert resp.status_code == 404
 
 
+async def test_rating_is_averaged_across_cooks(auth_client):
+    recipe_id = await _recipe(auth_client)
+
+    resp = await auth_client.post(f"/recipes/{recipe_id}/cooked", json={"rating": 5})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["avg_rating"] == 5.0
+
+    resp = await auth_client.post(f"/recipes/{recipe_id}/cooked", json={"rating": 4})
+    assert resp.json()["avg_rating"] == 4.5
+
+    # A rating-less cook doesn't drag the average (SQL avg ignores nulls).
+    await auth_client.post(f"/recipes/{recipe_id}/cooked")
+    detail = (await auth_client.get(f"/recipes/{recipe_id}")).json()
+    assert detail["times_cooked"] == 3
+    assert detail["avg_rating"] == 4.5
+
+    listed = (await auth_client.get("/recipes")).json()
+    assert next(r for r in listed if r["id"] == recipe_id)["avg_rating"] == 4.5
+
+
+async def test_no_rating_leaves_avg_null(auth_client):
+    recipe_id = await _recipe(auth_client)
+    resp = await auth_client.post(f"/recipes/{recipe_id}/cooked")
+    assert resp.status_code == 201
+    assert resp.json()["avg_rating"] is None
+
+
+async def test_rating_out_of_range_rejected(auth_client):
+    recipe_id = await _recipe(auth_client)
+    assert (
+        await auth_client.post(f"/recipes/{recipe_id}/cooked", json={"rating": 6})
+    ).status_code == 422
+    assert (
+        await auth_client.post(f"/recipes/{recipe_id}/cooked", json={"rating": 0})
+    ).status_code == 422
+
+
 async def test_cook_events_isolated_per_user(auth_client, client):
     import uuid as _uuid
 

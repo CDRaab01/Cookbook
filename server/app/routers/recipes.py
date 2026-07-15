@@ -10,6 +10,7 @@ from app.limiter import limiter
 from app.schemas.photo import RecipePhotoDraftOut
 from app.schemas.recipe import (
     CookedOut,
+    CookedRequest,
     DiscoveredRecipe,
     PreviewIngredientOut,
     RecipeCreate,
@@ -177,9 +178,15 @@ async def delete(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession)
 
 
 @router.post("/{recipe_id}/cooked", response_model=CookedOut, status_code=status.HTTP_201_CREATED)
-async def cooked(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
-    """ "I made this" — appends one cook event and returns the fresh aggregates."""
-    return await mark_cooked(db, current_user.id, recipe_id)
+async def cooked(
+    recipe_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbSession,
+    body: CookedRequest | None = None,
+):
+    """ "I made this" — appends one cook event (with an optional 1–5 rating) and returns the fresh
+    aggregates. The body is optional, so a plain no-rating tap still works."""
+    return await mark_cooked(db, current_user.id, recipe_id, rating=body.rating if body else None)
 
 
 @router.delete("/{recipe_id}/cooked/last", response_model=CookedOut)
