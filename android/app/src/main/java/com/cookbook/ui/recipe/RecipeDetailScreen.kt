@@ -68,10 +68,11 @@ internal val CATEGORY_ORDER =
 internal fun categoryLabel(category: String?): String =
     (category ?: "other").replaceFirstChar { it.uppercase() }
 
-/** "2 lb Chicken breast" / "Salt (to taste)" — quantity formatting shared by detail + list rows. */
+/** "2 lb Chicken breast" / "Salt (to taste)" — quantity formatting shared by detail + list rows.
+ *  Quantities render as human cooking fractions ("1½ cups", not "1.5") via [humanQuantity]. */
 internal fun formatQuantity(quantity: Double?, unit: String?): String? {
     if (quantity == null) return unit
-    val q = if (quantity % 1.0 == 0.0) quantity.toInt().toString() else quantity.toString()
+    val q = humanQuantity(quantity)
     return if (unit == null) q else "$q $unit"
 }
 
@@ -81,7 +82,7 @@ fun RecipeDetailScreen(
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
     onDuplicated: (String) -> Unit = {},
-    onStartCooking: (String) -> Unit = {},
+    onStartCooking: (String, Int) -> Unit = { _, _ -> },
     viewModel: RecipeDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.recipe.collectAsState()
@@ -221,7 +222,7 @@ fun RecipeDetailScreen(
                 recipe = s.data,
                 onAddToList = { pickScale = true },
                 onMadeIt = viewModel::markCooked,
-                onStartCooking = { onStartCooking(viewModel.recipeId) },
+                onStartCooking = { servings -> onStartCooking(viewModel.recipeId, servings) },
                 nutrition = nutrition,
                 onEstimateNutrition = viewModel::estimateNutrition,
                 onLogToPlate = { showLogDialog = true },
@@ -304,7 +305,7 @@ private fun RecipeDetailBody(
     recipe: RecipeOut,
     onAddToList: () -> Unit,
     onMadeIt: () -> Unit,
-    onStartCooking: () -> Unit,
+    onStartCooking: (Int) -> Unit,
     nutrition: UiState<com.cookbook.data.remote.RecipeNutritionOut>,
     onEstimateNutrition: () -> Unit,
     onLogToPlate: () -> Unit,
@@ -400,7 +401,7 @@ private fun RecipeDetailBody(
             item {
                 PulseButton(
                     text = "Start cooking",
-                    onClick = onStartCooking,
+                    onClick = { onStartCooking(displayServings) },
                     modifier = Modifier.fillMaxWidth(),
                     tonal = true,
                     leadingIcon = {

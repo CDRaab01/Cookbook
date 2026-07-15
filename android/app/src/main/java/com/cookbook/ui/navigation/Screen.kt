@@ -24,8 +24,12 @@ sealed class Screen(val route: String) {
     }
     data object CookMode : Screen("cook") {
         const val ARG = "recipeId"
-        val routeWithArg = "$route/{$ARG}"
-        fun withId(id: String) = "$route/$id"
+        const val ARG_SERVINGS = "servings"
+        val routeWithArg = "$route/{$ARG}?$ARG_SERVINGS={$ARG_SERVINGS}"
+
+        /** [servings] carries the scale chosen on the detail screen; null cooks at the base scale. */
+        fun withId(id: String, servings: Int? = null) =
+            if (servings == null) "$route/$id" else "$route/$id?$ARG_SERVINGS=$servings"
     }
     data object Pantry : Screen("pantry")
     data object PantryConfirm : Screen("pantry_confirm")

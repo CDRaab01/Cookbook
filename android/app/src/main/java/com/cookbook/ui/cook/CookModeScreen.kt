@@ -174,9 +174,19 @@ fun CookModeScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     item { SectionHeader("Ingredients", channel = colors.heat.base) }
+                    val scale = viewModel.scaleFor(recipe)
+                    if (viewModel.targetServings > 0 && viewModel.targetServings != recipe.servings) {
+                        item {
+                            Text(
+                                "Scaled for ${viewModel.targetServings} servings",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.heat.base,
+                            )
+                        }
+                    }
                     items(recipe.ingredients) { ing ->
                         Row {
-                            val qty = formatQuantity(ing.quantity, ing.unit)
+                            val qty = formatQuantity(ing.quantity?.let { it * scale }, ing.unit)
                             if (qty != null) {
                                 DataText(
                                     qty,

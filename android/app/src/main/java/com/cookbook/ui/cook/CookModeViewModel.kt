@@ -36,6 +36,13 @@ class CookModeViewModel @Inject constructor(
 
     val recipeId: String = checkNotNull(savedStateHandle[Screen.CookMode.ARG])
 
+    /** Target servings chosen on the recipe-detail screen; 0 = cook at the recipe's own scale. */
+    val targetServings: Int = savedStateHandle[Screen.CookMode.ARG_SERVINGS] ?: 0
+
+    /** Ingredient multiplier for the chosen servings (1.0 when unscaled or the base is unknown). */
+    fun scaleFor(recipe: RecipeOut): Double =
+        if (targetServings > 0) targetServings.toDouble() / recipe.servings.coerceAtLeast(1) else 1.0
+
     private val _recipe = MutableStateFlow<UiState<RecipeOut>>(UiState.Loading)
     val recipe: StateFlow<UiState<RecipeOut>> = _recipe
 

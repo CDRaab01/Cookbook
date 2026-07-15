@@ -165,8 +165,8 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                     onDuplicated = { id ->
                         navController.navigate(Screen.RecipeDetail.withId(id))
                     },
-                    onStartCooking = { id ->
-                        navController.navigate(Screen.CookMode.withId(id))
+                    onStartCooking = { id, servings ->
+                        navController.navigate(Screen.CookMode.withId(id, servings))
                     },
                 )
             }
@@ -198,7 +198,13 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             }
             composable(
                 Screen.CookMode.routeWithArg,
-                arguments = listOf(navArgument(Screen.CookMode.ARG) { type = NavType.StringType }),
+                arguments = listOf(
+                    navArgument(Screen.CookMode.ARG) { type = NavType.StringType },
+                    navArgument(Screen.CookMode.ARG_SERVINGS) {
+                        type = NavType.IntType
+                        defaultValue = 0
+                    },
+                ),
             ) {
                 CookModeScreen(onExit = { navController.popBackStack() })
             }
