@@ -67,9 +67,9 @@ degrades to absence, never blocks add/check/sync.
 
 ### Migrations & tests
 
-Alembic 0001–0014, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 plan-list-id,
-0011 meal-confirmations, 0012 cook-rating, 0013 plan-entry-scale, 0014 household-sharing).
-~306 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
+Alembic 0001–0015, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 plan-list-id,
+0011 meal-confirmations, 0012 cook-rating, 0013 plan-entry-scale, 0014 household-sharing,
+0015 household-member-status). ~309 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
 `DATABASE_URL` on **127.0.0.1:5434**, `DB_NULLPOOL=true` (conftest sets NullPool; bcrypt dropped
 to 4 rounds tests-only). One env-dependent local-only failure when the live `.env` has
 `SUITE_JWKS_URL` set; green in CI.
@@ -90,8 +90,12 @@ Standard suite MVVM. Feature packages:
   `is_owner` gates both that toggle and Delete (a co-member viewing a family recipe sees neither).
 - `ui/settings/` — server URL, Plate migration, pantry-staples/aisle-order editors, and
   **Settings → Family** — the single household-sharing surface: invite by email, member roster
-  (owner badge), owner-removes / member-leaves (`/household` endpoints). This replaced the old
-  per-list `ShareSheet` (retired — sharing is household-wide now, not per shopping list).
+  (owner badge, **pending** badge on unaccepted invites), owner-removes / member-leaves
+  (`/household` endpoints). This replaced the old per-list `ShareSheet` (retired — sharing is
+  household-wide now, not per shopping list). **Consented invites:** an invite is created
+  `status="pending"` and shares nothing until the invitee accepts (`household_member_ids` /
+  `household_owner_id` count only `active` members); the invitee sees the invite via `GET
+  /household/invite` and responds with `POST /household/{accept,decline}` (migration 0015).
 - `ui/discover/` — Spoonacular search + preview bottom sheet + import; share-from-browser URL
   import via `SharedIntentStore` (ACTION_SEND).
 - `ui/cook/` — cook mode: step-at-a-time, screen-awake, duration-detected timers

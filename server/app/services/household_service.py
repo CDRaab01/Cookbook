@@ -16,11 +16,14 @@ from app.models.user import User
 
 
 async def household_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid.UUID]:
-    """Every user in ``user_id``'s household (including themselves). Just ``{user_id}`` when solo —
-    so callers can always use it as the set of ids whose shared data this user may reach."""
+    """Every **active** user in ``user_id``'s household (including themselves). Just ``{user_id}``
+    when solo — so callers can always use it as the set of ids whose shared data this user may reach.
+    A pending invitee shares nothing, so they resolve to just themselves until they accept."""
     household_id = (
         await db.execute(
-            select(HouseholdMember.household_id).where(HouseholdMember.user_id == user_id)
+            select(HouseholdMember.household_id).where(
+                HouseholdMember.user_id == user_id, HouseholdMember.status == "active"
+            )
         )
     ).scalar_one_or_none()
     if household_id is None:
@@ -28,7 +31,10 @@ async def household_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid
     rows = (
         (
             await db.execute(
-                select(HouseholdMember.user_id).where(HouseholdMember.household_id == household_id)
+                select(HouseholdMember.user_id).where(
+                    HouseholdMember.household_id == household_id,
+                    HouseholdMember.status == "active",
+                )
             )
         )
         .scalars()
@@ -38,25 +44,33 @@ async def household_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid
 
 
 async def household_owner_id(db: AsyncSession, user_id: uuid.UUID) -> uuid.UUID:
-    """The household owner's id for a member (the shared default list/plan lives under the owner),
-    or the user themselves when solo."""
+    """The household owner's id for an **active** member (the shared default list/plan lives under
+    the owner), or the user themselves when solo or merely invited (pending)."""
     owner = (
         await db.execute(
             select(Household.owner_user_id)
             .join(HouseholdMember, HouseholdMember.household_id == Household.id)
-            .where(HouseholdMember.user_id == user_id)
+            .where(HouseholdMember.user_id == user_id, HouseholdMember.status == "active")
         )
     ).scalar_one_or_none()
     return owner or user_id
 
 
 async def _household_of(db: AsyncSession, user_id: uuid.UUID) -> Household | None:
+    """The household this user *actively* shares (a pending invite grants nothing until accepted)."""
     return (
         await db.execute(
             select(Household)
             .join(HouseholdMember, HouseholdMember.household_id == Household.id)
-            .where(HouseholdMember.user_id == user_id)
+            .where(HouseholdMember.user_id == user_id, HouseholdMember.status == "active")
         )
+    ).scalar_one_or_none()
+
+
+async def _any_membership(db: AsyncSession, user_id: uuid.UUID) -> HouseholdMember | None:
+    """The user's membership row regardless of status (a user has at most one)."""
+    return (
+        await db.execute(select(HouseholdMember).where(HouseholdMember.user_id == user_id))
     ).scalar_one_or_none()
 
 
@@ -64,18 +78,24 @@ async def get_or_create_household(db: AsyncSession, user_id: uuid.UUID) -> House
     existing = await _household_of(db, user_id)
     if existing is not None:
         return existing
+    if await _any_membership(db, user_id) is not None:
+        # A pending invite is outstanding — resolve it before starting your own household.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "You have a pending household invite — accept or decline it first",
+        )
     household = Household(owner_user_id=user_id)
     db.add(household)
     await db.flush()
-    db.add(HouseholdMember(household_id=household.id, user_id=user_id))
+    db.add(HouseholdMember(household_id=household.id, user_id=user_id, status="active"))
     await db.commit()
     await db.refresh(household)
     return household
 
 
 async def add_member_by_email(db: AsyncSession, requester_id: uuid.UUID, email: str) -> User:
-    """Owner shares the household with another Cookbook user by email (they must have signed in
-    once — accounts link by email, no pending-invite state)."""
+    """Owner **invites** another Cookbook user by email (they must have signed in once). The invite
+    is PENDING — nothing shares until they accept it (no silent add)."""
     household = await get_or_create_household(db, requester_id)
     if household.owner_user_id != requester_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the household owner can add members")
@@ -89,39 +109,64 @@ async def add_member_by_email(db: AsyncSession, requester_id: uuid.UUID, email: 
         )
     if target.id == requester_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That's your own account")
-    membership = (
-        await db.execute(select(HouseholdMember).where(HouseholdMember.user_id == target.id))
-    ).scalar_one_or_none()
+    membership = await _any_membership(db, target.id)
     if membership is not None:
         if membership.household_id == household.id:
-            return target
+            return target  # already invited/joined here — idempotent
         raise HTTPException(
-            status.HTTP_409_CONFLICT, "That person already shares another household"
+            status.HTTP_409_CONFLICT, "That person already has a household invite or membership"
         )
-    db.add(HouseholdMember(household_id=household.id, user_id=target.id))
+    # A PENDING invite — the invitee must accept before they see anything (no silent add).
+    db.add(HouseholdMember(household_id=household.id, user_id=target.id, status="pending"))
     await db.commit()
     return target
 
 
 async def list_household(
     db: AsyncSession, user_id: uuid.UUID
-) -> tuple[Household | None, list[User]]:
+) -> tuple[Household | None, list[tuple[User, str]]]:
+    """The user's active household + its members (owner first) with each member's status
+    (``active`` | ``pending``). ``(None, [])`` when solo."""
     household = await _household_of(db, user_id)
     if household is None:
         return None, []
-    members = (
-        (
-            await db.execute(
-                select(User)
-                .join(HouseholdMember, HouseholdMember.user_id == User.id)
-                .where(HouseholdMember.household_id == household.id)
-            )
+    rows = (
+        await db.execute(
+            select(User, HouseholdMember.status)
+            .join(HouseholdMember, HouseholdMember.user_id == User.id)
+            .where(HouseholdMember.household_id == household.id)
         )
-        .scalars()
-        .all()
-    )
-    members = sorted(members, key=lambda u: u.id != household.owner_user_id)  # owner first
-    return household, list(members)
+    ).all()
+    rows = sorted(rows, key=lambda r: r[0].id != household.owner_user_id)  # owner first
+    return household, [(u, s) for u, s in rows]
+
+
+async def pending_invite(db: AsyncSession, user_id: uuid.UUID) -> tuple[Household, User] | None:
+    """The household + its owner for the user's outstanding invite, or ``None``."""
+    membership = await _any_membership(db, user_id)
+    if membership is None or membership.status != "pending":
+        return None
+    household = await db.get(Household, membership.household_id)
+    if household is None:
+        return None
+    owner = await db.get(User, household.owner_user_id)
+    return household, owner
+
+
+async def accept_invite(db: AsyncSession, user_id: uuid.UUID) -> None:
+    membership = await _any_membership(db, user_id)
+    if membership is None or membership.status != "pending":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No pending invite to accept")
+    membership.status = "active"
+    await db.commit()
+
+
+async def decline_invite(db: AsyncSession, user_id: uuid.UUID) -> None:
+    membership = await _any_membership(db, user_id)
+    if membership is None or membership.status != "pending":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No pending invite to decline")
+    await db.delete(membership)
+    await db.commit()
 
 
 async def remove_member(db: AsyncSession, requester_id: uuid.UUID, target_id: uuid.UUID) -> None:

@@ -1,4 +1,8 @@
-"""Family mode: household sharing + family (shared) vs private recipes."""
+"""Family mode: household sharing + family (shared) vs private recipes.
+
+Sharing is **consented**: adding someone creates a *pending* invite that shares nothing until the
+invitee accepts it (nothing is joined silently).
+"""
 
 import uuid
 
@@ -44,10 +48,19 @@ async def test_family_recipes_shared_private_recipes_not(client):
     assert private_id not in got and family_id not in got
     assert (await client.get(f"/recipes/{family_id}", headers=_h(wife))).status_code == 404
 
-    # Owner shares the household with the wife.
+    # Owner invites the wife — PENDING, so she still sees nothing until she accepts.
     r = await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
     assert r.status_code == 201, r.text
-    assert r.json()["shared"] is True
+    assert r.json()["shared"] is False
+    got = {r["id"] for r in (await client.get("/recipes", headers=_h(wife))).json()}
+    assert family_id not in got
+
+    # She has a pending invite naming the owner, and accepts it.
+    invite = (await client.get("/household/invite", headers=_h(wife))).json()
+    assert invite is not None and invite["owner_email"] == f"o_{uid}@cookbook.com"
+    acc = await client.post("/household/accept", headers=_h(wife))
+    assert acc.status_code == 200, acc.text
+    assert acc.json()["shared"] is True
 
     # Now she sees the FAMILY recipe (flagged shared, not hers) but NOT the private one.
     listing = {r["id"]: r for r in (await client.get("/recipes", headers=_h(wife))).json()}
@@ -73,6 +86,7 @@ async def test_only_owner_manages_and_leaving_reverts(client):
     wife = await _register(client, wife_email)
     family_id = await _make_recipe(client, owner, "Shared Stew", shared=True)
     await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
+    assert (await client.post("/household/accept", headers=_h(wife))).status_code == 200
 
     # A member can't add others.
     r = await client.post(
@@ -104,9 +118,10 @@ async def test_household_shares_the_shopping_list_and_default(client):
     assert all(entry["id"] != owner_list_id for entry in wife_lists)
     assert (await client.get("/lists/default", headers=_h(wife))).json()["id"] != owner_list_id
 
-    # Share the household.
+    # Invite + accept.
     r = await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
     assert r.status_code == 201, r.text
+    assert (await client.post("/household/accept", headers=_h(wife))).status_code == 200
 
     # Now the owner's list shows up in the wife's listing, flagged shared...
     wife_lists = (await client.get("/lists", headers=_h(wife))).json()
@@ -114,6 +129,43 @@ async def test_household_shares_the_shopping_list_and_default(client):
     assert shared_owner_list and shared_owner_list[0]["shared"] is True
     # ...and her default now resolves to the owner's list — one shared list (and one shared plan).
     assert (await client.get("/lists/default", headers=_h(wife))).json()["id"] == owner_list_id
+
+
+async def test_decline_removes_the_invite(client):
+    uid = uuid.uuid4().hex[:8]
+    wife_email = f"dw_{uid}@cookbook.com"
+    owner = await _register(client, f"do_{uid}@cookbook.com")
+    wife = await _register(client, wife_email)
+    family_id = await _make_recipe(client, owner, "Declined Dish", shared=True)
+    await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
+
+    # She declines — the invite is gone and she never gained access.
+    assert (await client.post("/household/decline", headers=_h(wife))).status_code == 204
+    assert (await client.get("/household/invite", headers=_h(wife))).json() is None
+    assert family_id not in {
+        r["id"] for r in (await client.get("/recipes", headers=_h(wife))).json()
+    }
+
+    # Declining frees her to start her own household later (no lingering pending row): she can now
+    # invite a fresh third user into a household of her own.
+    third_email = f"dt_{uid}@cookbook.com"
+    await _register(client, third_email)
+    r = await client.post("/household/members", json={"email": third_email}, headers=_h(wife))
+    assert r.status_code == 201, r.text
+
+
+async def test_pending_invitee_cannot_start_own_household(client):
+    uid = uuid.uuid4().hex[:8]
+    wife_email = f"pw_{uid}@cookbook.com"
+    owner = await _register(client, f"po_{uid}@cookbook.com")
+    wife = await _register(client, wife_email)
+    await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
+
+    # With an invite outstanding, inviting someone (which would create her own household) is refused.
+    r = await client.post(
+        "/household/members", json={"email": "third@cookbook.com"}, headers=_h(wife)
+    )
+    assert r.status_code == 409
 
 
 async def test_add_unknown_email_is_404(client):

@@ -564,3 +564,9 @@ The suite's 1.0 polish round. The headline landed plus two long-standing gate it
 - **Verified (per commit `1edb703`):** server **306 pytest green** (3 new family-mode tests in
   `tests/test_household.py`). versionName is still **`0.4.0`** — the 1.0 bump + airplane-mode
   on-device pass are the remaining gate items (ROADMAP "Road to 1.0" #5).
+- **2026-07-16 — Consented invites (`household_members.status`, migration `0015`):** adding a member
+  now creates a **pending** invite that shares nothing until the invitee accepts — the cookbook +
+  lists are never joined silently. `GET /household/invite` + `POST /household/{accept,decline}`;
+  `household_member_ids` / `household_owner_id` count only `active` members (so the shared default
+  list/plan resolution ignores a merely-invited user). Mirrors Magpie's `b2c3d4e5f6a7`. Server **309
+  pytest green**; ruff 0.4.4 format+check clean. Android accept/decline UI still to follow.
