@@ -89,6 +89,33 @@ async def test_only_owner_manages_and_leaving_reverts(client):
     }
 
 
+async def test_household_shares_the_shopping_list_and_default(client):
+    uid = uuid.uuid4().hex[:8]
+    wife_email = f"lw_{uid}@cookbook.com"
+    owner = await _register(client, f"lo_{uid}@cookbook.com")
+    wife = await _register(client, wife_email)
+
+    # The owner's default list (created on first touch).
+    owner_list_id = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
+
+    # Before sharing, the wife's list listing does NOT include the owner's list, and her own default
+    # is a different (private) list.
+    wife_lists = (await client.get("/lists", headers=_h(wife))).json()
+    assert all(entry["id"] != owner_list_id for entry in wife_lists)
+    assert (await client.get("/lists/default", headers=_h(wife))).json()["id"] != owner_list_id
+
+    # Share the household.
+    r = await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
+    assert r.status_code == 201, r.text
+
+    # Now the owner's list shows up in the wife's listing, flagged shared...
+    wife_lists = (await client.get("/lists", headers=_h(wife))).json()
+    shared_owner_list = [e for e in wife_lists if e["id"] == owner_list_id]
+    assert shared_owner_list and shared_owner_list[0]["shared"] is True
+    # ...and her default now resolves to the owner's list — one shared list (and one shared plan).
+    assert (await client.get("/lists/default", headers=_h(wife))).json()["id"] == owner_list_id
+
+
 async def test_add_unknown_email_is_404(client):
     owner = await _register(client, f"o3_{uuid.uuid4().hex[:8]}@cookbook.com")
     r = await client.post(

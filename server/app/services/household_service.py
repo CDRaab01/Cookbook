@@ -37,6 +37,19 @@ async def household_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid
     return set(rows) | {user_id}
 
 
+async def household_owner_id(db: AsyncSession, user_id: uuid.UUID) -> uuid.UUID:
+    """The household owner's id for a member (the shared default list/plan lives under the owner),
+    or the user themselves when solo."""
+    owner = (
+        await db.execute(
+            select(Household.owner_user_id)
+            .join(HouseholdMember, HouseholdMember.household_id == Household.id)
+            .where(HouseholdMember.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    return owner or user_id
+
+
 async def _household_of(db: AsyncSession, user_id: uuid.UUID) -> Household | None:
     return (
         await db.execute(

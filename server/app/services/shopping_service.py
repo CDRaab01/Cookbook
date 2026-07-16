@@ -54,17 +54,22 @@ async def _reload(db: AsyncSession, list_id: uuid.UUID) -> ShoppingList:
 
 
 async def get_default_list(db: AsyncSession, user_id: uuid.UUID) -> ShoppingList:
-    """The user's default list, created on first touch (v1 UI shows exactly one)."""
+    """The default list, created on first touch. In a household this resolves to the **owner's**
+    default list, so both members land on one shared list (and its plan) rather than each editing
+    their own private default."""
+    from app.services.household_service import household_owner_id
+
+    owner_id = await household_owner_id(db, user_id)
     result = await db.execute(
         select(ShoppingList)
-        .where(ShoppingList.user_id == user_id)
+        .where(ShoppingList.user_id == owner_id)
         .order_by(ShoppingList.created_at)
         .limit(1)
     )
     existing = result.scalar_one_or_none()
     if existing is not None:
         return existing
-    created = ShoppingList(user_id=user_id, name=DEFAULT_LIST_NAME)
+    created = ShoppingList(user_id=owner_id, name=DEFAULT_LIST_NAME)
     db.add(created)
     await db.commit()
     return await _reload(db, created.id)
@@ -271,20 +276,38 @@ async def list_all_lists(db: AsyncSession, user_id: uuid.UUID) -> list[ListSumma
         .scalars()
         .all()
     )
-    shared_with_me = (
+    # Lists shared with me: legacy per-list ListMember shares PLUS every list owned by a household
+    # co-member (family mode). Without the household half, a member never sees the shared list.
+    from app.services.household_service import household_member_ids
+
+    member_ids = await household_member_ids(db, user_id)
+    co_member_ids = member_ids - {user_id}
+    owned_ids = {sl.id for sl in owned}
+    shared_by_id: dict[uuid.UUID, ShoppingList] = {}
+    legacy = (
         (
             await db.execute(
                 select(ShoppingList)
                 .join(ListMember, ListMember.list_id == ShoppingList.id)
                 .where(ListMember.user_id == user_id)
-                .order_by(ShoppingList.created_at)
             )
         )
         .scalars()
         .all()
     )
-    # Which of my OWN lists have members (so the picker can badge them "shared")?
-    owned_ids = [sl.id for sl in owned]
+    household_lists = []
+    if co_member_ids:
+        household_lists = (
+            (await db.execute(select(ShoppingList).where(ShoppingList.user_id.in_(co_member_ids))))
+            .scalars()
+            .all()
+        )
+    for sl in [*legacy, *household_lists]:
+        if sl.id not in owned_ids:
+            shared_by_id[sl.id] = sl
+    shared_with_me = sorted(shared_by_id.values(), key=lambda s: s.created_at)
+
+    # My own lists read as "shared" if they have members OR I'm in a household (co-members see them).
     shared_owned_ids: set[uuid.UUID] = set()
     if owned_ids:
         shared_owned_ids = set(
@@ -292,6 +315,8 @@ async def list_all_lists(db: AsyncSession, user_id: uuid.UUID) -> list[ListSumma
             .scalars()
             .all()
         )
+    if co_member_ids:
+        shared_owned_ids |= owned_ids
     return [_list_summary(sl, is_owner=True, shared=sl.id in shared_owned_ids) for sl in owned] + [
         _list_summary(sl, is_owner=False, shared=True) for sl in shared_with_me
     ]
