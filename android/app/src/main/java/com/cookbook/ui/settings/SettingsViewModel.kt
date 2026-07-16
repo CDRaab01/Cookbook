@@ -43,6 +43,10 @@ class SettingsViewModel @Inject constructor(
     private val _householdError = MutableStateFlow<String?>(null)
     val householdError: StateFlow<String?> = _householdError
 
+    // A pending invite awaiting this user's accept/decline (null when there is none).
+    private val _invite = MutableStateFlow<com.cookbook.data.remote.InviteOut?>(null)
+    val invite: StateFlow<com.cookbook.data.remote.InviteOut?> = _invite
+
     fun load() {
         viewModelScope.launch {
             _serverVersion.value = try {
@@ -60,6 +64,33 @@ class SettingsViewModel @Inject constructor(
             }
             // Best-effort: a failed household read must not fail the screen.
             _household.value = runCatching { api.getHousehold() }.getOrNull()
+            _invite.value = runCatching { api.getHouseholdInvite() }.getOrNull()
+        }
+    }
+
+    /** Accept the pending invite — from now on this user shares the inviting household. */
+    fun acceptInvite() {
+        viewModelScope.launch {
+            _householdError.value = null
+            try {
+                _household.value = api.acceptHouseholdInvite()
+                _invite.value = null
+            } catch (e: Exception) {
+                _householdError.value = e.message ?: "Couldn't accept the invite"
+            }
+        }
+    }
+
+    /** Decline the pending invite — it's removed and nothing is shared. */
+    fun declineInvite() {
+        viewModelScope.launch {
+            _householdError.value = null
+            try {
+                api.declineHouseholdInvite()
+                _invite.value = null
+            } catch (e: Exception) {
+                _householdError.value = e.message ?: "Couldn't decline the invite"
+            }
         }
     }
 
@@ -77,7 +108,7 @@ class SettingsViewModel @Inject constructor(
                 _householdError.value = when (e.code()) {
                     404 -> "No Cookbook user with that email — they need to sign in first"
                     403 -> "Only the household owner can invite"
-                    409 -> "They're already in another household"
+                    409 -> "They already have a household invite or membership"
                     else -> "Couldn't share with that email (${e.code()})"
                 }
             } catch (e: Exception) {
