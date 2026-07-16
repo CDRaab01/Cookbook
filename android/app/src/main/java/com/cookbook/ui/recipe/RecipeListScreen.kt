@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.cookbook.R
 import com.cookbook.data.remote.RecipeSummaryOut
+import com.cookbook.ui.components.InlineEmptyState
 import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
@@ -211,6 +213,15 @@ fun RecipeListScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+                        if (filtered.isEmpty()) {
+                            item {
+                                InlineEmptyState(
+                                    icon = Icons.Outlined.SearchOff,
+                                    title = "No recipes match",
+                                    subtitle = "Try a different search, or clear the filters above.",
+                                )
                             }
                         }
                         items(filtered, key = { it.id }) { recipe ->
