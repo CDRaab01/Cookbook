@@ -167,6 +167,83 @@ async def test_eaten_is_per_user_on_shared_plan(client):
     assert own_after["eaten"] is True and own_after["servings"] == 2.0
 
 
+async def test_concurrent_cross_user_adds_merge_into_one_list(client):
+    """The merge kernel is list-scoped, so two members adding the *same* item (any spelling/unit)
+    fold into a single line — the household buys one carton of milk, not two. Distinct items from
+    each member coexist, and both members see the identical merged list."""
+    owner, invitee, invitee_email = await _two_users(client)
+    lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
+    await client.post(f"/lists/{lid}/members", json={"email": invitee_email}, headers=_h(owner))
+
+    # Owner and invitee independently add "milk" (different case + unit spelling) to the shared list.
+    await client.post(
+        f"/lists/{lid}/items",
+        json={"name": "Milk", "quantity": 1, "unit": "cup"},
+        headers=_h(owner),
+    )
+    await client.post(
+        f"/lists/{lid}/items",
+        json={"name": "milk", "quantity": 1, "unit": "cups"},
+        headers=_h(invitee),
+    )
+    # Each also adds something only they need.
+    await client.post(f"/lists/{lid}/items", json={"name": "Eggs"}, headers=_h(owner))
+    await client.post(f"/lists/{lid}/items", json={"name": "Bread"}, headers=_h(invitee))
+
+    # Both members see the SAME list, and milk is a single merged line summing to 2 cups.
+    for tok in (owner, invitee):
+        items = (await client.get(f"/lists/{lid}", headers=_h(tok))).json()["items"]
+        names = sorted(i["name"].lower() for i in items)
+        assert names == ["bread", "eggs", "milk"]  # one milk line, not two
+        milk = next(i for i in items if i["name"].lower() == "milk")
+        assert milk["quantity"] == 2.0 and milk["unit"] == "cup"
+        assert milk["measures"] == [{"quantity": 2.0, "unit": "cup"}]
+
+
+async def test_non_member_cannot_access_or_mutate_shared_list(client):
+    """Authorization: a stranger who is neither owner nor member is walled off from every read and
+    write on the list — each returns 404 (existence isn't leaked)."""
+    owner, invitee, invitee_email = await _two_users(client)
+    lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
+    # Share with the invitee so the list is genuinely shared — the stranger still gets nothing.
+    await client.post(f"/lists/{lid}/members", json={"email": invitee_email}, headers=_h(owner))
+    await client.post(f"/lists/{lid}/items", json={"name": "Milk"}, headers=_h(owner))
+
+    stranger = await _register(client, f"stranger_{uuid.uuid4().hex[:6]}@cookbook.com")
+    fake_item = str(uuid.uuid4())
+
+    # Reads.
+    assert (await client.get(f"/lists/{lid}", headers=_h(stranger))).status_code == 404
+    assert (await client.get(f"/lists/{lid}/members", headers=_h(stranger))).status_code == 404
+    # Item mutations.
+    assert (
+        await client.post(f"/lists/{lid}/items", json={"name": "Sneak"}, headers=_h(stranger))
+    ).status_code == 404
+    assert (
+        await client.patch(
+            f"/lists/{lid}/items/{fake_item}", json={"checked": True}, headers=_h(stranger)
+        )
+    ).status_code == 404
+    assert (
+        await client.delete(f"/lists/{lid}/items/{fake_item}", headers=_h(stranger))
+    ).status_code == 404
+    assert (
+        await client.post(f"/lists/{lid}/clear-checked", headers=_h(stranger))
+    ).status_code == 404
+    # Owner-only actions are equally invisible to a stranger.
+    assert (
+        await client.post(f"/lists/{lid}/members", json={"email": "x@y.com"}, headers=_h(stranger))
+    ).status_code == 404
+    assert (
+        await client.patch(f"/lists/{lid}", json={"name": "Nope"}, headers=_h(stranger))
+    ).status_code == 404
+    assert (await client.delete(f"/lists/{lid}", headers=_h(stranger))).status_code == 404
+
+    # And the list is untouched by all that probing.
+    items = (await client.get(f"/lists/{lid}", headers=_h(owner))).json()["items"]
+    assert [i["name"] for i in items] == ["Milk"]
+
+
 async def test_member_can_leave(client):
     owner, invitee, invitee_email = await _two_users(client)
     lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
