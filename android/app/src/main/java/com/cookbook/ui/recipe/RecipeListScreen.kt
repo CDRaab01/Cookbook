@@ -235,7 +235,7 @@ fun RecipeListScreen(
 }
 
 @Composable
-private fun RecipeCard(recipe: RecipeSummaryOut, onClick: () -> Unit) {
+internal fun RecipeCard(recipe: RecipeSummaryOut, onClick: () -> Unit) {
     val colors = CookbookTheme.colors
     PanelCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column {

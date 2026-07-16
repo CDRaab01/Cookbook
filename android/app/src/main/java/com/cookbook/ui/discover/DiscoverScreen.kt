@@ -245,7 +245,7 @@ fun DiscoverScreen(
 }
 
 @Composable
-private fun DiscoverCard(hit: DiscoveredRecipe, onClick: () -> Unit) {
+internal fun DiscoverCard(hit: DiscoveredRecipe, onClick: () -> Unit) {
     val colors = CookbookTheme.colors
     design.pulse.ui.components.PanelCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),

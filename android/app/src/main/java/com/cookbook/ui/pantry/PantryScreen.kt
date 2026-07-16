@@ -325,7 +325,7 @@ fun PantryScreen(
 }
 
 @Composable
-private fun PantryList(
+internal fun PantryList(
     items: List<PantryItemOut>,
     onEdit: (PantryItemOut) -> Unit,
     onDelete: (PantryItemOut) -> Unit,

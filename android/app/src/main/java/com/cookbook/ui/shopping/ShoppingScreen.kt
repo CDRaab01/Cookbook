@@ -444,7 +444,7 @@ internal fun ShareSheetContent(
 }
 
 @Composable
-private fun ShoppingListBody(
+internal fun ShoppingListBody(
     items: List<ShoppingItemOut>,
     grocerySpend: com.cookbook.data.remote.GrocerySpendOut?,
     onToggle: (String, Boolean) -> Unit,

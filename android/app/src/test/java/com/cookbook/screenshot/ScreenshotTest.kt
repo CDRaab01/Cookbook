@@ -65,6 +65,155 @@ class ScreenshotTest {
 
     @Test fun share_sheet_light() = capture("share_sheet_light", dark = false) { ShareSheetScene() }
     @Test fun share_sheet_dark() = capture("share_sheet_dark", dark = true) { ShareSheetScene() }
+
+    // Recipe book — the list of recipe cards (ingredient/time/serving stats, a favorite, an import).
+    @Test fun recipe_list_light() = capture("recipe_list_light", dark = false) { RecipeListScene() }
+    @Test fun recipe_list_dark() = capture("recipe_list_dark", dark = true) { RecipeListScene() }
+
+    // Recipe detail — meta stats, ingredients grouped by aisle, notes, and steps.
+    @Test fun recipe_detail_light() = capture("recipe_detail_light", dark = false) { RecipeDetailScene() }
+    @Test fun recipe_detail_dark() = capture("recipe_detail_dark", dark = true) { RecipeDetailScene() }
+
+    // Shopping list — category-grouped "to buy" items plus a checked "in the cart" section.
+    @Test fun shopping_list_light() = capture("shopping_list_light", dark = false) { ShoppingListScene() }
+    @Test fun shopping_list_dark() = capture("shopping_list_dark", dark = true) { ShoppingListScene() }
+
+    // Pantry — items grouped by aisle, one flagged as coming from a scan.
+    @Test fun pantry_light() = capture("pantry_light", dark = false) { PantryScene() }
+    @Test fun pantry_dark() = capture("pantry_dark", dark = true) { PantryScene() }
+
+    // Discover — external recipe search hits (title + ready-in-minutes + servings).
+    @Test fun discover_light() = capture("discover_light", dark = false) { DiscoverScene() }
+    @Test fun discover_dark() = capture("discover_dark", dark = true) { DiscoverScene() }
+}
+
+@Composable
+private fun RecipeListScene() {
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+    ) {
+        com.cookbook.ui.recipe.RecipeCard(
+            recipe = RecipeSummaryOut(
+                id = "1", name = "Chicken Parmesan",
+                description = "Crispy breaded cutlets under marinara and melted mozzarella.",
+                servings = 4, prepMinutes = 20, cookMinutes = 25, ingredientCount = 9,
+                favorite = true,
+            ),
+            onClick = {},
+        )
+        com.cookbook.ui.recipe.RecipeCard(
+            recipe = RecipeSummaryOut(
+                id = "2", name = "Overnight Oats",
+                servings = 1, prepMinutes = 10, cookMinutes = 0, ingredientCount = 5,
+                source = "imported",
+            ),
+            onClick = {},
+        )
+        com.cookbook.ui.recipe.RecipeCard(
+            recipe = RecipeSummaryOut(
+                id = "3", name = "Sheet-Pan Salmon & Veg",
+                description = "One tray, fifteen minutes of prep, dinner sorted.",
+                servings = 2, prepMinutes = 15, cookMinutes = 20, ingredientCount = 7,
+            ),
+            onClick = {},
+        )
+    }
+}
+
+@Composable
+private fun RecipeDetailScene() {
+    com.cookbook.ui.recipe.RecipeDetailBody(
+        recipe = com.cookbook.data.remote.RecipeOut(
+            id = "r1", name = "Chicken Parmesan",
+            description = "Crispy breaded cutlets under marinara and melted mozzarella.",
+            servings = 4, prepMinutes = 20, cookMinutes = 25,
+            tags = listOf("dinner", "italian"),
+            notes = "Pound the cutlets thin so they cook evenly.",
+            ingredients = listOf(
+                com.cookbook.data.remote.IngredientOut(id = "i1", order = 0, name = "Chicken breast", quantity = 2.0, unit = "lb", category = "meat"),
+                com.cookbook.data.remote.IngredientOut(id = "i2", order = 1, name = "Marinara sauce", quantity = 2.0, unit = "cup", category = "pantry"),
+                com.cookbook.data.remote.IngredientOut(id = "i3", order = 2, name = "Mozzarella", quantity = 8.0, unit = "oz", category = "dairy"),
+                com.cookbook.data.remote.IngredientOut(id = "i4", order = 3, name = "Breadcrumbs", quantity = 1.0, unit = "cup", category = "pantry"),
+            ),
+            steps = listOf(
+                com.cookbook.data.remote.StepOut(order = 0, text = "Bread the cutlets and pan-fry until golden."),
+                com.cookbook.data.remote.StepOut(order = 1, text = "Top with marinara and mozzarella, then bake."),
+            ),
+        ),
+        onAddToList = {}, onMadeIt = {}, onStartCooking = {},
+        nutrition = com.cookbook.util.UiState.Idle,
+        onEstimateNutrition = {}, onLogToPlate = {}, onEditNotes = {},
+    )
+}
+
+@Composable
+private fun ShoppingListScene() {
+    com.cookbook.ui.shopping.ShoppingListBody(
+        items = listOf(
+            com.cookbook.data.remote.ShoppingItemOut(
+                id = "s1", name = "Chicken breast", category = "meat",
+                measures = listOf(com.cookbook.data.remote.MeasureOut(quantity = 2.0, unit = "lb")),
+            ),
+            com.cookbook.data.remote.ShoppingItemOut(
+                id = "s2", name = "Mozzarella", category = "dairy",
+                measures = listOf(com.cookbook.data.remote.MeasureOut(quantity = 8.0, unit = "oz")),
+            ),
+            com.cookbook.data.remote.ShoppingItemOut(
+                id = "s3", name = "Marinara sauce", category = "pantry",
+                measures = listOf(com.cookbook.data.remote.MeasureOut(quantity = 2.0, unit = "cup")),
+            ),
+            com.cookbook.data.remote.ShoppingItemOut(
+                id = "s4", name = "Broccoli", category = "produce",
+                measures = listOf(com.cookbook.data.remote.MeasureOut(quantity = 1.0, unit = "head")),
+            ),
+            com.cookbook.data.remote.ShoppingItemOut(
+                id = "s5", name = "Paper towels", category = "other", checked = true,
+            ),
+        ),
+        grocerySpend = null,
+        onToggle = { _, _ -> }, onDelete = {}, onEdit = {}, onClearChecked = {},
+    )
+}
+
+@Composable
+private fun PantryScene() {
+    com.cookbook.ui.pantry.PantryList(
+        items = listOf(
+            com.cookbook.data.remote.PantryItemOut(id = "p1", name = "Eggs", category = "dairy", createdAt = ""),
+            com.cookbook.data.remote.PantryItemOut(id = "p2", name = "Milk", category = "dairy", source = "scan", createdAt = ""),
+            com.cookbook.data.remote.PantryItemOut(id = "p3", name = "Spinach", category = "produce", createdAt = ""),
+            com.cookbook.data.remote.PantryItemOut(id = "p4", name = "Rice", category = "pantry", createdAt = ""),
+        ),
+        onEdit = {}, onDelete = {},
+    )
+}
+
+@Composable
+private fun DiscoverScene() {
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier.padding(16.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+    ) {
+        com.cookbook.ui.discover.DiscoverCard(
+            hit = com.cookbook.data.remote.DiscoveredRecipe(
+                sourceId = "d1", title = "Creamy Tuscan Chicken", readyInMinutes = 35, servings = 4,
+            ),
+            onClick = {},
+        )
+        com.cookbook.ui.discover.DiscoverCard(
+            hit = com.cookbook.data.remote.DiscoveredRecipe(
+                sourceId = "d2", title = "One-Pot Vegetable Curry", readyInMinutes = 25, servings = 2,
+            ),
+            onClick = {},
+        )
+        com.cookbook.ui.discover.DiscoverCard(
+            hit = com.cookbook.data.remote.DiscoveredRecipe(
+                sourceId = "d3", title = "Classic Margherita Pizza", readyInMinutes = 40, servings = 6,
+            ),
+            onClick = {},
+        )
+    }
 }
 
 @Composable

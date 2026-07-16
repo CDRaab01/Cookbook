@@ -312,7 +312,7 @@ fun RecipeDetailScreen(
 }
 
 @Composable
-private fun RecipeDetailBody(
+internal fun RecipeDetailBody(
     recipe: RecipeOut,
     onAddToList: () -> Unit,
     onMadeIt: () -> Unit,
