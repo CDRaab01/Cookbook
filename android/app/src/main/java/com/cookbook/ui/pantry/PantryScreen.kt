@@ -86,6 +86,9 @@ fun PantryScreen(
     onSuggestions: () -> Unit,
     onEditStaples: () -> Unit,
     viewModel: PantryViewModel = hiltViewModel(),
+    // Set when reached via the "Scan pantry" launcher shortcut: start a camera scan on arrival.
+    autoScan: Boolean = false,
+    onAutoScanConsumed: () -> Unit = {},
 ) {
     val pantry by viewModel.pantry.collectAsState()
     val scanning by viewModel.scanning.collectAsState()
@@ -161,6 +164,15 @@ fun PantryScreen(
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         if (granted) launchCamera() else cameraPermission.launch(Manifest.permission.CAMERA)
+    }
+
+    // Honor the "Scan pantry" launcher shortcut: kick off a camera scan (permission-gated, with
+    // the same gallery fallback on denial) once we've landed here.
+    LaunchedEffect(autoScan) {
+        if (autoScan) {
+            startCameraScan()
+            onAutoScanConsumed()
+        }
     }
 
     LaunchedEffect(Unit) { viewModel.scanDraftReady.collect { onScanConfirm() } }

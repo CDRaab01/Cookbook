@@ -2,4 +2,12 @@
 <resources>
     <string name="app_name">Cookbook</string>
     <string name="widget_description">Your shopping list — check items off from the home screen.</string>
+
+    <!-- Static launcher shortcuts (long-press the app icon). -->
+    <string name="shortcut_shopping_short">Shopping list</string>
+    <string name="shortcut_shopping_long">Open shopping list</string>
+    <string name="shortcut_add_item_short">Add item</string>
+    <string name="shortcut_add_item_long">Add a shopping item</string>
+    <string name="shortcut_scan_short">Scan pantry</string>
+    <string name="shortcut_scan_long">Scan the pantry</string>
 </resources>

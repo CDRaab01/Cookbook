@@ -44,6 +44,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- Long-press app-icon shortcuts (routed via cookbook://shortcut/<target>). -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- AppAuth (BROKER.md Phase 2c) themes its AuthorizationManagementActivity as AppCompat but

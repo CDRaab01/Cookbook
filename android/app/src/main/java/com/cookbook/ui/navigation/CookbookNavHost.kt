@@ -6,6 +6,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -46,8 +50,17 @@ class GateViewModel @Inject constructor(
     suspend fun isSignedIn(): Boolean = tokenStore.currentAccessToken() != null
 }
 
+/** Launcher-shortcut targets (the `cookbook://shortcut/<target>` last path segment). */
+private const val SHORTCUT_SHOPPING = "shopping"
+private const val SHORTCUT_ADD_ITEM = "add-item"
+private const val SHORTCUT_PANTRY_SCAN = "pantry-scan"
+
 @Composable
-fun CookbookNavHost(navController: NavHostController = rememberNavController()) {
+fun CookbookNavHost(
+    navController: NavHostController = rememberNavController(),
+    shortcutTarget: String? = null,
+    onShortcutHandled: () -> Unit = {},
+) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val isTopLevel = TopLevelDestination.entries.any { it.route == currentRoute }
@@ -59,6 +72,40 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
             launchSingleTop = true
             restoreState = true
         }
+    }
+
+    // A tapped launcher shortcut must survive the auth gate: if the user is signed out it lands on
+    // login first and the target is honored only once they reach the signed-in graph. Latch the
+    // activity's transient value into saveable state, then clear the source so a config change or
+    // warm re-launch doesn't re-fire it.
+    var pendingShortcut by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(shortcutTarget) {
+        if (shortcutTarget != null) {
+            pendingShortcut = shortcutTarget
+            onShortcutHandled()
+        }
+    }
+    // One-shot signals threaded into the target tab's screen once we navigate there.
+    var openAddItem by remember { mutableStateOf(false) }
+    var autoScanPantry by remember { mutableStateOf(false) }
+
+    // Honor the pending shortcut only after the auth gate resolves to the signed-in graph (Home is
+    // the entry point in both the already-signed-in and just-logged-in paths).
+    LaunchedEffect(currentRoute, pendingShortcut) {
+        val target = pendingShortcut ?: return@LaunchedEffect
+        if (currentRoute != Screen.Home.route) return@LaunchedEffect
+        when (target) {
+            SHORTCUT_SHOPPING -> goTab(Screen.Shopping.route)
+            SHORTCUT_ADD_ITEM -> {
+                openAddItem = true
+                goTab(Screen.Shopping.route)
+            }
+            SHORTCUT_PANTRY_SCAN -> {
+                autoScanPantry = true
+                goTab(Screen.Pantry.route)
+            }
+        }
+        pendingShortcut = null
     }
 
     // Forced logout (rejected refresh token anywhere in the app) bounces to login.
@@ -225,6 +272,8 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                     onScanConfirm = { navController.navigate(Screen.PantryConfirm.route) },
                     onSuggestions = { navController.navigate(Screen.PantrySuggestions.route) },
                     onEditStaples = { navController.navigate(Screen.StaplesEditor.route) },
+                    autoScan = autoScanPantry,
+                    onAutoScanConsumed = { autoScanPantry = false },
                 )
             }
             composable(Screen.PantryConfirm.route) {
@@ -247,7 +296,10 @@ fun CookbookNavHost(navController: NavHostController = rememberNavController()) 
                 com.cookbook.ui.settings.AisleOrderScreen(onBack = { navController.popBackStack() })
             }
             composable(Screen.Shopping.route) {
-                ShoppingScreen()
+                ShoppingScreen(
+                    openAddItem = openAddItem,
+                    onAddItemConsumed = { openAddItem = false },
+                )
             }
             composable(Screen.Discover.route) {
                 DiscoverScreen(

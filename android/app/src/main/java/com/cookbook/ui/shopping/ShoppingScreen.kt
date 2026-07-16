@@ -81,7 +81,12 @@ import design.pulse.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
+fun ShoppingScreen(
+    viewModel: ShoppingViewModel = hiltViewModel(),
+    // Set when reached via the "Add item" launcher shortcut: open the quick-add sheet on arrival.
+    openAddItem: Boolean = false,
+    onAddItemConsumed: () -> Unit = {},
+) {
     val state by viewModel.list.collectAsState()
     val error by viewModel.error.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
@@ -100,6 +105,13 @@ fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
     val activeSummary = allLists.firstOrNull { it.id == (state as? UiState.Success)?.data?.id }
 
     LaunchedEffect(Unit) { viewModel.load() }
+    // Honor the "Add item" launcher shortcut once we've landed here.
+    LaunchedEffect(openAddItem) {
+        if (openAddItem) {
+            showAdd = true
+            onAddItemConsumed()
+        }
+    }
     LaunchedEffect(error) {
         error?.let {
             snackbar.showSnackbar(it)

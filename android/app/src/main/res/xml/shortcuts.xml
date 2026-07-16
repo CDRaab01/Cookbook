@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher shortcuts (long-press the app icon). Each opens MainActivity with a
+     cookbook://shortcut/<target> URI the activity captures and the nav host honors once the
+     auth gate is cleared (see MainActivity + CookbookNavHost). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="shopping"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_shopping_short"
+        android:shortcutLongLabel="@string/shortcut_shopping_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.cookbook"
+            android:targetClass="com.cookbook.MainActivity"
+            android:data="cookbook://shortcut/shopping" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="add-item"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_add_item_short"
+        android:shortcutLongLabel="@string/shortcut_add_item_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.cookbook"
+            android:targetClass="com.cookbook.MainActivity"
+            android:data="cookbook://shortcut/add-item" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="pantry-scan"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_scan_short"
+        android:shortcutLongLabel="@string/shortcut_scan_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.cookbook"
+            android:targetClass="com.cookbook.MainActivity"
+            android:data="cookbook://shortcut/pantry-scan" />
+    </shortcut>
+</shortcuts>
