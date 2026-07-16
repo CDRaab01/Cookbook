@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,8 +18,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.People
-import androidx.compose.material.icons.outlined.PersonAddAlt
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -66,7 +63,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.cookbook.data.remote.MemberOut
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.ui.recipe.CATEGORY_ORDER
@@ -100,9 +96,6 @@ fun ShoppingScreen(
     var listMenuOpen by remember { mutableStateOf(false) }
     var namingList by remember { mutableStateOf<String?>(null) } // "new" or "rename"
     var confirmDeleteList by remember { mutableStateOf(false) }
-    var showShare by remember { mutableStateOf(false) }
-    // The active list's sharing status (shared badge + owner-vs-member UI), from the index.
-    val activeSummary = allLists.firstOrNull { it.id == (state as? UiState.Success)?.data?.id }
 
     LaunchedEffect(Unit) { viewModel.load() }
     // Honor the "Add item" launcher shortcut once we've landed here.
@@ -150,14 +143,6 @@ fun ShoppingScreen(
                             Icons.Outlined.ArrowDropDown,
                             contentDescription = "Switch list",
                         )
-                        if (activeSummary?.shared == true) {
-                            Icon(
-                                Icons.Outlined.People,
-                                contentDescription = "Shared list",
-                                tint = CookbookTheme.colors.fresh.base,
-                                modifier = Modifier.padding(start = 6.dp).size(18.dp),
-                            )
-                        }
                     }
                     androidx.compose.material3.DropdownMenu(
                         expanded = listMenuOpen,
@@ -205,9 +190,6 @@ fun ShoppingScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showShare = true; viewModel.loadMembers() }) {
-                        Icon(Icons.Outlined.PersonAddAlt, contentDescription = "Share list")
-                    }
                     IconButton(onClick = viewModel::load) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
@@ -337,110 +319,6 @@ fun ShoppingScreen(
         )
     }
 
-    if (showShare) {
-        val members by viewModel.members.collectAsState()
-        val myId by viewModel.currentUserId.collectAsState()
-        ShareSheet(
-            listName = (state as? UiState.Success)?.data?.name ?: "this list",
-            isOwner = activeSummary?.isOwner ?: true,
-            members = members,
-            currentUserId = myId,
-            onShare = viewModel::shareWith,
-            onRemove = viewModel::removeMember,
-            onDismiss = { showShare = false },
-        )
-    }
-}
-
-@Composable
-private fun ShareSheet(
-    listName: String,
-    isOwner: Boolean,
-    members: List<MemberOut>,
-    currentUserId: String?,
-    onShare: (String) -> Unit,
-    onRemove: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (isOwner) "Share \"$listName\"" else "Shared list") },
-        text = {
-            ShareSheetContent(
-                isOwner = isOwner,
-                members = members,
-                currentUserId = currentUserId,
-                onShare = onShare,
-                onRemove = onRemove,
-            )
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
-}
-
-@Composable
-internal fun ShareSheetContent(
-    isOwner: Boolean,
-    members: List<MemberOut>,
-    currentUserId: String?,
-    onShare: (String) -> Unit,
-    onRemove: (String) -> Unit,
-) {
-    var email by remember { mutableStateOf("") }
-    Column {
-        if (isOwner) {
-            Text(
-                "Invite someone by the email they sign in to Dragonfly with.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    onClick = { onShare(email); email = "" },
-                    enabled = email.isNotBlank(),
-                ) { Text("Invite") }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-        Text(
-            "On this list",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        members.forEach { m ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        m.name + if (m.userId == currentUserId) " (you)" else "",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        m.email + if (m.isOwner) "  ·  owner" else "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                // Owner removes other members; a member can leave (remove their own row).
-                val isSelf = m.userId == currentUserId
-                if (!m.isOwner && (isOwner || isSelf)) {
-                    TextButton(onClick = { onRemove(m.userId) }) {
-                        Text(if (isSelf) "Leave" else "Remove")
-                    }
-                }
-            }
-        }
-    }
 }
 
 @Composable

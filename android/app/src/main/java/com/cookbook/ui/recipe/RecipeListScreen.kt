@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.SearchOff
 import androidx.compose.material.icons.outlined.Settings
@@ -66,6 +67,7 @@ import design.pulse.ui.components.Caption
 import design.pulse.ui.components.DataText
 import design.pulse.ui.components.EmptyState
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -224,7 +226,34 @@ fun RecipeListScreen(
                                 )
                             }
                         }
-                        items(filtered, key = { it.id }) { recipe ->
+                        // Family mode: split into Family (shared across the household) and Yours
+                        // (private). Headers only appear once there's a family recipe — a solo
+                        // cook's book stays a plain flat list.
+                        val (family, yours) = viewModel.partitionFamily(filtered)
+                        if (family.isNotEmpty()) {
+                            item(key = "header_family") {
+                                SectionHeader(
+                                    "Family",
+                                    channel = colors.fresh.base,
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                )
+                            }
+                            items(family, key = { it.id }) { recipe ->
+                                RecipeCard(recipe = recipe, onClick = { onRecipeClick(recipe.id) })
+                            }
+                            if (yours.isNotEmpty()) {
+                                item(key = "header_yours") {
+                                    SectionHeader(
+                                        "Yours",
+                                        channel = colors.heat.base,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp, bottom = 4.dp),
+                                    )
+                                }
+                            }
+                        }
+                        items(yours, key = { it.id }) { recipe ->
                             RecipeCard(recipe = recipe, onClick = { onRecipeClick(recipe.id) })
                         }
                     }
@@ -266,6 +295,17 @@ internal fun RecipeCard(recipe: RecipeSummaryOut, onClick: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
+                if (recipe.shared) {
+                    Icon(
+                        Icons.Outlined.People,
+                        contentDescription = "Family recipe",
+                        tint = colors.fresh.base,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Caption("Family", color = colors.fresh.base)
+                    Spacer(Modifier.width(6.dp))
+                }
                 if (recipe.source == "imported") {
                     Caption("Imported", color = colors.info.base)
                 } else if (recipe.source == "plate") {

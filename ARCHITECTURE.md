@@ -81,7 +81,15 @@ Standard suite MVVM. Feature packages:
   (multiple named lists; the default = the oldest list), autocomplete + category recall from
   `item_history`.
 - `ui/recipe/` — book/detail/editor (servings rescaler is display-only math), cook events
-  ("Made it"), share/duplicate; `RecipeDraftStore` receives photo/URL-import drafts.
+  ("Made it"), share/duplicate; `RecipeDraftStore` receives photo/URL-import drafts. **Family
+  mode:** the list splits into **Family** (`shared==true`, household-wide) and **Yours**
+  (`shared==false`) sections with a family badge on shared cards; recipe detail carries the
+  creator-only "Share with family" / "Make private" toggle (`POST /recipes/{id}/share`), and
+  `is_owner` gates both that toggle and Delete (a co-member viewing a family recipe sees neither).
+- `ui/settings/` — server URL, Plate migration, pantry-staples/aisle-order editors, and
+  **Settings → Family** — the single household-sharing surface: invite by email, member roster
+  (owner badge), owner-removes / member-leaves (`/household` endpoints). This replaced the old
+  per-list `ShareSheet` (retired — sharing is household-wide now, not per shopping list).
 - `ui/discover/` — Spoonacular search + preview bottom sheet + import; share-from-browser URL
   import via `SharedIntentStore` (ACTION_SEND).
 - `ui/cook/` — cook mode: step-at-a-time, screen-awake, duration-detected timers
@@ -113,6 +121,9 @@ grocery-store flow must survive airplane mode end-to-end; treat any regression t
    and rejected.
 5. Ingredients are free text; nutrition coupling only via the Plate integration seam.
 6. The release workflow checks out the sibling **Pulse** repo — keep that step when editing CI.
+7. **Sharing is household-wide, one surface** (Settings → Family / `/household`). Recipes/lists/
+   plans are shared via household membership, not per-object ACLs; the client never uses the
+   legacy per-list member endpoints (server still accepts them).
 
 ## Where to make common changes
 

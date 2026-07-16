@@ -51,6 +51,13 @@ interface ApiService {
     @DELETE("recipes/{id}")
     suspend fun deleteRecipe(@Path("id") id: String)
 
+    /** Family mode: make a recipe a family (shared) recipe or private again — creator only. */
+    @POST("recipes/{id}/share")
+    suspend fun shareRecipe(
+        @Path("id") id: String,
+        @Body req: RecipeShareRequest,
+    ): RecipeOut
+
     @Multipart
     @POST("recipes/import-photo")
     suspend fun importPhoto(@Part photo: MultipartBody.Part): RecipePhotoDraftOut
@@ -168,21 +175,18 @@ interface ApiService {
     @POST("lists/{listId}/clear-checked")
     suspend fun clearCheckedItems(@Path("listId") listId: String): ShoppingListOut
 
-    // --- Household sharing ---
-    @GET("lists/{listId}/members")
-    suspend fun getListMembers(@Path("listId") listId: String): List<MemberOut>
+    // --- Household (family mode) — the single sharing surface, Settings → Family ---
+    @GET("household")
+    suspend fun getHousehold(): HouseholdOut
 
-    @POST("lists/{listId}/members")
-    suspend fun shareList(
-        @Path("listId") listId: String,
-        @Body req: ShareRequest,
-    ): List<MemberOut>
+    @POST("household/members")
+    suspend fun addHouseholdMember(@Body req: AddMemberRequest): HouseholdOut
 
-    @DELETE("lists/{listId}/members/{memberId}")
-    suspend fun removeListMember(
-        @Path("listId") listId: String,
-        @Path("memberId") memberId: String,
-    )
+    @DELETE("household/members/{userId}")
+    suspend fun removeHouseholdMember(@Path("userId") userId: String)
+
+    @POST("household/leave")
+    suspend fun leaveHousehold()
 
     // --- Pantry ---
     @Multipart

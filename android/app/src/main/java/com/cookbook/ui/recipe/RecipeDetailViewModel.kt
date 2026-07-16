@@ -85,6 +85,22 @@ class RecipeDetailViewModel @Inject constructor(
         }
     }
 
+    /** Family mode: share this recipe with the household (or make it private). Creator only —
+     *  the screen only shows the toggle when is_owner. Optimistic, reconciled or rolled back. */
+    fun toggleShared() {
+        val current = (_recipe.value as? UiState.Success)?.data ?: return
+        val next = !current.shared
+        _recipe.value = UiState.Success(current.copy(shared = next))
+        viewModelScope.launch {
+            try {
+                _recipe.value = UiState.Success(recipeRepository.setShared(recipeId, next))
+            } catch (e: Exception) {
+                _recipe.value = UiState.Success(current)
+                _error.value = e.message ?: "Couldn't update sharing"
+            }
+        }
+    }
+
     /** One-shot after "I made this": times cooked, so the screen can offer the Plate log. */
     private val _madeIt = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val madeIt: SharedFlow<Int> = _madeIt

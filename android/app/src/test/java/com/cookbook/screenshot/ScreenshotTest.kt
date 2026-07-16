@@ -63,9 +63,6 @@ class ScreenshotTest {
     @Test fun plan_slots_light() = capture("plan_slots_light", dark = false) { PlanSlotsScene() }
     @Test fun plan_slots_dark() = capture("plan_slots_dark", dark = true) { PlanSlotsScene() }
 
-    @Test fun share_sheet_light() = capture("share_sheet_light", dark = false) { ShareSheetScene() }
-    @Test fun share_sheet_dark() = capture("share_sheet_dark", dark = true) { ShareSheetScene() }
-
     // Recipe book — the list of recipe cards (ingredient/time/serving stats, a favorite, an import).
     @Test fun recipe_list_light() = capture("recipe_list_light", dark = false) { RecipeListScene() }
     @Test fun recipe_list_dark() = capture("recipe_list_dark", dark = true) { RecipeListScene() }
@@ -212,22 +209,6 @@ private fun DiscoverScene() {
                 sourceId = "d3", title = "Classic Margherita Pizza", readyInMinutes = 40, servings = 6,
             ),
             onClick = {},
-        )
-    }
-}
-
-@Composable
-private fun ShareSheetScene() {
-    androidx.compose.foundation.layout.Column(modifier = Modifier.padding(24.dp)) {
-        com.cookbook.ui.shopping.ShareSheetContent(
-            isOwner = true,
-            currentUserId = "u1",
-            members = listOf(
-                com.cookbook.data.remote.MemberOut(userId = "u1", email = "chris@dragonfly.org", name = "Chris", isOwner = true),
-                com.cookbook.data.remote.MemberOut(userId = "u2", email = "sam@dragonfly.org", name = "Sam", isOwner = false),
-            ),
-            onShare = {},
-            onRemove = {},
         )
     }
 }

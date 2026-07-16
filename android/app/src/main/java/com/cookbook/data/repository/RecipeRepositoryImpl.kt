@@ -101,6 +101,14 @@ class RecipeRepositoryImpl @Inject constructor(
     override suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut =
         updateRecipe(id, RecipeUpdateRequest(favorite = favorite))
 
+    override suspend fun setShared(id: String, shared: Boolean): RecipeOut {
+        val updated = api.shareRecipe(id, com.cookbook.data.remote.RecipeShareRequest(shared))
+        cache.upsertDetail(
+            RecipeDetailCacheEntity(id, json.encodeToString(RecipeOut.serializer(), updated)),
+        )
+        return updated
+    }
+
     override suspend fun markCooked(id: String, rating: Int?): CookedOut =
         api.markCooked(id, CookedRequest(rating = rating))
 

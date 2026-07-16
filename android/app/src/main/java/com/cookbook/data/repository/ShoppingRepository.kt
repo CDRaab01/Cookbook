@@ -2,7 +2,6 @@ package com.cookbook.data.repository
 
 import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
-import com.cookbook.data.remote.MemberOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 
@@ -54,19 +53,6 @@ interface ShoppingRepository {
 
     /** This month's grocery spend from Magpie; null when the integration is off or unreachable. */
     suspend fun grocerySpend(): GrocerySpendOut?
-
-    // --- Household sharing ---
-    /** Everyone on a shared list (owner first). */
-    suspend fun listMembers(listId: String): List<MemberOut>
-
-    /** Invite a suite user by email; returns the updated member list. */
-    suspend fun shareList(listId: String, email: String): List<MemberOut>
-
-    /** Owner removes a member, or a member removes themselves (leave). */
-    suspend fun removeMember(listId: String, memberId: String)
-
-    /** The signed-in user (id + email), for marking "you" and enabling leave. */
-    suspend fun me(): com.cookbook.data.remote.UserOut
 }
 
 /** The server's "this recipe is already on the list" 409 — the UI turns it into re-add/skip. */

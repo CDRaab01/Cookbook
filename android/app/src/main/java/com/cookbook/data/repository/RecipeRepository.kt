@@ -24,6 +24,9 @@ interface RecipeRepository {
     suspend fun importRecipe(sourceId: String): RecipeOut
     suspend fun importRecipeFromUrl(url: String): RecipeOut
     suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut
+
+    /** Family mode: share this recipe with the household (or make it private again). Creator only. */
+    suspend fun setShared(id: String, shared: Boolean): RecipeOut
     suspend fun markCooked(id: String, rating: Int? = null): CookedOut
     suspend fun unmarkCooked(id: String): CookedOut
     suspend fun getRecipeNutrition(id: String): RecipeNutritionOut

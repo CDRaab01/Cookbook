@@ -46,17 +46,6 @@ data class ListSummaryOut(
 )
 
 @Serializable
-data class MemberOut(
-    @SerialName("user_id") val userId: String,
-    val email: String,
-    val name: String,
-    @SerialName("is_owner") val isOwner: Boolean,
-)
-
-@Serializable
-data class ShareRequest(val email: String)
-
-@Serializable
 data class ListCreateRequest(val name: String)
 
 @Serializable

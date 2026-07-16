@@ -25,8 +25,8 @@ class RecipeListViewModelTest {
     private val repository: RecipeRepository = mock()
     private lateinit var viewModel: RecipeListViewModel
 
-    private fun summary(id: String, name: String) = RecipeSummaryOut(
-        id = id, name = name, servings = 2, ingredientCount = 3, stepCount = 2,
+    private fun summary(id: String, name: String, shared: Boolean = false) = RecipeSummaryOut(
+        id = id, name = name, servings = 2, ingredientCount = 3, stepCount = 2, shared = shared,
     )
 
     @Before
@@ -75,5 +75,30 @@ class RecipeListViewModelTest {
 
         viewModel.setQuery("")
         assertEquals(3, viewModel.filtered(list).size)
+    }
+
+    @Test
+    fun `partitionFamily splits shared from private and preserves order`() {
+        val list = listOf(
+            summary("1", "Chicken Parm", shared = false),
+            summary("2", "Grandma's Chili", shared = true),
+            summary("3", "Tacos", shared = false),
+            summary("4", "Family Lasagna", shared = true),
+        )
+
+        val (family, yours) = viewModel.partitionFamily(list)
+
+        assertEquals(listOf("Grandma's Chili", "Family Lasagna"), family.map { it.name })
+        assertEquals(listOf("Chicken Parm", "Tacos"), yours.map { it.name })
+    }
+
+    @Test
+    fun `partitionFamily leaves family empty when nothing is shared`() {
+        val list = listOf(summary("1", "Chicken Parm"), summary("2", "Chili"))
+
+        val (family, yours) = viewModel.partitionFamily(list)
+
+        assertEquals(emptyList(), family)
+        assertEquals(2, yours.size)
     }
 }

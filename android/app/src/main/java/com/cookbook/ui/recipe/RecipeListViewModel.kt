@@ -76,6 +76,15 @@ class RecipeListViewModel @Inject constructor(
             .sortedByDescending { it.value }
             .map { it.key }
 
+    /**
+     * Split the (already filtered + sorted) recipes into the two Family-mode sections:
+     * **Family** (shared == true — recipes shared across the household, from anyone) and **Yours**
+     * (shared == false — your private recipes). Order within each section is preserved, so the
+     * active sort/filter still holds. Pure — the screen renders the two lists under their headers.
+     */
+    fun partitionFamily(list: List<RecipeSummaryOut>): Pair<List<RecipeSummaryOut>, List<RecipeSummaryOut>> =
+        list.partition { it.shared }
+
     /** The loaded list with search + favorites + tag filters and the chosen sort applied. */
     fun filtered(list: List<RecipeSummaryOut>): List<RecipeSummaryOut> {
         val q = _query.value.trim()

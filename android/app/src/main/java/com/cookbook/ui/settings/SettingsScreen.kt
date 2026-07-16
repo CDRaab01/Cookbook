@@ -2,11 +2,13 @@ package com.cookbook.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -18,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -27,9 +30,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cookbook.data.remote.HouseholdOut
 import com.cookbook.ui.theme.CookbookTheme
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.PanelCard
@@ -53,6 +58,8 @@ fun SettingsScreen(
     val userEmail by viewModel.userEmail.collectAsState()
     val migrating by viewModel.migrating.collectAsState()
     val migrationStatus by viewModel.migrationStatus.collectAsState()
+    val household by viewModel.household.collectAsState()
+    val householdError by viewModel.householdError.collectAsState()
     var editedUrl by remember(serverUrl) { mutableStateOf(serverUrl) }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
 
@@ -105,6 +112,15 @@ fun SettingsScreen(
                     compact = true,
                 )
             }
+
+            SectionHeader("Family", channel = colors.fresh.base)
+            HouseholdBlock(
+                household = household,
+                error = householdError,
+                onAddMember = viewModel::addHouseholdMember,
+                onRemoveMember = viewModel::removeHouseholdMember,
+                onLeave = viewModel::leaveHousehold,
+            )
 
             SectionHeader("Server", channel = colors.info.base)
             PanelCard(modifier = Modifier.fillMaxWidth()) {
@@ -212,6 +228,90 @@ fun SettingsScreen(
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Settings → Family: share the cookbook + shopping lists with your household. Owner invites by
+ * email and can remove members; a member sees the roster and a Leave action. Inline errors surface
+ * below. Mirrors the Magpie household Settings block; the server API is identical.
+ */
+@Composable
+private fun HouseholdBlock(
+    household: HouseholdOut?,
+    error: String?,
+    onAddMember: (String) -> Unit,
+    onRemoveMember: (String) -> Unit,
+    onLeave: () -> Unit,
+) {
+    val colors = CookbookTheme.colors
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Text(
+                "Share your cookbook and shopping lists with your household — everyone sees and " +
+                    "edits the same recipes, family recipes, and lists.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            household?.members?.forEach { m ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            m.name.ifBlank { m.email },
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            if (m.isOwner) "${m.email} · owner" else m.email,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (household.youAreOwner && !m.isOwner) {
+                        TextButton(onClick = { onRemoveMember(m.userId) }) { Text("Remove") }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (household == null || household.youAreOwner) {
+                var email by remember { mutableStateOf("") }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        label = { Text("Share by email") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    PulseButton(
+                        text = "Share",
+                        onClick = {
+                            onAddMember(email)
+                            email = ""
+                        },
+                        compact = true,
+                        channel = colors.fresh.base,
+                        onChannel = colors.fresh.on,
+                        dimChannel = colors.fresh.dim,
+                        enabled = email.isNotBlank(),
+                    )
+                }
+            } else {
+                TextButton(onClick = onLeave) { Text("Leave household") }
+            }
+            if (error != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }

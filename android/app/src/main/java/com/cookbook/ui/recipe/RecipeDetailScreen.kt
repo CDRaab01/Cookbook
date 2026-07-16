@@ -161,6 +161,18 @@ fun RecipeDetailScreen(
                         expanded = overflowOpen,
                         onDismissRequest = { overflowOpen = false },
                     ) {
+                        // Family mode: only the creator can share/unshare (server enforces it too).
+                        if (loaded?.isOwner == true) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(if (loaded.shared) "Make private" else "Share with family")
+                                },
+                                onClick = {
+                                    overflowOpen = false
+                                    viewModel.toggleShared()
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Duplicate") },
                             onClick = {
@@ -185,13 +197,16 @@ fun RecipeDetailScreen(
                                 }
                             },
                         )
-                        DropdownMenuItem(
-                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                            onClick = {
-                                overflowOpen = false
-                                confirmDelete = true
-                            },
-                        )
+                        // Non-owners (viewing a co-member's family recipe) can't delete it either.
+                        if (loaded?.isOwner == true) {
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    overflowOpen = false
+                                    confirmDelete = true
+                                },
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

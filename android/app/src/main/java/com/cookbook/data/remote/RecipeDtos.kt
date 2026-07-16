@@ -76,6 +76,10 @@ data class RecipeOut(
     @SerialName("last_cooked_at") val lastCookedAt: String? = null,
     @SerialName("avg_rating") val avgRating: Double? = null,
     @SerialName("created_at") val createdAt: String = "",
+    // Family mode: shared = a "family" recipe (household-visible); isOwner = you created it (so you
+    // can toggle sharing / delete). Defaults keep older servers (which omit them) rendering as yours.
+    val shared: Boolean = false,
+    @SerialName("is_owner") val isOwner: Boolean = true,
     val steps: List<StepOut> = emptyList(),
     val ingredients: List<IngredientOut> = emptyList(),
 )
@@ -105,6 +109,12 @@ data class DiscoveredRecipe(
 @Serializable
 data class RecipeImportRequest(
     @SerialName("source_id") val sourceId: String,
+)
+
+/** Share this recipe with the household (family recipe) or make it private again — creator only. */
+@Serializable
+data class RecipeShareRequest(
+    val shared: Boolean,
 )
 
 @Serializable
@@ -165,6 +175,9 @@ data class RecipeSummaryOut(
     @SerialName("created_at") val createdAt: String = "",
     @SerialName("ingredient_count") val ingredientCount: Int = 0,
     @SerialName("step_count") val stepCount: Int = 0,
+    // Family mode (see RecipeOut): shared = family recipe, isOwner = you created it.
+    val shared: Boolean = false,
+    @SerialName("is_owner") val isOwner: Boolean = true,
 )
 
 @Serializable
