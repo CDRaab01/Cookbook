@@ -39,6 +39,9 @@ class Recipe(Base):
     source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     favorite: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Family mode: a shared ("family") recipe is visible + editable to the creator's household;
+    # False = private to the creator. The creator alone toggles this and deletes.
+    shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Free-text labels ("weeknight", "grill"), lowercase, stored as a JSON list.
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Personal cooking notes ("half the sugar next time") — the recipe's margin scribbles,

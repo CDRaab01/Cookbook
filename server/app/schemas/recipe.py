@@ -184,6 +184,10 @@ class RecipeOut(BaseModel):
     last_cooked_at: datetime.datetime | None = None
     avg_rating: float | None = None
     created_at: datetime.datetime
+    # Family mode: shared = a "family" recipe (household-visible); is_owner = you created it (so you
+    # can toggle sharing / delete). is_owner defaults True and is set explicitly for family recipes.
+    shared: bool = False
+    is_owner: bool = True
     steps: list[StepOut]
     ingredients: list[IngredientOut]
 
@@ -280,6 +284,15 @@ class RecipeSummaryOut(BaseModel):
     created_at: datetime.datetime
     ingredient_count: int
     step_count: int
+    # Family mode (see RecipeOut): shared = family recipe, is_owner = you created it.
+    shared: bool = False
+    is_owner: bool = True
+
+
+class RecipeShareRequest(BaseModel):
+    """Share this recipe with the household (family recipe) or make it private again."""
+
+    shared: bool
 
 
 class CookedRequest(BaseModel):

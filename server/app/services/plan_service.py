@@ -18,7 +18,7 @@ from app.models.meal_confirmation import MealConfirmation
 from app.models.meal_plan import MealPlanEntry
 from app.models.recipe import Recipe
 from app.schemas.plan import PlanEntryCreate, PlanEntryOut, PlanToListRequest, PlanToListResult
-from app.services.recipe_service import load_owned_recipe
+from app.services.recipe_service import load_accessible_recipe
 from app.services.shopping_service import (
     _guard_capacity,
     _merge_into_list,
@@ -121,7 +121,7 @@ async def add_entry(
         )
     plan_list = await _resolve_plan_list(db, user_id, list_id)
     if req.recipe_id is not None:
-        await load_owned_recipe(db, user_id, req.recipe_id)  # ownership gate
+        await load_accessible_recipe(db, user_id, req.recipe_id)  # ownership gate
     entry = MealPlanEntry(
         user_id=user_id,
         list_id=plan_list,

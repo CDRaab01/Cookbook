@@ -19,6 +19,7 @@ from app.schemas.recipe import (
     RecipeOut,
     RecipePreviewOut,
     RecipeSummaryOut,
+    RecipeShareRequest,
     RecipeUpdate,
 )
 from app.security import CurrentUser
@@ -43,6 +44,7 @@ from app.services.recipe_service import (
     list_recipes,
     mark_cooked,
     unmark_cooked,
+    set_recipe_shared,
     update_recipe,
 )
 
@@ -175,6 +177,15 @@ async def update(
 @router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete(recipe_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     await delete_recipe(db, current_user.id, recipe_id)
+
+
+@router.post("/{recipe_id}/share", response_model=RecipeOut)
+async def share(
+    recipe_id: uuid.UUID, req: RecipeShareRequest, current_user: CurrentUser, db: DbSession
+):
+    """Make a recipe a family recipe (shared with your household) or private again — creator only."""
+    await set_recipe_shared(db, current_user.id, recipe_id, req.shared)
+    return await get_recipe(db, current_user.id, recipe_id)
 
 
 @router.post("/{recipe_id}/cooked", response_model=CookedOut, status_code=status.HTTP_201_CREATED)

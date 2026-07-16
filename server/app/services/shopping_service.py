@@ -41,7 +41,7 @@ from app.schemas.shopping import (
     MemberOut,
     SuggestionOut,
 )
-from app.services.recipe_service import load_owned_recipe
+from app.services.recipe_service import load_accessible_recipe
 
 DEFAULT_LIST_NAME = "Groceries"
 MAX_SUGGESTIONS = 8
@@ -91,9 +91,14 @@ async def load_accessible_list(
     member = await db.execute(
         select(ListMember).where(ListMember.list_id == list_id, ListMember.user_id == user_id)
     )
-    if member.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
-    return shopping_list
+    if member.scalar_one_or_none() is not None:
+        return shopping_list  # legacy per-list share
+    # Family mode: household co-members share each other's lists (and their plans).
+    from app.services.household_service import household_member_ids
+
+    if shopping_list.user_id in await household_member_ids(db, user_id):
+        return shopping_list
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="List not found")
 
 
 def _next_order(shopping_list: ShoppingList) -> int:
@@ -421,7 +426,7 @@ async def add_recipe(
     db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, req: AddRecipeRequest
 ) -> ListOut:
     shopping_list = await load_accessible_list(db, user_id, list_id)
-    recipe = await load_owned_recipe(db, user_id, req.recipe_id)
+    recipe = await load_accessible_recipe(db, user_id, req.recipe_id)
     if not recipe.ingredients:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Recipe has no ingredients"

@@ -11,6 +11,7 @@ from app.routers import (
     auth,
     cross_app,
     export,
+    household,
     lists,
     migrate,
     pantry,
@@ -90,6 +91,7 @@ app.include_router(auth.router)
 app.include_router(suite_auth.router)
 app.include_router(users.router)
 app.include_router(recipes.router)
+app.include_router(household.router)
 app.include_router(lists.router)
 app.include_router(migrate.router)
 app.include_router(plan.router)

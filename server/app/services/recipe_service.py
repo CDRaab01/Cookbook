@@ -9,7 +9,7 @@ import datetime
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cook_event import CookEvent
@@ -25,10 +25,39 @@ from app.schemas.recipe import (
 
 
 async def load_owned_recipe(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> Recipe:
+    """Creator-only — for delete and the share toggle. Viewing/editing use load_accessible_recipe."""
     recipe = await db.get(Recipe, recipe_id)
     if recipe is None or recipe.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipe not found")
     return recipe
+
+
+async def load_accessible_recipe(
+    db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID
+) -> Recipe:
+    """View/edit access: you own it, OR it's a **family** recipe (``shared``) created by a household
+    co-member. Family mode makes shared recipes fully collaborative (any member can edit)."""
+    from app.services.household_service import household_member_ids
+
+    recipe = await db.get(Recipe, recipe_id)
+    if recipe is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipe not found")
+    if recipe.user_id == user_id:
+        return recipe
+    if recipe.shared and recipe.user_id in await household_member_ids(db, user_id):
+        return recipe
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipe not found")
+
+
+async def set_recipe_shared(
+    db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID, shared: bool
+) -> Recipe:
+    """Share a recipe with the household (make it a family recipe) or make it private again. Only
+    the creator toggles this — you don't un-share someone else's recipe."""
+    recipe = await load_owned_recipe(db, user_id, recipe_id)
+    recipe.shared = shared
+    await db.commit()
+    return await _reload(db, recipe_id)
 
 
 async def _reload(db: AsyncSession, recipe_id: uuid.UUID) -> Recipe:
@@ -82,7 +111,7 @@ async def mark_cooked(
     db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID, rating: int | None = None
 ) -> CookedOut:
     """One "I made this" tap → one history row, optionally carrying a 1–5 rating."""
-    await load_owned_recipe(db, user_id, recipe_id)
+    await load_accessible_recipe(db, user_id, recipe_id)  # a member can cook a family recipe
     db.add(CookEvent(user_id=user_id, recipe_id=recipe_id, rating=rating))
     await db.commit()
     stats = await _cook_stats(db, user_id, [recipe_id])
@@ -92,7 +121,7 @@ async def mark_cooked(
 
 async def unmark_cooked(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> CookedOut:
     """Undo a mis-tap: drop the most recent event (404 when there is none)."""
-    await load_owned_recipe(db, user_id, recipe_id)
+    await load_accessible_recipe(db, user_id, recipe_id)
     result = await db.execute(
         select(CookEvent)
         .where(CookEvent.user_id == user_id, CookEvent.recipe_id == recipe_id)
@@ -120,6 +149,7 @@ def _summary(recipe: Recipe) -> RecipeSummaryOut:
         source=recipe.source,
         image_url=recipe.image_url,
         favorite=recipe.favorite,
+        shared=recipe.shared,
         tags=recipe.tags or [],
         created_at=recipe.created_at,
         ingredient_count=len(recipe.ingredients),
@@ -154,7 +184,18 @@ async def create_recipe(
 
 
 async def list_recipes(db: AsyncSession, user_id: uuid.UUID) -> list[RecipeSummaryOut]:
-    result = await db.execute(select(Recipe).where(Recipe.user_id == user_id).order_by(Recipe.name))
+    # Your own recipes (private or shared) + household co-members' *family* (shared) recipes.
+    from app.services.household_service import household_member_ids
+
+    member_ids = await household_member_ids(db, user_id)
+    result = await db.execute(
+        select(Recipe)
+        .where(
+            Recipe.user_id.in_(member_ids),
+            or_(Recipe.user_id == user_id, Recipe.shared.is_(True)),
+        )
+        .order_by(Recipe.name)
+    )
     recipes = list(result.scalars().all())
     stats = await _cook_stats(db, user_id, [r.id for r in recipes])
     out = []
@@ -163,25 +204,37 @@ async def list_recipes(db: AsyncSession, user_id: uuid.UUID) -> list[RecipeSumma
         summary = _summary(r)
         out.append(
             summary.model_copy(
-                update={"times_cooked": count, "last_cooked_at": last, "avg_rating": avg}
+                update={
+                    "times_cooked": count,
+                    "last_cooked_at": last,
+                    "avg_rating": avg,
+                    "is_owner": r.user_id == user_id,
+                }
             )
         )
     return out
 
 
 async def get_recipe(db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID) -> RecipeOut:
-    recipe = await load_owned_recipe(db, user_id, recipe_id)
+    recipe = await load_accessible_recipe(db, user_id, recipe_id)
     stats = await _cook_stats(db, user_id, [recipe_id])
     count, last, avg = stats.get(recipe_id, (0, None, None))
     return RecipeOut.model_validate(recipe).model_copy(
-        update={"times_cooked": count, "last_cooked_at": last, "avg_rating": avg}
+        update={
+            "times_cooked": count,
+            "last_cooked_at": last,
+            "avg_rating": avg,
+            "is_owner": recipe.user_id == user_id,
+        }
     )
 
 
 async def update_recipe(
     db: AsyncSession, user_id: uuid.UUID, recipe_id: uuid.UUID, req: RecipeUpdate
 ) -> RecipeOut:
-    recipe = await load_owned_recipe(db, user_id, recipe_id)
+    recipe = await load_accessible_recipe(
+        db, user_id, recipe_id
+    )  # family recipes edit collaboratively
     if req.name is not None:
         recipe.name = req.name
     if req.description is not None:
