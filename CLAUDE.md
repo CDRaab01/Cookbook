@@ -525,3 +525,42 @@ auto-committed, shopping list untouched).
   `test_suite_auth.py::test_disabled_by_default_returns_404` fails locally whenever the live
   `server/.env` has `SUITE_JWKS_URL` set (same class as Plate's Spoonacular test). Android was
   built green on the branch; not re-verified at merge.
+
+---
+
+## Road to 1.0 (2026-07-16) — family mode + the CI gates
+
+The suite's 1.0 polish round. The headline landed plus two long-standing gate items.
+
+- **Family mode (household sharing) — the headline.** Cookbook moved from per-list sharing to a
+  **household** (the Magpie pattern): one household, managed in **Settings → Family** (invite by
+  email — the invitee must have signed in once — member roster with owner badge,
+  owner-removes / member-leaves). New `/household` router (`GET`, `POST /members`,
+  `DELETE /members/{user_id}`, `POST /leave`), `models/household.py`, `services/household_service.py`.
+  Recipes gained a **`shared`** flag: a *family* recipe is visible AND editable to the whole
+  household (fully collaborative; **Delete + the share toggle stay creator-only**, gated by
+  `is_owner`), private recipes stay the creator's. `POST /recipes/{id}/share` flips it; the
+  recipe list returns own + household-family recipes each flagged `shared`/`is_owner` so the
+  Android list splits into **Family** vs **Yours** with a family badge. Shopping lists + meal
+  plans are reachable by co-members — every access check resolves through
+  `household_service.household_member_ids` (shopping_service + recipe_service + plan_service);
+  the **legacy per-list `ListMember` shares still work**. Migration `0014` (households,
+  household_members, recipes.shared). The Android per-list `ShareSheet` was **retired** — sharing
+  is household-wide now, one surface. Commits `1edb703` (server) + `1e91689` (client).
+- **This supersedes the stale "not v1 / deferred" notes above.** §1 still says "Explicitly not
+  v1: … sharing lists between users" and the v0.3.0 log defers "multi-account household sharing"
+  — both are **now shipped**. (The weekly meal planner deferred in §1 shipped back in v0.3.0
+  too.) Those older sections are kept as history; this entry is the current truth.
+- **Roborazzi baselines recorded** for the five previously-uncaptured screens (recipe list,
+  recipe detail, shopping list, pantry, discover), light + dark — 10 PNGs under
+  `android/app/screenshots/`. Home was captured in v0.2. The screenshots job is still
+  `workflow_dispatch`-only (doesn't gate PR/deploy), but the "record or delete" ROADMAP gate is
+  now satisfied. Commit `4fe9a46`.
+- **Static launcher shortcuts** (long-press the app icon): **Shopping list**, **Add item**,
+  **Scan pantry** — `res/xml/shortcuts.xml`, each a `cookbook://shortcut/<target>` VIEW intent
+  MainActivity captures and the nav host honors after the auth gate. Commit `0257e0c`.
+- **Designed empty state** when a recipe search/filter matches nothing (part of the Phase-8
+  empty-states sweep; other screens still to do). Commit `c4fafbb`.
+- **Verified (per commit `1edb703`):** server **306 pytest green** (3 new family-mode tests in
+  `tests/test_household.py`). versionName is still **`0.4.0`** — the 1.0 bump + airplane-mode
+  on-device pass are the remaining gate items (ROADMAP "Road to 1.0" #5).

@@ -47,6 +47,7 @@ pure domain package **`app/lists/`** — the app's kernel:
 | Shopping lists | `lists.py` | `shopping_service` | `ShoppingList`, `ShoppingListItem`, `ItemHistory` |
 | Meal planner | `plan.py` | `plan_service` | `MealPlanEntry` |
 | Pantry (v0.4 AI round) | `pantry.py` | `pantry_service` (+ `services/ai/`) | `PantryItem`, `PantryStaple` |
+| Household / family sharing | `household.py` | `household_service` | `Household`, `HouseholdMember` (+ `recipes.shared`) |
 | Plate integration | `migrate.py` + recipe endpoints | `plate_migration_service`, `plate_nutrition_service`, `cross_app_token` | — |
 | Export | `export.py` | `export_service` | generic dump |
 
@@ -66,8 +67,9 @@ degrades to absence, never blocks add/check/sync.
 
 ### Migrations & tests
 
-Alembic 0001–0007, migrate-on-boot. 21 pytest files (~260 tests); CI runs ruff **and**
-`ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
+Alembic 0001–0014, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 plan-list-id,
+0011 meal-confirmations, 0012 cook-rating, 0013 plan-entry-scale, 0014 household-sharing).
+~306 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
 `DATABASE_URL` on **127.0.0.1:5434**, `DB_NULLPOOL=true` (conftest sets NullPool; bcrypt dropped
 to 4 rounds tests-only). One env-dependent local-only failure when the live `.env` has
 `SUITE_JWKS_URL` set; green in CI.

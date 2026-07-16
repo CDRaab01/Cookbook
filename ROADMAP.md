@@ -13,19 +13,33 @@ baselines, icon quality, truthful docs — with `versionName` 1.0.0 as the round
 
 Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
 
-1. **Household list sharing by invite** (Non-AI #1 below) — the headline. Share a *list*, not
-   accounts; SSO is the identity foundation; the merge kernel already handles concurrent adds.
-   This is the feature that makes the suite read as multi-user and professional.
+1. **Household sharing (family mode)** (Non-AI #1 below) — the headline. ✓ **DONE 2026-07-16.**
+   Shipped bigger than the "share a list" sketch: Cookbook moved to a **household** managed in
+   **Settings → Family** (invite by email, member roster, owner-removes / member-leaves via new
+   `/household` endpoints) and the per-list `ShareSheet` was retired. Recipes gained a `shared`
+   flag — a **family** recipe is visible AND editable to the whole household (fully
+   collaborative; delete + the share toggle stay creator-only via `is_owner`), private recipes
+   stay the creator's; `POST /recipes/{id}/share` toggles it and the recipe list splits into
+   **Family** vs **Yours**. Shopping lists + meal plans are reachable by household co-members
+   (resolution through `household_service.household_member_ids`; legacy per-list `ListMember`
+   still works). Migration `0014` (households, household_members, recipes.shared). This is the
+   feature that makes the suite read as multi-user and professional.
 2. ✓ **Custom/reorderable aisles** (Non-AI #2) — DONE 2026-07-15. Settings → "Edit aisle order"
    reorders the store categories (move up/down + reset); the order persists in DataStore
    (`AppPreferences.aisleOrder`, reconciled against the canonical set) and the shopping list
    groups items in that walk order. Client-only; 5 unit tests on the reconcile logic.
-3. **Designed empty states** across screens (the Phase-8 leftover) + celebration on
-   list-complete/cook-complete via the Pulse primitives as host Tier P lands them.
-4. **Record the Roborazzi baselines** (Non-AI #4) — the bar makes "record or delete" a gate,
-   not a suggestion.
-5. Version 0.4.0 → **1.0.0** at the gate; the airplane-mode on-device pass happens in the same
-   round (the offline shopping-list promise is the product — prove it on the phone).
+3. **Designed empty states** across screens (the Phase-8 leftover) — partially DONE 2026-07-16:
+   a designed empty state now shows when a recipe search/filter matches nothing. Remaining:
+   sweep the other screens + celebration on list-complete/cook-complete via the Pulse
+   primitives as host Tier P lands them.
+4. ✓ **Record the Roborazzi baselines** (Non-AI #4) — DONE 2026-07-16. Baselines recorded
+   (light + dark) for the five previously-uncaptured screens: recipe list, recipe detail,
+   shopping list, pantry, discover (10 PNGs under `android/app/screenshots/`). Home was already
+   captured in v0.2.
+5. **Still open — the 1.0 gate.** Version 0.4.0 → **1.0.0** at the gate (versionName is still
+   `0.4.0`); the airplane-mode on-device pass happens in the same round (the offline
+   shopping-list promise is the product — prove it on the phone). These two are what remain for
+   1.0.
 
 **Gap review 2026-07-14 (host ROADMAP3 additions — what a Paprika/AnyList user would expect):**
 
@@ -82,19 +96,20 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
 
 ## Non-AI work (valuable regardless of the AI round)
 
-1. **Household sharing** — the deferred item that matters most. Two adults, one grocery list is
-   the actual usage pattern; single-account is the last "personal-app" limitation in a
-   two-person household. Smallest honest version: share a *list* (not accounts) — a second user
-   joins a list by invite; merge logic already handles concurrent adds. Suite SSO (accounts
-   linked by email at dragonfly-id) is the identity foundation for it.
+1. ✓ **Household sharing** — DONE 2026-07-16 (see "Road to 1.0" #1 above). Shipped as a
+   household (Settings → Family, invite by email) rather than the smallest per-list sketch:
+   family recipes are shared+collaborative, private recipes stay yours, and lists + plans are
+   reachable by co-members. Suite SSO (accounts linked by email) is the identity foundation it
+   builds on. The last "personal-app" limitation is closed.
 2. **Custom/reorderable aisles** — deferred from v0.3; category recall (`item_history`) solved
    "where does milk go", this solves "what order do I walk the store". Per-list category order,
    drag-to-reorder (Hawksnest's Customize has the drag-and-drop precedent).
 3. ~~Pantry model (thin)~~ — **shipped in v0.4.0** as pantry items + confirmed staples (still
    deliberately NOT quantity inventory — keep it that way). Follow-on worth doing:
    recently-bought inference (checked-off shopping history → "probably in the pantry" hints).
-4. **Record the Roborazzi baselines** — the CI job has existed since v1 with no baselines;
-   either record them or delete the job (a permanently-skipped check erodes trust in CI).
+4. ✓ **Record the Roborazzi baselines** — DONE 2026-07-16. The five uncaptured screens (recipe
+   list, recipe detail, shopping list, pantry, discover) now have light+dark baselines under
+   `android/app/screenshots/`; Home was captured in v0.2.
 5. **Camera-captured recipe photos** (vs web URLs) — deferred from v0.3; pairs naturally with
    photo import since the capture UX is the same.
 
