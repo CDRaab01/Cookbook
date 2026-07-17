@@ -8,6 +8,7 @@ import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.util.RecipeDraftStore
 import com.cookbook.util.SharedIntentStore
 import com.cookbook.util.UiState
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -120,7 +121,7 @@ class DiscoverViewModel @Inject constructor(
             _preview.value = try {
                 UiState.Success(recipeRepository.previewRecipe(sourceId))
             } catch (e: Exception) {
-                UiState.Error(e.message ?: "Couldn't load the recipe")
+                UiState.Error(e.offlineAwareMessage("Couldn't load the recipe"))
             }
         }
     }
@@ -138,7 +139,7 @@ class DiscoverViewModel @Inject constructor(
                 _preview.value = null
                 _imported.tryEmit(recipe.id)
             } catch (e: Exception) {
-                _error.value = e.message ?: "Import failed"
+                _error.value = e.offlineAwareMessage("Import failed")
             } finally {
                 _importing.value = null
             }
@@ -175,7 +176,7 @@ class DiscoverViewModel @Inject constructor(
                     "Import failed (${e.code()})"
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Import failed"
+                _error.value = e.offlineAwareMessage("Import failed")
             } finally {
                 _importingUrl.value = false
             }
@@ -203,7 +204,7 @@ class DiscoverViewModel @Inject constructor(
                     else -> "Couldn't read that photo (${e.code()})"
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't read that photo"
+                _error.value = e.offlineAwareMessage("Couldn't read that photo")
             } finally {
                 _importingPhoto.value = false
             }

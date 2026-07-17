@@ -26,6 +26,11 @@ class RecipeListViewModel @Inject constructor(
     private val _recipes = MutableStateFlow<UiState<List<RecipeSummaryOut>>>(UiState.Loading)
     val recipes: StateFlow<UiState<List<RecipeSummaryOut>>> = _recipes
 
+    /** Non-null ⇒ the loaded book came from the offline cache, captured at this epoch-millis
+     *  moment — the screen renders the "Offline — as of …" banner. Null ⇒ fresh. */
+    private val _staleAsOf = MutableStateFlow<Long?>(null)
+    val staleAsOf: StateFlow<Long?> = _staleAsOf
+
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
@@ -44,7 +49,9 @@ class RecipeListViewModel @Inject constructor(
             // resume-refresh doesn't flash.
             if (_recipes.value !is UiState.Success) _recipes.value = UiState.Loading
             _recipes.value = try {
-                UiState.Success(recipeRepository.listRecipes())
+                val result = recipeRepository.listRecipes()
+                _staleAsOf.value = result.asOfMs
+                UiState.Success(result.value)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Couldn't load recipes")
             }

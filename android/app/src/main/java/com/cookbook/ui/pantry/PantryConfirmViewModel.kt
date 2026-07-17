@@ -6,6 +6,7 @@ import com.cookbook.data.remote.PantryConfirmRequest
 import com.cookbook.data.remote.PantryItemCreateRequest
 import com.cookbook.data.repository.PantryRepository
 import com.cookbook.util.PantryDraftStore
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,7 +108,7 @@ class PantryConfirmViewModel @Inject constructor(
                 )
                 _confirmed.tryEmit(Unit)
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't save your pantry"
+                _error.value = e.offlineAwareMessage("Couldn't save your pantry")
             } finally {
                 _saving.value = false
             }

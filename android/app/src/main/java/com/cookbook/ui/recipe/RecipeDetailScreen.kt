@@ -61,6 +61,7 @@ import design.pulse.ui.components.DataText
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.StaleBanner
 
 /** Default store-walk order for grouping ingredients/items; users can customize it (aisle order). */
 internal val CATEGORY_ORDER = com.cookbook.util.DEFAULT_AISLE_ORDER
@@ -86,6 +87,7 @@ fun RecipeDetailScreen(
     viewModel: RecipeDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.recipe.collectAsState()
+    val staleAsOf by viewModel.staleAsOf.collectAsState()
     val error by viewModel.error.collectAsState()
     val addConflict by viewModel.addConflict.collectAsState()
     val nutrition by viewModel.nutrition.collectAsState()
@@ -234,17 +236,26 @@ fun RecipeDetailScreen(
                     Text(s.message, color = MaterialTheme.colorScheme.error)
                 }
             }
-            is UiState.Success -> RecipeDetailBody(
-                recipe = s.data,
-                onAddToList = { pickScale = true },
-                onMadeIt = { showRating = true },
-                onStartCooking = { servings -> onStartCooking(viewModel.recipeId, servings) },
-                nutrition = nutrition,
-                onEstimateNutrition = viewModel::estimateNutrition,
-                onLogToPlate = { showLogDialog = true },
-                onEditNotes = { editingNotes = s.data.notes.orEmpty() },
-                modifier = Modifier.padding(padding),
-            )
+            is UiState.Success -> Column(Modifier.fillMaxSize().padding(padding)) {
+                staleAsOf?.let { asOf ->
+                    StaleBanner(
+                        asOfMs = asOf,
+                        channel = CookbookTheme.colors.heat.base,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
+                RecipeDetailBody(
+                    recipe = s.data,
+                    onAddToList = { pickScale = true },
+                    onMadeIt = { showRating = true },
+                    onStartCooking = { servings -> onStartCooking(viewModel.recipeId, servings) },
+                    nutrition = nutrition,
+                    onEstimateNutrition = viewModel::estimateNutrition,
+                    onLogToPlate = { showLogDialog = true },
+                    onEditNotes = { editingNotes = s.data.notes.orEmpty() },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 

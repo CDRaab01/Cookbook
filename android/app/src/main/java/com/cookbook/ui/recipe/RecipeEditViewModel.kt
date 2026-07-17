@@ -10,6 +10,7 @@ import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.ui.navigation.Screen
 import com.cookbook.util.RecipeDraftStore
 import com.cookbook.util.UiState
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,7 +88,7 @@ class RecipeEditViewModel @Inject constructor(
         if (recipeId != null) {
             viewModelScope.launch {
                 try {
-                    val recipe = recipeRepository.getRecipe(recipeId)
+                    val recipe = recipeRepository.getRecipe(recipeId).value
                     _draft.value = RecipeDraft(
                         name = recipe.name,
                         description = recipe.description.orEmpty(),
@@ -110,7 +111,7 @@ class RecipeEditViewModel @Inject constructor(
                         steps = recipe.steps.map { it.text }.ifEmpty { listOf("") },
                     )
                 } catch (e: Exception) {
-                    _saveState.value = UiState.Error(e.message ?: "Couldn't load recipe")
+                    _saveState.value = UiState.Error(e.offlineAwareMessage("Couldn't load recipe"))
                 } finally {
                     _loading.value = false
                 }
@@ -226,7 +227,9 @@ class RecipeEditViewModel @Inject constructor(
                 }
                 UiState.Success(saved.id)
             } catch (e: Exception) {
-                UiState.Error(e.message ?: "Couldn't save recipe")
+                // Recipe editing is deliberately online-only; name the outage instead of a
+                // raw socket message.
+                UiState.Error(e.offlineAwareMessage("Couldn't save recipe"))
             }
         }
     }

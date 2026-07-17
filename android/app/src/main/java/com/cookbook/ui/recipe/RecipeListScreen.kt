@@ -68,6 +68,7 @@ import design.pulse.ui.components.DataText
 import design.pulse.ui.components.EmptyState
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.StaleBanner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +80,7 @@ fun RecipeListScreen(
     viewModel: RecipeListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.recipes.collectAsState()
+    val staleAsOf by viewModel.staleAsOf.collectAsState()
     val query by viewModel.query.collectAsState()
     val sort by viewModel.sort.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
@@ -171,6 +173,11 @@ fun RecipeListScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        staleAsOf?.let { asOf ->
+                            item(key = "stale_banner") {
+                                StaleBanner(asOfMs = asOf, channel = colors.heat.base)
+                            }
+                        }
                         item {
                             OutlinedTextField(
                                 value = query,

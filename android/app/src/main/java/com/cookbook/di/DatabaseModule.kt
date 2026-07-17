@@ -3,6 +3,7 @@ package com.cookbook.di
 import android.content.Context
 import androidx.room.Room
 import com.cookbook.data.local.db.CookbookDatabase
+import com.cookbook.data.local.db.PendingRecipeOpDao
 import com.cookbook.data.local.db.RecipeCacheDao
 import com.cookbook.data.local.db.ShoppingDao
 import dagger.Module
@@ -20,8 +21,11 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): CookbookDatabase =
         Room.databaseBuilder(context, CookbookDatabase::class.java, "cookbook.db")
-            // The DB is a server mirror + pending-write buffer; on a schema bump a rebuild is
-            // cheaper than a migration and only loses unpushed edits (the Spotter precedent).
+            // shopping_items carries offline queue rows (dirty/tombstoned/serverless) and
+            // pending_recipe_ops is a write queue — a destructive rebuild DROPS unpushed user
+            // writes, so schema bumps get real migrations now. The destructive fallback stays
+            // only as a last-resort backstop for a version jump no migration covers.
+            .addMigrations(CookbookDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -30,4 +34,8 @@ object DatabaseModule {
 
     @Provides
     fun provideRecipeCacheDao(db: CookbookDatabase): RecipeCacheDao = db.recipeCacheDao()
+
+    @Provides
+    fun providePendingRecipeOpDao(db: CookbookDatabase): PendingRecipeOpDao =
+        db.pendingRecipeOpDao()
 }

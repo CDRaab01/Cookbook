@@ -10,6 +10,7 @@ import com.cookbook.data.repository.PlanRepository
 import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.data.repository.ShoppingRepository
 import com.cookbook.util.UiState
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,7 +62,7 @@ class PlanViewModel @Inject constructor(
     init {
         load()
         viewModelScope.launch {
-            _recipes.value = runCatching { recipeRepository.listRecipes() }.getOrDefault(emptyList())
+            _recipes.value = runCatching { recipeRepository.listRecipes().value }.getOrDefault(emptyList())
         }
         viewModelScope.launch {
             // Only shared lists are offered as plan contexts ("My plan" covers your own).
@@ -96,7 +97,7 @@ class PlanViewModel @Inject constructor(
                     ),
                 )
             } catch (e: Exception) {
-                UiState.Error(e.message ?: "Couldn't load the plan")
+                UiState.Error(e.offlineAwareMessage("Couldn't load the plan"))
             }
         }
     }
@@ -125,7 +126,7 @@ class PlanViewModel @Inject constructor(
                 )
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't add that to the plan"
+                _error.value = e.offlineAwareMessage("Couldn't add that to the plan")
             }
         }
     }
@@ -137,7 +138,7 @@ class PlanViewModel @Inject constructor(
                 planRepository.addEntry(date.format(fmt), slot, null, note.trim(), _selectedListId.value)
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't add that to the plan"
+                _error.value = e.offlineAwareMessage("Couldn't add that to the plan")
             }
         }
     }
@@ -148,7 +149,7 @@ class PlanViewModel @Inject constructor(
                 planRepository.setEaten(id, eaten, servings)
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't update that"
+                _error.value = e.offlineAwareMessage("Couldn't update that")
             }
         }
     }
@@ -159,7 +160,7 @@ class PlanViewModel @Inject constructor(
                 planRepository.deleteEntry(id)
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't remove that"
+                _error.value = e.offlineAwareMessage("Couldn't remove that")
             }
         }
     }
@@ -175,7 +176,7 @@ class PlanViewModel @Inject constructor(
                 )
                 _sentToList.tryEmit(result.itemsOnList)
             } catch (e: Exception) {
-                _error.value = e.message ?: "Nothing to send — plan a recipe first"
+                _error.value = e.offlineAwareMessage("Nothing to send — plan a recipe first")
             }
         }
     }

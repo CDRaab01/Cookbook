@@ -30,6 +30,11 @@ class ShoppingViewModel @Inject constructor(
     private val _list = MutableStateFlow<UiState<ShoppingListOut>>(UiState.Loading)
     val list: StateFlow<UiState<ShoppingListOut>> = _list
 
+    /** True while the repository is serving the Room mirror (server unreachable) — the screen
+     *  shows the "Offline — changes will sync" banner. The local queue is authoritative, so
+     *  this is a sync-pending notice, not an "as of" staleness stamp. */
+    val offline: StateFlow<Boolean> = shoppingRepository.offline
+
     /** The user's store-walk aisle order, for grouping list items (falls back to the default). */
     val aisleOrder: StateFlow<List<String>> = appPreferences.aisleOrder
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_AISLE_ORDER)

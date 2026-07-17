@@ -4,9 +4,17 @@ import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
+import kotlinx.coroutines.flow.StateFlow
 
 /** Shopping-list operations the UI layer depends on. Implemented by [ShoppingRepositoryImpl]. */
 interface ShoppingRepository {
+    /**
+     * True while the latest server round-trip failed as *unreachable* (IOException) and the
+     * repository is serving the Room mirror — the screen's "Offline — changes will sync"
+     * banner. Cleared by the next successful reconcile (load, mutation, or reconnect sync).
+     */
+    val offline: StateFlow<Boolean>
+
     /** The ACTIVE list (user-switchable; falls back to the server default). */
     suspend fun getDefaultList(): ShoppingListOut
 

@@ -14,8 +14,11 @@ import com.cookbook.data.remote.RecipeUpdateRequest
 
 /** Recipe-book operations the UI layer depends on. Implemented by [RecipeRepositoryImpl]. */
 interface RecipeRepository {
-    suspend fun listRecipes(): List<RecipeSummaryOut>
-    suspend fun getRecipe(id: String): RecipeOut
+    /** Fresh from the server when reachable; the cached book (asOfMs = capture time) offline. */
+    suspend fun listRecipes(): Stale<List<RecipeSummaryOut>>
+
+    /** Fresh when reachable; the cached detail (asOfMs = capture time) offline, else rethrows. */
+    suspend fun getRecipe(id: String): Stale<RecipeOut>
     suspend fun createRecipe(req: RecipeCreateRequest): RecipeOut
     suspend fun updateRecipe(id: String, req: RecipeUpdateRequest): RecipeOut
     suspend fun deleteRecipe(id: String)
@@ -23,6 +26,11 @@ interface RecipeRepository {
     suspend fun previewRecipe(sourceId: String): RecipePreviewOut
     suspend fun importRecipe(sourceId: String): RecipeOut
     suspend fun importRecipeFromUrl(url: String): RecipeOut
+
+    /**
+     * Offline-capable: flips the cached blobs optimistically; an unreachable server queues the
+     * op for reconnect sync instead of failing. A server *rejection* still throws (and reverts).
+     */
     suspend fun setFavorite(id: String, favorite: Boolean): RecipeOut
 
     /** Family mode: share this recipe with the household (or make it private again). Creator only. */
