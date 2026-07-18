@@ -66,8 +66,17 @@ import design.pulse.ui.components.StaleBanner
 /** Default store-walk order for grouping ingredients/items; users can customize it (aisle order). */
 internal val CATEGORY_ORDER = com.cookbook.util.DEFAULT_AISLE_ORDER
 
-internal fun categoryLabel(category: String?): String =
-    (category ?: "other").replaceFirstChar { it.uppercase() }
+// Display labels for the store aisles; multi-word ones can't be derived by capitalizing the key.
+private val CATEGORY_LABELS = mapOf(
+    "meat" to "Meat & Seafood",
+    "dairy" to "Dairy & Eggs",
+    "personal" to "Personal care",
+)
+
+internal fun categoryLabel(category: String?): String {
+    val key = category ?: "other"
+    return CATEGORY_LABELS[key] ?: key.replaceFirstChar { it.uppercase() }
+}
 
 /** "2 lb Chicken breast" / "Salt (to taste)" — quantity formatting shared by detail + list rows.
  *  Quantities render as human cooking fractions ("1½ cups", not "1.5") via [humanQuantity]. */

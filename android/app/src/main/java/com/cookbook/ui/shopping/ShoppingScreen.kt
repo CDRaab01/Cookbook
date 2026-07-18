@@ -661,13 +661,19 @@ private fun QuantityStepper(count: Int, onChange: (Int) -> Unit) {
 
 /** Small category glyphs for the quick-add suggestion rows (Family Wall-style aisle hint). */
 private fun categoryEmoji(category: String?): String = when (category) {
-    "produce" -> "🥦" // 🥦
-    "meat" -> "🥩" // 🥩
-    "dairy" -> "🥛" // 🥛
-    "bakery" -> "🍞" // 🍞
-    "frozen" -> "🧊" // 🧊
-    "pantry" -> "🥫" // 🥫
-    else -> "🛒" // 🛒
+    "produce" -> "🥦"
+    "meat" -> "🥩"
+    "deli" -> "🥓"
+    "dairy" -> "🥛"
+    "bakery" -> "🍞"
+    "frozen" -> "🧊"
+    "pantry" -> "🥫"
+    "snacks" -> "🍿"
+    "beverages" -> "🥤"
+    "household" -> "🧻"
+    "personal" -> "🧴"
+    "baby" -> "🍼"
+    else -> "🛒"
 }
 
 /**

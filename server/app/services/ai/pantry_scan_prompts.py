@@ -27,7 +27,8 @@ VISION_USER_PROMPT = (
     "List the food items visible in this photo. Respond with ONLY a JSON object, no prose "
     "and no code fences, shaped exactly like this:\n"
     '{"items": [{"name": string, '
-    '"category": "produce"|"meat"|"dairy"|"bakery"|"frozen"|"pantry"|"other" or null, '
+    '"category": "produce"|"meat"|"deli"|"dairy"|"bakery"|"frozen"|"pantry"|"snacks"'
+    '|"beverages"|"other" or null, '
     '"confidence": "high" or "low"}]}\n'
     'Rules: use short generic names ("cheddar cheese", "pasta"), never brand names; one '
     "entry per distinct item, no duplicates; do not guess at items hidden behind others — "
