@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -36,16 +36,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -93,7 +92,21 @@ fun ShoppingScreen(
     val grocerySpend by viewModel.grocerySpend.collectAsState()
     val aisleOrder by viewModel.aisleOrder.collectAsState()
     val snackbar = remember { SnackbarHostState() }
-    var showAdd by remember { mutableStateOf(false) }
+    // The persistent add bar's text lives here (hoisted) so the + button and the "Add item"
+    // launcher shortcut can focus it, and it survives while the list reloads underneath.
+    var addQuery by remember { mutableStateOf("") }
+    val addFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val onAddQueryChange: (String) -> Unit = { q ->
+        addQuery = q
+        viewModel.onAddNameChanged(q)
+    }
+    // Jump straight into the docked add bar. runCatching: the bar isn't composed until the list
+    // loads (Success), so a tap during the brief Loading state is a no-op rather than a crash.
+    fun focusAddBar() {
+        runCatching { addFocus.requestFocus() }
+        keyboard?.show()
+    }
     var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
     var listMenuOpen by remember { mutableStateOf(false) }
     var namingList by remember { mutableStateOf<String?>(null) } // "new" or "rename"
@@ -103,7 +116,7 @@ fun ShoppingScreen(
     // Honor the "Add item" launcher shortcut once we've landed here.
     LaunchedEffect(openAddItem) {
         if (openAddItem) {
-            showAdd = true
+            focusAddBar()
             onAddItemConsumed()
         }
     }
@@ -195,7 +208,7 @@ fun ShoppingScreen(
                     IconButton(onClick = viewModel::load) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
-                    IconButton(onClick = { showAdd = true }) {
+                    IconButton(onClick = { focusAddBar() }) {
                         Icon(Icons.Outlined.Add, contentDescription = "Add item")
                     }
                 },
@@ -205,6 +218,19 @@ fun ShoppingScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            // Persistent "Add an item" bar, docked above the tab bar and lifting over the
+            // keyboard. Only shown once a list exists (adds target the current list).
+            if (state is UiState.Success) {
+                AddItemBar(
+                    query = addQuery,
+                    suggestions = suggestions,
+                    onQueryChanged = onAddQueryChange,
+                    onAdd = { name, unit, category -> viewModel.addItem(name, null, unit, category) },
+                    focusRequester = addFocus,
+                )
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         when (val s = state) {
@@ -241,7 +267,7 @@ fun ShoppingScreen(
                         EmptyState(
                             icon = Icons.Outlined.ShoppingCart,
                             title = "Nothing on the list",
-                            subtitle = "Add items with +, or open a recipe and tap \"Add to shopping list\".",
+                            subtitle = "Type below to add items, or open a recipe and tap \"Add to shopping list\".",
                         )
                     } else {
                         ShoppingListBody(
@@ -258,18 +284,6 @@ fun ShoppingScreen(
                 }
             }
         }
-    }
-
-    if (showAdd) {
-        AddItemSheet(
-            suggestions = suggestions,
-            onQueryChanged = viewModel::onAddNameChanged,
-            onQuickAdd = { name, unit, category -> viewModel.addItem(name, null, unit, category) },
-            onDismiss = {
-                viewModel.clearSuggestions()
-                showAdd = false
-            },
-        )
     }
 
     editing?.let { item ->
@@ -559,87 +573,46 @@ private fun categoryEmoji(category: String?): String = when (category) {
 }
 
 /**
- * Quick-add, Family Wall-style: one search field, live results from your item history as you
- * type, tap a row to add it instantly and keep going — no quantity/unit/category fields up
- * front (set those later via tap-to-edit on the row). Stays open across adds so a whole
- * mental list can be typed out in one sitting.
+ * The persistent "Add an item" bar docked at the bottom of the shopping list. Type an item and
+ * send it (the keyboard action, the button, or a tap on a history suggestion) — it's added and
+ * the field clears but keeps focus, so a whole mental list rattles off without reopening anything.
+ * History suggestions (substring + fuzzy, from the server) appear just above the field as you
+ * type; no quantity/unit/category up front — set those later via tap-to-edit on the row.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddItemSheet(
+private fun AddItemBar(
+    query: String,
     suggestions: List<SuggestionOut>,
     onQueryChanged: (String) -> Unit,
-    onQuickAdd: (name: String, unit: String?, category: String?) -> Unit,
-    onDismiss: () -> Unit,
+    onAdd: (name: String, unit: String?, category: String?) -> Unit,
+    focusRequester: FocusRequester,
 ) {
     val colors = CookbookTheme.colors
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var query by remember { mutableStateOf("") }
-    val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    fun addAndContinue(name: String, unit: String? = null, category: String? = null) {
-        onQuickAdd(name.trim(), unit, category)
-        query = ""
-        onQueryChanged("")
-        requester.requestFocus()
+    fun submit(name: String, unit: String? = null, category: String? = null) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        onAdd(trimmed, unit, category)
+        onQueryChanged("") // clears the field and, via onAddNameChanged(""), the suggestion list
+        focusRequester.requestFocus() // keep the field hot for the next item
+        keyboard?.show()
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp,
+        modifier = Modifier.fillMaxWidth().imePadding(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Add items", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("Done") }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = {
-                        query = it
-                        onQueryChanged(it)
-                    },
-                    modifier = Modifier.weight(1f).focusRequester(requester),
-                    placeholder = { Text("Milk, eggs, paper towels…") },
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = { if (query.isNotBlank()) addAndContinue(query) },
-                    ),
-                )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = { if (query.isNotBlank()) addAndContinue(query) },
-                    enabled = query.isNotBlank(),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = colors.heat.base,
-                        contentColor = colors.heat.on,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Add")
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            if (suggestions.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-                ) {
+        Column(Modifier.fillMaxWidth()) {
+            if (query.isNotBlank() && suggestions.isNotEmpty()) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
                     items(suggestions, key = { it.name }) { hit ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { addAndContinue(hit.name, hit.unit, hit.category) }
-                                .padding(vertical = 12.dp),
+                                .clickable { submit(hit.name, hit.unit, hit.category) }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(categoryEmoji(hit.category), style = MaterialTheme.typography.titleMedium)
@@ -653,16 +626,40 @@ private fun AddItemSheet(
                         }
                     }
                 }
-            } else if (query.length >= 2) {
-                Spacer(Modifier.height(12.dp))
-                Caption("No matches in your history — tap + to add it fresh")
+                androidx.compose.material3.HorizontalDivider()
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChanged,
+                    modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                    placeholder = { Text("Add an item") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Done,
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit(query) }),
+                )
+                Spacer(Modifier.width(8.dp))
+                FilledIconButton(
+                    onClick = { submit(query) },
+                    enabled = query.isNotBlank(),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = colors.heat.base,
+                        contentColor = colors.heat.on,
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = "Add item")
+                }
             }
         }
-    }
-
-    LaunchedEffect(Unit) {
-        requester.requestFocus()
-        keyboard?.show()
     }
 }
 
