@@ -38,7 +38,9 @@ pure domain package **`app/lists/`** — the app's kernel:
   the Android `DEFAULT_AISLE_ORDER`), and matching became **word-boundary + longest-wins** instead
   of naive substring: "milk collector" → baby (not dairy via the word "milk"), "eggplant" isn't
   *egg*, "chipotle" isn't *chip*. Keywords are matched against both the raw and merge-normalized
-  name with a tolerant trailing plural.
+  name with a tolerant trailing plural. Migration `0019` did a **one-time re-sort** of existing
+  `shopping_list_items` + `item_history` into the wider set, but only where the stored category
+  equaled the *old* guesser's output (auto-assigned) — manual picks were left untouched.
 - **`lists/link_items.py`** — pasted-product-link splitting (v0.5): `split_link` pulls the first
   URL out of add-bar text; `name_from_url` derives a readable slug-based fallback name. The
   service layer pairs it with **`services/link_title_service.py`** — a best-effort

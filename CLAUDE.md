@@ -651,3 +651,16 @@ column). Android `categoryLabel`/`categoryEmoji` gained the new aisles. This **s
   Android: `DEFAULT_AISLE_ORDER`/label/emoji + `AisleOrderTest` updated; CI is the Android gate.
 - Existing items keep their stored category; only *new* adds/guesses use the wider set (history
   recall still wins first, so a corrected item stays corrected).
+
+### One-time re-sort (migration `0019`, 2026-07-18)
+
+A user-requested backfill so the *current* list benefits, not just new adds. `0019` re-guesses
+every `shopping_list_items` + `item_history` row with the new guesser, but **only when the stored
+category equals what the OLD (pre-v0.7) substring guesser would have produced** for that name —
+i.e. it was auto-assigned, not hand-picked. Manual categorizations (stored != old auto-guess)
+are left untouched. So Other-stranded items get a home (diapers→baby, paper towels→household)
+and stale auto-guesses get corrected (iced coffee pantry→beverages, milk collector dairy→baby),
+while a deliberately-placed item (e.g. chicken you filed in pantry) stays put. The migration
+carries a **frozen snapshot of the old keyword map** to make that distinction; `resort_category`
+is the pure, unit-tested helper (`tests/test_resort_migration.py`, 13 cases). Data-only,
+downgrade is a no-op, and it no-ops on a fresh DB (no rows). Server **397 pytest green**.
