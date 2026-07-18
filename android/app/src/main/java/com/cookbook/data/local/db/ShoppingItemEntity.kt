@@ -26,6 +26,8 @@ data class ShoppingItemEntity(
     // JSON-encoded List<MeasureOut> — the aggregated amounts the row displays (v0.2.1).
     val measuresJson: String? = null,
     val category: String?,
+    // Product-page URL for a pasted-link item (v0.5); the name is a clean human title.
+    val linkUrl: String? = null,
     val checked: Boolean,
     val recipeId: String?,
     val order: Int,

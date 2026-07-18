@@ -161,12 +161,15 @@ class ShoppingViewModel @Inject constructor(
         quantity: Double?,
         unit: String?,
         category: String?,
+        clearLink: Boolean = false,
     ) {
         val current = (_list.value as? UiState.Success)?.data ?: return
         viewModelScope.launch {
             try {
                 _list.value = UiState.Success(
-                    shoppingRepository.editItem(current.id, itemId, name, quantity, unit, category),
+                    shoppingRepository.editItem(
+                        current.id, itemId, name, quantity, unit, category, clearLink,
+                    ),
                 )
             } catch (e: Exception) {
                 _error.value = e.message ?: "Couldn't update the item"
@@ -227,15 +230,17 @@ class ShoppingViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Re-adding each measure rebuilds the aggregate through the normal merge path.
+                // A link item re-adds as "name url" so the standard split restores the link.
+                val rawName = listOfNotNull(item.name, item.linkUrl).joinToString(" ")
                 var out = current
                 if (item.measures.isEmpty()) {
                     out = shoppingRepository.addItem(
-                        current.id, item.name, item.quantity, item.unit, item.category,
+                        current.id, rawName, item.quantity, item.unit, item.category,
                     )
                 } else {
                     for (m in item.measures) {
                         out = shoppingRepository.addItem(
-                            current.id, item.name, m.quantity, m.unit, item.category,
+                            current.id, rawName, m.quantity, m.unit, item.category,
                         )
                     }
                 }

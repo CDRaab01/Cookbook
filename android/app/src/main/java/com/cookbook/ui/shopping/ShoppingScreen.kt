@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.AlertDialog
@@ -58,8 +59,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cookbook.data.remote.ShoppingItemOut
@@ -67,6 +70,7 @@ import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.ui.recipe.CATEGORY_ORDER
 import com.cookbook.ui.recipe.categoryLabel
 import com.cookbook.ui.theme.CookbookTheme
+import com.cookbook.util.LinkText
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.DataText
@@ -82,6 +86,9 @@ fun ShoppingScreen(
     // Set when reached via the "Add item" launcher shortcut: open the quick-add sheet on arrival.
     openAddItem: Boolean = false,
     onAddItemConsumed: () -> Unit = {},
+    // Set when the share chooser routed a browser-shared URL here: added as a link item.
+    sharedAddText: String? = null,
+    onSharedAddConsumed: () -> Unit = {},
 ) {
     val state by viewModel.list.collectAsState()
     val offline by viewModel.offline.collectAsState()
@@ -118,6 +125,14 @@ fun ShoppingScreen(
         if (openAddItem) {
             focusAddBar()
             onAddItemConsumed()
+        }
+    }
+    // A browser-shared URL routed here by the chooser: add it through the normal path (the
+    // server splits it into a titled link item) once the list is loaded to receive it.
+    LaunchedEffect(sharedAddText, state) {
+        if (sharedAddText != null && state is UiState.Success) {
+            viewModel.addItem(sharedAddText, null, null, null)
+            onSharedAddConsumed()
         }
     }
     LaunchedEffect(error) {
@@ -289,8 +304,8 @@ fun ShoppingScreen(
     editing?.let { item ->
         EditItemDialog(
             item = item,
-            onSave = { name, qty, unit, category ->
-                viewModel.editItem(item.id, name, qty, unit, category)
+            onSave = { name, qty, unit, category, clearLink ->
+                viewModel.editItem(item.id, name, qty, unit, category, clearLink)
                 editing = null
             },
             onDismiss = { editing = null },
@@ -362,7 +377,10 @@ internal fun ShoppingListBody(
 ) {
     val colors = CookbookTheme.colors
     val (checked, unchecked) = items.partition { it.checked }
-    val grouped = unchecked.groupBy { it.category ?: "other" }
+    // Null OR unknown categories both land in "Other" — an item must never be counted in
+    // "to buy" yet render under no section (reconcileAisleOrder guarantees "other" exists).
+    val knownCategories = aisleOrder.toSet()
+    val grouped = unchecked.groupBy { it.category?.takeIf { c -> c in knownCategories } ?: "other" }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -538,6 +556,10 @@ private fun ShoppingItemRow(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     textDecoration = if (item.checked) TextDecoration.LineThrough else TextDecoration.None,
                 ),
+                // Safety net: an over-long name (e.g. a pasted URL on an old server) must not
+                // become a wall of wrapped text.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             item.measuresLabel()?.let { label ->
                 DataText(
@@ -549,6 +571,27 @@ private fun ShoppingItemRow(
                         colors.heat.base
                     },
                 )
+            }
+            item.linkUrl?.let { link ->
+                // The product link a pasted URL was split into: its own tap target (opens the
+                // browser) inside the row's edit-tap area — the inner clickable wins.
+                val uriHandler = LocalUriHandler.current
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { runCatching { uriHandler.openUri(link) } },
+                ) {
+                    Icon(
+                        Icons.Outlined.Link,
+                        contentDescription = "Open product page",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(18.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Caption(
+                        LinkText.displayHost(link),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         IconButton(onClick = onDelete) {
@@ -718,7 +761,7 @@ private fun ItemFields(
 @Composable
 private fun EditItemDialog(
     item: ShoppingItemOut,
-    onSave: (name: String, quantity: Double?, unit: String?, category: String?) -> Unit,
+    onSave: (name: String, quantity: Double?, unit: String?, category: String?, clearLink: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember { mutableStateOf(item.name) }
@@ -731,6 +774,7 @@ private fun EditItemDialog(
     }
     var unit by remember { mutableStateOf(item.unit.orEmpty()) }
     var category by remember { mutableStateOf(item.category) }
+    var removeLink by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -754,6 +798,24 @@ private fun EditItemDialog(
                     category = category,
                     onCategory = { category = it },
                 )
+                // View/remove only — links arrive by pasting a URL into the add bar.
+                if (item.linkUrl != null && !removeLink) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Outlined.Link,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Caption(
+                            LinkText.displayHost(item.linkUrl),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { removeLink = true }) { Text("Remove link") }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -764,6 +826,7 @@ private fun EditItemDialog(
                         quantity.toDoubleOrNull(),
                         unit.trim().lowercase().ifEmpty { null },
                         category,
+                        removeLink,
                     )
                 },
                 enabled = name.isNotBlank(),

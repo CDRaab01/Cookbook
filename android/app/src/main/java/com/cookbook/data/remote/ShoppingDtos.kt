@@ -20,6 +20,8 @@ data class ShoppingItemOut(
     // The full aggregate across merges — what the row displays ("2 tbsp + 2 tsp").
     val measures: List<MeasureOut> = emptyList(),
     val category: String? = null,
+    // Product-page URL for a pasted-link item; the name is a clean human title.
+    @SerialName("link_url") val linkUrl: String? = null,
     val checked: Boolean = false,
     @SerialName("checked_at") val checkedAt: String? = null,
     @SerialName("recipe_id") val recipeId: String? = null,
@@ -66,6 +68,8 @@ data class ShoppingItemUpdateRequest(
     val unit: String? = null,
     val category: String? = null,
     val checked: Boolean? = null,
+    // PATCH clearing convention: null = untouched, "" = clear the link.
+    @SerialName("link_url") val linkUrl: String? = null,
 )
 
 /** One autocomplete hit for the add dialog, from the user's item history. */

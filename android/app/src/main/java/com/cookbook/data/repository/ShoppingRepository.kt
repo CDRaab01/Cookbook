@@ -51,6 +51,7 @@ interface ShoppingRepository {
         quantity: Double?,
         unit: String?,
         category: String?,
+        clearLink: Boolean = false,
     ): ShoppingListOut
 
     suspend fun deleteItem(listId: String, itemId: String): ShoppingListOut

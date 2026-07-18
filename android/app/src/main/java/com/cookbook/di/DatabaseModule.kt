@@ -25,7 +25,7 @@ object DatabaseModule {
             // pending_recipe_ops is a write queue — a destructive rebuild DROPS unpushed user
             // writes, so schema bumps get real migrations now. The destructive fallback stays
             // only as a last-resort backstop for a version jump no migration covers.
-            .addMigrations(CookbookDatabase.MIGRATION_3_4)
+            .addMigrations(CookbookDatabase.MIGRATION_3_4, CookbookDatabase.MIGRATION_4_5)
             .fallbackToDestructiveMigration()
             .build()
 

@@ -55,7 +55,8 @@ class MainActivity : ComponentActivity() {
         shortcutTarget = intent.shortcutTarget()
     }
 
-    /** A recipe page shared from the browser lands here; Discover's import flow picks it up. */
+    /** A page shared from the browser lands here; the nav host's chooser routes it (recipe
+     *  import vs. shopping-list add). */
     private fun handleShareIntent(intent: Intent?) {
         if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()

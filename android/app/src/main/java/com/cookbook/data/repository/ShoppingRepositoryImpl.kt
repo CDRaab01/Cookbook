@@ -15,6 +15,7 @@ import com.cookbook.data.remote.ShoppingItemUpdateRequest
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.util.AppPreferences
+import com.cookbook.util.LinkText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
@@ -33,7 +34,9 @@ import javax.inject.Singleton
  * tombstoned / serverless) and the method returns the local view; [syncPending] pushes the
  * backlog when connectivity returns (NetworkSyncObserver) and every online call reconciles the
  * mirror. A real API rejection ([HttpException]) still throws — the server refusing is not the
- * same as the server being unreachable.
+ * same as the server being unreachable — and must also UNDO any optimistic local write: a row
+ * the server refused can never sync, so keeping it would strand a permanent local-only ghost
+ * (the "my item never shows on my spouse's phone" bug).
  */
 @Singleton
 class ShoppingRepositoryImpl @Inject constructor(
@@ -109,14 +112,19 @@ class ShoppingRepositoryImpl @Inject constructor(
         unit: String?,
         category: String?,
     ): ShoppingListOut {
+        // The optimistic row shows a readable split of a pasted link (typed text or a slug-derived
+        // name, URL as linkUrl); the POST still sends the raw text — the server owns the real
+        // parse (and the title fetch) and overwrites this on reconcile.
+        val (typed, url) = LinkText.splitLink(name)
         val row = ShoppingItemEntity(
             localId = UUID.randomUUID().toString(),
             serverId = null,
             listId = listId,
-            name = name,
+            name = if (url == null) name else typed.ifEmpty { LinkText.nameFromUrl(url) },
             quantity = quantity,
             unit = unit,
             category = category,
+            linkUrl = url,
             checked = false,
             recipeId = null,
             order = nextLocalOrder(listId),
@@ -130,6 +138,9 @@ class ShoppingRepositoryImpl @Inject constructor(
             dao.delete(row.localId) // the server list (which may have merged it) is now the truth
             reconcile(fresh)
             localView(fresh.id, fresh.name)
+        } catch (e: HttpException) {
+            dao.delete(row.localId) // the server refused; a kept row would be a permanent ghost
+            throw e
         } catch (_: IOException) {
             offlineView()
         }
@@ -178,6 +189,7 @@ class ShoppingRepositoryImpl @Inject constructor(
         quantity: Double?,
         unit: String?,
         category: String?,
+        clearLink: Boolean,
     ): ShoppingListOut {
         val row = dao.byLocalId(itemId) ?: return localView()
         dao.update(
@@ -189,6 +201,7 @@ class ShoppingRepositoryImpl @Inject constructor(
                 unit = unit,
                 measuresJson = null,
                 category = category,
+                linkUrl = if (clearLink) null else row.linkUrl,
                 dirty = true,
             ),
         )
@@ -199,6 +212,7 @@ class ShoppingRepositoryImpl @Inject constructor(
                 serverId,
                 ShoppingItemUpdateRequest(
                     name = name, quantity = quantity, unit = unit, category = category,
+                    linkUrl = if (clearLink) "" else null,
                 ),
             )
             reconcile(fresh)
@@ -272,10 +286,14 @@ class ShoppingRepositoryImpl @Inject constructor(
                     }
                     row.deleted -> dao.delete(row.localId)
                     row.serverId == null -> {
+                        // A link row re-joins name + URL so the server re-splits and stores the
+                        // link. (Offline URL-only adds keep their slug-derived name — the server
+                        // treats it as typed text; no title-fetch retry. Accepted trade-off.)
+                        val rawName = listOfNotNull(row.name, row.linkUrl).joinToString(" ")
                         val fresh = api.addShoppingItem(
                             listId,
                             ShoppingItemCreateRequest(
-                                row.name, row.quantity, row.unit, row.category,
+                                rawName, row.quantity, row.unit, row.category,
                             ),
                         )
                         // The POST payload can't carry `checked`; if the row was checked off
@@ -297,6 +315,8 @@ class ShoppingRepositoryImpl @Inject constructor(
                     row.dirty && row.serverId != null -> {
                         // Push the full local state: dirty can mean an offline edit, not just
                         // a check-off (server-side nulls mean "untouched", so this is safe).
+                        // linkUrl rides along ("" is the server's clearing sentinel) so an
+                        // offline link-remove sticks.
                         api.updateShoppingItem(
                             listId,
                             row.serverId,
@@ -306,14 +326,19 @@ class ShoppingRepositoryImpl @Inject constructor(
                                 unit = row.unit,
                                 category = row.category,
                                 checked = row.checked,
+                                linkUrl = row.linkUrl ?: "",
                             ),
                         )
                         dao.update(row.copy(dirty = false))
                     }
                 }
             } catch (e: HttpException) {
-                // The row is gone or conflicted server-side; the re-pull below is the truth.
-                if (e.code() == 404 || e.code() == 409) dao.delete(row.localId) else throw e
+                // The server REJECTED the op (any 4xx/5xx): drop the row and keep draining —
+                // server wins, and the re-pull below restores truth (the recipe-ops precedent,
+                // RecipeRepositoryImpl.syncPendingRecipeOps). Rethrowing here used to let one
+                // poison row (e.g. an over-long pasted-URL name) wedge the whole backlog on
+                // every reconnect.
+                dao.delete(row.localId)
             } catch (_: IOException) {
                 _offline.value = true
                 return // still offline; keep the backlog for the next reconnect
@@ -379,6 +404,7 @@ private fun ShoppingItemOut.toEntity(json: Json, listId: String) = ShoppingItemE
         )
     },
     category = category,
+    linkUrl = linkUrl,
     checked = checked,
     recipeId = recipeId,
     order = order,
@@ -398,6 +424,7 @@ private fun ShoppingItemEntity.toDto(json: Json) = ShoppingItemOut(
         }.getOrDefault(emptyList())
     } ?: emptyList(),
     category = category,
+    linkUrl = linkUrl,
     checked = checked,
     recipeId = recipeId,
     order = order,

@@ -33,6 +33,13 @@ pure domain package **`app/lists/`** — the app's kernel:
   independently** — every path into a list (recipe add, plan-to-list, manual add, undo rebuild)
   goes through this module.
 - **`lists/categorize.py`** — store-category guesser (fallback behind `item_history` recall).
+- **`lists/link_items.py`** — pasted-product-link splitting (v0.5): `split_link` pulls the first
+  URL out of add-bar text; `name_from_url` derives a readable slug-based fallback name. The
+  service layer pairs it with **`services/link_title_service.py`** (best-effort JSON-LD
+  `Product.name` → `og:title` → `<title>` fetch behind the shared SSRF guard
+  `services/url_guard.py`; never raises) so a URL-only add gets a human title. URL-derived names
+  never enter `item_history` (no SKU-title autocomplete pollution), and category
+  recall/guessing only ever sees the cleaned name.
 - **`lists/pantry_match.py`** — pantry↔recipe ingredient matching (token-set subset in either
   direction, descriptor stopwords, staples logic). Documented looseness ("milk" ⊆ "coconut milk")
   is a decision, not a bug.
@@ -67,9 +74,11 @@ degrades to absence, never blocks add/check/sync.
 
 ### Migrations & tests
 
-Alembic 0001–0015, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 plan-list-id,
+Alembic 0001–0017, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 plan-list-id,
 0011 meal-confirmations, 0012 cook-rating, 0013 plan-entry-scale, 0014 household-sharing,
-0015 household-member-status). ~309 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
+0015 household-member-status, 0016 item-history-trigram, 0017 item-link-url —
+`shopping_list_items.link_url`, Text, first-link-wins on merge; item names are capped at 255
+with a clean 422, never a DB 500). ~340 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
 `DATABASE_URL` on **127.0.0.1:5434**, `DB_NULLPOOL=true` (conftest sets NullPool; bcrypt dropped
 to 4 rounds tests-only). One env-dependent local-only failure when the live `.env` has
 `SUITE_JWKS_URL` set; green in CI.
@@ -83,6 +92,10 @@ Standard suite MVVM. Feature packages:
   (multiple named lists; the default = the oldest list), autocomplete + category recall from
   `item_history` (substring first, then pg_trgm fuzzy/similar-spelling matches). The home-screen
   Glance widget mirrors the same list and taps to check off (`widget/ShoppingWidget.kt`).
+  **Link items (v0.5):** a product URL pasted into the add bar becomes a titled row with a
+  tappable domain chip (opens the browser); `util/LinkText.kt` mirrors the server split for the
+  optimistic/offline row only — the server's parse is authoritative on reconcile. Grouping
+  coerces null *and unknown* categories into "Other" so no item can be counted yet unrendered.
 - `ui/recipe/` — book/detail/editor (servings rescaler is display-only math), cook events
   ("Made it"), share/duplicate; `RecipeDraftStore` receives photo/URL-import drafts. **Family
   mode:** the list splits into **Family** (`shared==true`, household-wide) and **Yours**
@@ -97,8 +110,10 @@ Standard suite MVVM. Feature packages:
   `status="pending"` and shares nothing until the invitee accepts (`household_member_ids` /
   `household_owner_id` count only `active` members); the invitee sees the invite via `GET
   /household/invite` and responds with `POST /household/{accept,decline}` (migration 0015).
-- `ui/discover/` — Spoonacular search + preview bottom sheet + import; share-from-browser URL
-  import via `SharedIntentStore` (ACTION_SEND).
+- `ui/discover/` — Spoonacular search + preview bottom sheet + import; share-from-browser URLs
+  arrive via `SharedIntentStore` (ACTION_SEND) into a nav-host **chooser** ("Import as recipe" /
+  "Add to shopping list") — the shopping branch funnels the raw text through the normal add path
+  (server-side link split); Discover keeps its direct pre-filled import when already open.
 - `ui/cook/` — cook mode: step-at-a-time, screen-awake, duration-detected timers
   (elapsedRealtime-anchored per the suite drift-free rule).
 - `ui/plan/` — weekly meal planner; `POST /plan/to-list` funnels a week of dinners through the
@@ -118,7 +133,11 @@ optimistic local writes queued for reconnect sync (dirty rows push **full state*
 `checked`). The grocery-store flow must survive airplane mode end-to-end; treat any regression
 there as P0. The error-cause discipline everywhere in the data layer: **`IOException` =
 unreachable ⇒ degrade to local state; `retrofit2.HttpException` = the server refused ⇒ error
-loudly** — the two are never conflated.
+loudly** — the two are never conflated. A refusal also **undoes the optimistic write**: a
+rejected online add deletes its local row, and `syncPending` drops any rejected pending row and
+keeps draining (**server wins**, uniform with the recipe-op queue) — a refused row kept locally
+would be a permanent ghost only its own phone can see, and rethrowing mid-drain used to let one
+poison row wedge the whole backlog.
 
 **Staleness is surfaced, never silent.** Both recipe cache tables carry a `cachedAtMs`
 capture-time stamp written on every successful fetch; `RecipeRepositoryImpl.listRecipes` /

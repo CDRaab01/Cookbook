@@ -2,15 +2,20 @@ package com.cookbook.ui.navigation
 
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -39,6 +44,7 @@ import com.cookbook.ui.recipe.RecipeListScreen
 import com.cookbook.ui.settings.SettingsScreen
 import com.cookbook.ui.settings.StaplesEditorScreen
 import com.cookbook.ui.shopping.ShoppingScreen
+import com.cookbook.util.SharedIntentStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -49,6 +55,12 @@ class GateViewModel @Inject constructor(
 ) : ViewModel() {
     suspend fun isSignedIn(): Boolean = tokenStore.currentAccessToken() != null
 }
+
+/** Hilt hand-hold so the nav host can watch [SharedIntentStore] for the share chooser. */
+@HiltViewModel
+class ShareChooserViewModel @Inject constructor(
+    val sharedIntentStore: SharedIntentStore,
+) : ViewModel()
 
 /** Launcher-shortcut targets (the `cookbook://shortcut/<target>` last path segment). */
 private const val SHORTCUT_SHOPPING = "shopping"
@@ -88,6 +100,24 @@ fun CookbookNavHost(
     // One-shot signals threaded into the target tab's screen once we navigate there.
     var openAddItem by remember { mutableStateOf(false) }
     var autoScanPantry by remember { mutableStateOf(false) }
+    var pendingShoppingAdd by remember { mutableStateOf<String?>(null) }
+
+    // A URL shared from the browser: latch it out of the store once we're past the auth gate,
+    // then ask what it is — a recipe page or a product to buy. Discover keeps its legacy
+    // direct-consume when it's already open (its ViewModel collects the store itself).
+    val shareViewModel: ShareChooserViewModel = hiltViewModel()
+    val sharedUrl by shareViewModel.sharedIntentStore.sharedUrl.collectAsState()
+    var shareChoice by rememberSaveable { mutableStateOf<String?>(null) }
+    val gateRoutes = setOf(
+        Screen.Gate.route, Screen.Login.route, Screen.Register.route, Screen.ForgotPassword.route,
+    )
+    LaunchedEffect(sharedUrl, currentRoute) {
+        if (sharedUrl != null && currentRoute != null &&
+            currentRoute !in gateRoutes && currentRoute != Screen.Discover.route
+        ) {
+            shareChoice = shareViewModel.sharedIntentStore.consume()
+        }
+    }
 
     // Honor the pending shortcut only after the auth gate resolves to the signed-in graph (Home is
     // the entry point in both the already-signed-in and just-logged-in paths).
@@ -299,6 +329,8 @@ fun CookbookNavHost(
                 ShoppingScreen(
                     openAddItem = openAddItem,
                     onAddItemConsumed = { openAddItem = false },
+                    sharedAddText = pendingShoppingAdd,
+                    onSharedAddConsumed = { pendingShoppingAdd = null },
                 )
             }
             composable(Screen.Discover.route) {
@@ -317,6 +349,32 @@ fun CookbookNavHost(
                     onOpenRecipe = { id -> navController.navigate(Screen.RecipeDetail.withId(id)) },
                 )
             }
+        }
+
+        shareChoice?.let { url ->
+            AlertDialog(
+                onDismissRequest = { shareChoice = null },
+                title = { Text("Shared link") },
+                text = {
+                    Text(url, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        shareChoice = null
+                        pendingShoppingAdd = url
+                        goTab(Screen.Shopping.route)
+                    }) { Text("Add to shopping list") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        shareChoice = null
+                        // Re-offer so Discover's own collector opens the pre-filled import
+                        // dialog exactly as a direct share always has.
+                        shareViewModel.sharedIntentStore.offer(url)
+                        navController.navigate(Screen.Discover.route)
+                    }) { Text("Import as recipe") }
+                },
+            )
         }
     }
 }
