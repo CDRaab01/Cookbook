@@ -50,8 +50,17 @@ _AISLE_MAP: list[tuple[str, str]] = [
     ("vinegar", "pantry"),
     ("condiment", "pantry"),
     ("cereal", "pantry"),
-    ("nut", "pantry"),
-    ("beverage", "pantry"),
+    ("sweet snack", "snacks"),
+    ("savory snack", "snacks"),
+    ("snack", "snacks"),
+    ("nut", "snacks"),
+    ("chip", "snacks"),
+    ("candy", "snacks"),
+    ("tea and coffee", "beverages"),
+    ("coffee", "beverages"),
+    ("alcohol", "beverages"),
+    ("beverage", "beverages"),
+    ("deli", "deli"),
 ]
 
 _TAG_RE = re.compile(r"<[^>]+>")

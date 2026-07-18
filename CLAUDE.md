@@ -628,3 +628,26 @@ Three follow-ons that make link items feel finished, built on the v0.5 base:
   paths, buy-again recall + its typed-only guard, clear-drops-thumbnail) + ruff clean; alembic
   chain (→0018) applies to a fresh DB. Android: DTO/Room `imageUrl` (schema v6, `MIGRATION_5_6`),
   new VM + repo tests; **not run locally (no Pulse checkout) — CI is the Android gate**.
+
+## v0.7 (2026-07-18) — store-aisle categories + smarter guesser (same branch)
+
+The 7 food-only buckets didn't fit a list that now carries real store items (the "milk collector"
+landing in Other/Dairy was the tell). **Category set widened to 13 store aisles** in walk order:
+produce, meat (label "Meat & Seafood"), deli, dairy ("Dairy & Eggs"), bakery, frozen, pantry,
+snacks, beverages, household, personal ("Personal care"), baby, other. `STORE_CATEGORIES`
+(`models/recipe.py`) + Android `DEFAULT_AISLE_ORDER` both updated; **no migration** (plain string
+column). Android `categoryLabel`/`categoryEmoji` gained the new aisles. This **supersedes the
+`produce|meat|dairy|bakery|frozen|pantry|other` enumerations in §4** (kept as history).
+
+- **Guesser rewrite (`lists/categorize.py`):** naive substring → **word-boundary + longest-wins**.
+  Fixes the substring false-positives ("milk collector"→baby not dairy, "eggplant" not *egg*,
+  "chipotle peppers" not *chip*, "juice" not *ice*) and adds ~150 keywords across the new aisles
+  ("iced coffee"→beverages, "paper towels"→household, "diapers"→baby, "potato chips"→snacks).
+  Matched against both the raw and normalized name with a tolerant trailing plural (works around
+  `normalize_name`'s "cookies"→"cooky" quirk). Spoonacular `_AISLE_MAP` + the pantry-scan prompt
+  learned the new food aisles too.
+- **Verified:** server **384 pytest green** (categorize table expanded to 54 cases incl. the
+  substring-safety + new-aisle rows; `test_map_aisle` updated for beverages/snacks) + ruff clean.
+  Android: `DEFAULT_AISLE_ORDER`/label/emoji + `AisleOrderTest` updated; CI is the Android gate.
+- Existing items keep their stored category; only *new* adds/guesses use the wider set (history
+  recall still wins first, so a corrected item stays corrected).

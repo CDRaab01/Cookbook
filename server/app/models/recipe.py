@@ -9,10 +9,26 @@ from app.database import Base
 # Where a recipe came from. `plate` marks rows migrated from Plate's retired recipe feature.
 RECIPE_SOURCES = ("manual", "imported", "plate")
 
-# Store-aisle buckets for ingredients and list items (CLAUDE.md §4). Kept as a plain string
-# column (validated at the schema layer) rather than a DB enum so adding a bucket is not a
-# migration.
-STORE_CATEGORIES = ("produce", "meat", "dairy", "bakery", "frozen", "pantry", "other")
+# Store-aisle buckets for ingredients and list items (CLAUDE.md §4), in default store-walk
+# order. Kept as a plain string column (validated at the schema layer) rather than a DB enum so
+# adding a bucket is not a migration. v0.7 widened this from 7 food-only buckets to the aisles a
+# big-box store (Meijer/Walmart) is actually walked — the shopping list carries household, baby,
+# etc., not just recipe ingredients. The Android DEFAULT_AISLE_ORDER must mirror this list.
+STORE_CATEGORIES = (
+    "produce",
+    "meat",
+    "deli",
+    "dairy",
+    "bakery",
+    "frozen",
+    "pantry",
+    "snacks",
+    "beverages",
+    "household",
+    "personal",
+    "baby",
+    "other",
+)
 
 
 class Recipe(Base):
