@@ -16,8 +16,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     // "destructive rebuild — it's a mirror" stance is retired: shopping_items carries offline
     // queue rows (dirty/tombstoned/serverless) and pending_recipe_ops is a queue outright —
     // migrate, don't drop. The destructive fallback in DatabaseModule is a last resort only.
-    // v5: shopping_items.linkUrl (pasted product links).
-    version = 5,
+    // v5: shopping_items.linkUrl (pasted product links). v6: shopping_items.imageUrl (thumbnails).
+    version = 6,
     exportSchema = false,
 )
 abstract class CookbookDatabase : RoomDatabase() {
@@ -50,6 +50,13 @@ abstract class CookbookDatabase : RoomDatabase() {
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE shopping_items ADD COLUMN linkUrl TEXT")
+            }
+        }
+
+        /** v5 → v6: product-thumbnail column on the shopping mirror. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE shopping_items ADD COLUMN imageUrl TEXT")
             }
         }
     }

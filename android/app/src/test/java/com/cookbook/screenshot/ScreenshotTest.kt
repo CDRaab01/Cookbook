@@ -169,7 +169,8 @@ private fun ShoppingListScene() {
             ),
         ),
         grocerySpend = null,
-        onToggle = { _, _ -> }, onDelete = {}, onEdit = {}, onClearChecked = {},
+        onToggle = { _, _ -> }, onDelete = {}, onEdit = {}, onQuantityChange = { _, _ -> },
+        onClearChecked = {},
     )
 }
 

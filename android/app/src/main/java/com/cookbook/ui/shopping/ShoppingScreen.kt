@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -56,6 +59,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -65,6 +70,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.ui.recipe.CATEGORY_ORDER
@@ -291,6 +297,7 @@ fun ShoppingScreen(
                             onToggle = viewModel::toggleChecked,
                             onDelete = viewModel::deleteItem,
                             onEdit = { editing = it },
+                            onQuantityChange = viewModel::setLinkItemQuantity,
                             onClearChecked = viewModel::clearChecked,
                             aisleOrder = aisleOrder,
                             modifier = Modifier.weight(1f),
@@ -371,6 +378,7 @@ internal fun ShoppingListBody(
     onToggle: (String, Boolean) -> Unit,
     onDelete: (String) -> Unit,
     onEdit: (ShoppingItemOut) -> Unit,
+    onQuantityChange: (ShoppingItemOut, Int) -> Unit,
     onClearChecked: () -> Unit,
     aisleOrder: List<String> = CATEGORY_ORDER,
     modifier: Modifier = Modifier,
@@ -431,6 +439,7 @@ internal fun ShoppingListBody(
                     onToggle = { onToggle(item.id, it) },
                     onDelete = { onDelete(item.id) },
                     onEdit = { onEdit(item) },
+                    onQuantityChange = { onQuantityChange(item, it) },
                 )
             }
         }
@@ -467,6 +476,7 @@ internal fun ShoppingListBody(
                     onToggle = { onToggle(item.id, it) },
                     onDelete = { onDelete(item.id) },
                     onEdit = { onEdit(item) },
+                    onQuantityChange = { onQuantityChange(item, it) },
                 )
             }
         }
@@ -532,8 +542,10 @@ private fun ShoppingItemRow(
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit,
     onEdit: () -> Unit,
+    onQuantityChange: (Int) -> Unit,
 ) {
     val colors = CookbookTheme.colors
+    val isLink = item.linkUrl != null
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -548,6 +560,18 @@ private fun ShoppingItemRow(
                 checkmarkColor = colors.fresh.on,
             ),
         )
+        // A link item's product thumbnail leads the row so you recognize it on the shelf.
+        item.imageUrl?.let { image ->
+            AsyncImage(
+                model = image,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+            )
+            Spacer(Modifier.width(10.dp))
+        }
         // Name leads — it's a list of things to BUY; the recipe amounts are the caption.
         // The text area opens the editor; the checkbox and × keep their own targets.
         Column(modifier = Modifier.weight(1f).clickable(onClick = onEdit)) {
@@ -561,16 +585,19 @@ private fun ShoppingItemRow(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            item.measuresLabel()?.let { label ->
-                DataText(
-                    label,
-                    style = CookbookTheme.dataType.numeral,
-                    color = if (item.checked) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        colors.heat.base
-                    },
-                )
+            // Recipe measures caption — link items use the count stepper instead, so skip it.
+            if (!isLink) {
+                item.measuresLabel()?.let { label ->
+                    DataText(
+                        label,
+                        style = CookbookTheme.dataType.numeral,
+                        color = if (item.checked) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            colors.heat.base
+                        },
+                    )
+                }
             }
             item.linkUrl?.let { link ->
                 // The product link a pasted URL was split into: its own tap target (opens the
@@ -594,12 +621,40 @@ private fun ShoppingItemRow(
                 }
             }
         }
+        // "×N" count stepper for a link item (a distinct product you buy some number of).
+        if (isLink) {
+            QuantityStepper(
+                count = item.quantity?.toInt()?.coerceAtLeast(1) ?: 1,
+                onChange = onQuantityChange,
+            )
+        }
         IconButton(onClick = onDelete) {
             Icon(
                 Icons.Outlined.Close,
                 contentDescription = "Remove ${item.name}",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** Compact −/× N/＋ count control for link items. Floors at 1 (removing is the × button). */
+@Composable
+private fun QuantityStepper(count: Int, onChange: (Int) -> Unit) {
+    val colors = CookbookTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = { if (count > 1) onChange(count - 1) },
+            enabled = count > 1,
+            modifier = Modifier.size(32.dp),
+        ) { Icon(Icons.Outlined.Remove, contentDescription = "Fewer", Modifier.width(18.dp)) }
+        DataText(
+            "×$count",
+            style = CookbookTheme.dataType.numeral,
+            color = colors.heat.base,
+        )
+        IconButton(onClick = { onChange(count + 1) }, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Outlined.Add, contentDescription = "More", Modifier.width(18.dp))
         }
     }
 }

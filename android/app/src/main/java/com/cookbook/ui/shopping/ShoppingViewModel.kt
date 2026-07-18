@@ -177,6 +177,32 @@ class ShoppingViewModel @Inject constructor(
         }
     }
 
+    /** The −/＋ count stepper on a link item. Optimistic like [toggleChecked]; floors at 1. */
+    fun setLinkItemQuantity(item: ShoppingItemOut, count: Int) {
+        val current = (_list.value as? UiState.Success)?.data ?: return
+        val newCount = count.coerceAtLeast(1)
+        if (item.quantity?.toInt() == newCount) return
+        _list.value = UiState.Success(
+            current.copy(
+                items = current.items.map {
+                    if (it.id == item.id) it.copy(quantity = newCount.toDouble(), unit = null) else it
+                },
+            ),
+        )
+        viewModelScope.launch {
+            try {
+                _list.value = UiState.Success(
+                    shoppingRepository.editItem(
+                        current.id, item.id, item.name, newCount.toDouble(), null, item.category,
+                    ),
+                )
+            } catch (e: Exception) {
+                _list.value = UiState.Success(current) // roll back
+                _error.value = e.message ?: "Couldn't update the quantity"
+            }
+        }
+    }
+
     // --- Add-dialog autocomplete (v0.2) ---
 
     private val _suggestions = MutableStateFlow<List<SuggestionOut>>(emptyList())

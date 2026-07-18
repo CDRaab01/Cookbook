@@ -22,6 +22,8 @@ data class ShoppingItemOut(
     val category: String? = null,
     // Product-page URL for a pasted-link item; the name is a clean human title.
     @SerialName("link_url") val linkUrl: String? = null,
+    // Product thumbnail (v0.6); the client fetches it directly. Null when the page had none.
+    @SerialName("image_url") val imageUrl: String? = null,
     val checked: Boolean = false,
     @SerialName("checked_at") val checkedAt: String? = null,
     @SerialName("recipe_id") val recipeId: String? = null,
@@ -68,7 +70,7 @@ data class ShoppingItemUpdateRequest(
     val unit: String? = null,
     val category: String? = null,
     val checked: Boolean? = null,
-    // PATCH clearing convention: null = untouched, "" = clear the link.
+    // PATCH clearing convention: null = untouched, "" = clear the link (and its thumbnail).
     @SerialName("link_url") val linkUrl: String? = null,
 )
 

@@ -202,6 +202,7 @@ class ShoppingRepositoryImpl @Inject constructor(
                 measuresJson = null,
                 category = category,
                 linkUrl = if (clearLink) null else row.linkUrl,
+                imageUrl = if (clearLink) null else row.imageUrl,
                 dirty = true,
             ),
         )
@@ -405,6 +406,7 @@ private fun ShoppingItemOut.toEntity(json: Json, listId: String) = ShoppingItemE
     },
     category = category,
     linkUrl = linkUrl,
+    imageUrl = imageUrl,
     checked = checked,
     recipeId = recipeId,
     order = order,
@@ -425,6 +427,7 @@ private fun ShoppingItemEntity.toDto(json: Json) = ShoppingItemOut(
     } ?: emptyList(),
     category = category,
     linkUrl = linkUrl,
+    imageUrl = imageUrl,
     checked = checked,
     recipeId = recipeId,
     order = order,
