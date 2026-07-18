@@ -64,7 +64,7 @@ class CookModeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             _recipe.value = try {
-                UiState.Success(recipeRepository.getRecipe(recipeId))
+                UiState.Success(recipeRepository.getRecipe(recipeId).value)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Couldn't load the recipe")
             }

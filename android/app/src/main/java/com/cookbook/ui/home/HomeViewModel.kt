@@ -54,7 +54,7 @@ class HomeViewModel @Inject constructor(
             _state.value = try {
                 // The recipe list gates success; the rest are best-effort so one slow/failed call
                 // doesn't blank the whole dashboard.
-                val recipes = recipeRepository.listRecipes()
+                val recipes = recipeRepository.listRecipes().value // cached-fallback read; Home shows no staleness chrome
                 val name = runCatching { api.getMe().name }.getOrNull()
                 val unchecked = runCatching {
                     shoppingRepository.getDefaultList().items.count { !it.checked }

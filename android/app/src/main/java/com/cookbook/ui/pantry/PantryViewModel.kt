@@ -7,6 +7,7 @@ import com.cookbook.data.remote.StaplesOut
 import com.cookbook.data.repository.PantryRepository
 import com.cookbook.util.PantryDraftStore
 import com.cookbook.util.UiState
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +49,7 @@ class PantryViewModel @Inject constructor(
             _pantry.value = try {
                 UiState.Success(pantryRepository.getPantry())
             } catch (e: Exception) {
-                UiState.Error(e.message ?: "Couldn't load your pantry")
+                UiState.Error(e.offlineAwareMessage("Couldn't load your pantry"))
             }
             // Staples ride along on the first load; a failure just skips the first-use sheet.
             if (_staples.value == null) {
@@ -76,7 +77,7 @@ class PantryViewModel @Inject constructor(
                     else -> "Couldn't read that photo (${e.code()})"
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't read that photo"
+                _error.value = e.offlineAwareMessage("Couldn't read that photo")
             } finally {
                 _scanning.value = false
             }
@@ -91,7 +92,7 @@ class PantryViewModel @Inject constructor(
                 pantryRepository.addItem(trimmed, category)
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't add that item"
+                _error.value = e.offlineAwareMessage("Couldn't add that item")
             }
         }
     }
@@ -104,7 +105,7 @@ class PantryViewModel @Inject constructor(
                 pantryRepository.updateItem(id, trimmed, category)
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't update that item"
+                _error.value = e.offlineAwareMessage("Couldn't update that item")
             }
         }
     }
@@ -115,7 +116,7 @@ class PantryViewModel @Inject constructor(
                 pantryRepository.deleteItem(id)
                 load()
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't remove that item"
+                _error.value = e.offlineAwareMessage("Couldn't remove that item")
             }
         }
     }
@@ -128,7 +129,7 @@ class PantryViewModel @Inject constructor(
             try {
                 _staples.value = pantryRepository.putStaples(staples)
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't save your staples"
+                _error.value = e.offlineAwareMessage("Couldn't save your staples")
             } finally {
                 _savingStaples.value = false
             }

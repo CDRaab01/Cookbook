@@ -114,8 +114,44 @@ Standard suite MVVM. Feature packages:
 
 The active shopping list (and a recipes read cache) mirrors into Room; check-offs and edits are
 optimistic local writes queued for reconnect sync (dirty rows push **full state**, not just
-`checked`). Room is a mirror — destructive rebuild on schema change is acceptable. The
-grocery-store flow must survive airplane mode end-to-end; treat any regression there as P0.
+`checked`). The grocery-store flow must survive airplane mode end-to-end; treat any regression
+there as P0. The error-cause discipline everywhere in the data layer: **`IOException` =
+unreachable ⇒ degrade to local state; `retrofit2.HttpException` = the server refused ⇒ error
+loudly** — the two are never conflated.
+
+**Staleness is surfaced, never silent.** Both recipe cache tables carry a `cachedAtMs`
+capture-time stamp written on every successful fetch; `RecipeRepositoryImpl.listRecipes` /
+`getRecipe` return `Stale<T>` (`value` + nullable `asOfMs` — null = fresh, non-null = served
+from cache, captured then). The recipe list + detail screens render Pulse's `StaleBanner`
+("Offline — as of h:mm a", amber `heat` channel) off that stamp. Rows cached before stamping
+existed (`cachedAtMs == 0`, migration default) surface as null — no honest timestamp to show.
+The Shopping screen has its own banner off `ShoppingRepository.offline` (a `StateFlow` flipped
+by any unreachable round-trip, cleared by any successful reconcile) reading **"Offline —
+changes will sync"** — deliberately *not* an "as of" stamp, because the local queue is
+authoritative there, not stale.
+
+**Recipe favorites are the book's one offline-capable write.** `setFavorite` flips the cached
+JSON blobs optimistically (heart responds instantly); an unreachable server enqueues a row in
+`pending_recipe_ops` (recipeId/opType/boolValue/createdAtMs — op-shaped so future op kinds fit
+without a schema change); a server rejection reverts the blobs and rethrows.
+`syncPendingRecipeOps()` drains the queue in order on reconnect (`NetworkSyncObserver`, after
+the shopping sync): success deletes the op and refreshes the blobs from the response; a
+rejection drops the op and re-pulls truth (**server wins**; a 404 purges the cached detail); a
+renewed outage stops and keeps the backlog.
+
+**Migration policy changed (Room v4):** the old "Room is a mirror — destructive rebuild is
+acceptable" stance is retired. `shopping_items` carries unpushed offline queue rows
+(dirty/tombstoned/serverless) and `pending_recipe_ops` is a write queue outright — a
+destructive rebuild would silently drop user writes. Schema bumps now ship real migrations
+(`CookbookDatabase.MIGRATION_3_4` is the first); `fallbackToDestructiveMigration()` remains
+registered only as a last-resort backstop for version jumps no migration covers.
+
+**Deliberately online-only** (no offline path, by design): recipe create/edit/delete/import,
+pantry, and the meal planner — none are in-store-critical, and offline editing would grow a
+merge story the app doesn't need (add-recipe-to-list also stays online because merge math is
+server-side, invariant 1). Their failure paths name the outage plainly — an `IOException`
+surfaces as **"Can't reach the Cookbook server"** (`util/ErrorMessages.kt`) instead of a raw
+socket message; server rejections keep their own messages.
 
 ## Invariants
 

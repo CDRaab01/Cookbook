@@ -39,6 +39,8 @@ class ShoppingViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
+        // The VM mirrors the repository's offline flag at construction; the mock must serve one.
+        whenever(repository.offline).thenReturn(kotlinx.coroutines.flow.MutableStateFlow(false))
         val prefs = org.mockito.kotlin.mock<com.cookbook.util.AppPreferences> {
             org.mockito.kotlin.whenever(it.aisleOrder)
                 .thenReturn(kotlinx.coroutines.flow.flowOf(com.cookbook.util.DEFAULT_AISLE_ORDER))

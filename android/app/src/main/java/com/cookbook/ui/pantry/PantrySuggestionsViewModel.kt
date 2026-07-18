@@ -7,6 +7,7 @@ import com.cookbook.data.remote.RecipePreviewOut
 import com.cookbook.data.repository.PantryRepository
 import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.util.UiState
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +45,7 @@ class PantrySuggestionsViewModel @Inject constructor(
             _suggestions.value = try {
                 UiState.Success(pantryRepository.getSuggestions())
             } catch (e: Exception) {
-                UiState.Error(e.message ?: "Couldn't load suggestions")
+                UiState.Error(e.offlineAwareMessage("Couldn't load suggestions"))
             }
         }
     }
@@ -55,7 +56,7 @@ class PantrySuggestionsViewModel @Inject constructor(
             _preview.value = try {
                 UiState.Success(recipeRepository.previewRecipe(sourceId))
             } catch (e: Exception) {
-                UiState.Error(e.message ?: "Couldn't load the recipe")
+                UiState.Error(e.offlineAwareMessage("Couldn't load the recipe"))
             }
         }
     }
@@ -73,7 +74,7 @@ class PantrySuggestionsViewModel @Inject constructor(
                 _preview.value = null
                 _imported.tryEmit(recipe.id)
             } catch (e: Exception) {
-                _error.value = e.message ?: "Import failed"
+                _error.value = e.offlineAwareMessage("Import failed")
             } finally {
                 _importing.value = false
             }

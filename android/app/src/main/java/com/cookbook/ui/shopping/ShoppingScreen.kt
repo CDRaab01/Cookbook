@@ -74,6 +74,7 @@ import design.pulse.ui.components.DataText
 import design.pulse.ui.components.EmptyState
 import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
+import design.pulse.ui.components.StaleBanner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,6 +85,7 @@ fun ShoppingScreen(
     onAddItemConsumed: () -> Unit = {},
 ) {
     val state by viewModel.list.collectAsState()
+    val offline by viewModel.offline.collectAsState()
     val error by viewModel.error.collectAsState()
     val suggestions by viewModel.suggestions.collectAsState()
     val undoable by viewModel.undoable.collectAsState()
@@ -223,24 +225,36 @@ fun ShoppingScreen(
             }
             is UiState.Success -> {
                 val items = s.data.items
-                if (items.isEmpty()) {
-                    EmptyState(
-                        icon = Icons.Outlined.ShoppingCart,
-                        title = "Nothing on the list",
-                        subtitle = "Add items with +, or open a recipe and tap \"Add to shopping list\".",
-                        modifier = Modifier.padding(padding),
-                    )
-                } else {
-                    ShoppingListBody(
-                        items = items,
-                        grocerySpend = grocerySpend,
-                        onToggle = viewModel::toggleChecked,
-                        onDelete = viewModel::deleteItem,
-                        onEdit = { editing = it },
-                        onClearChecked = viewModel::clearChecked,
-                        aisleOrder = aisleOrder,
-                        modifier = Modifier.padding(padding),
-                    )
+                Column(Modifier.fillMaxSize().padding(padding)) {
+                    if (offline) {
+                        // The mirror + local queue are authoritative offline, so this is a
+                        // "will sync" notice, not an "as of" stamp (asOfMs is unused).
+                        StaleBanner(
+                            asOfMs = 0L,
+                            channel = CookbookTheme.colors.heat.base,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            prefix = "Offline",
+                            formatAsOf = { "changes will sync" },
+                        )
+                    }
+                    if (items.isEmpty()) {
+                        EmptyState(
+                            icon = Icons.Outlined.ShoppingCart,
+                            title = "Nothing on the list",
+                            subtitle = "Add items with +, or open a recipe and tap \"Add to shopping list\".",
+                        )
+                    } else {
+                        ShoppingListBody(
+                            items = items,
+                            grocerySpend = grocerySpend,
+                            onToggle = viewModel::toggleChecked,
+                            onDelete = viewModel::deleteItem,
+                            onEdit = { editing = it },
+                            onClearChecked = viewModel::clearChecked,
+                            aisleOrder = aisleOrder,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }

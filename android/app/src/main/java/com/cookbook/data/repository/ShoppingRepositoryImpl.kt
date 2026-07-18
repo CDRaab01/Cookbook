@@ -15,6 +15,8 @@ import com.cookbook.data.remote.ShoppingItemUpdateRequest
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.util.AppPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
@@ -41,6 +43,11 @@ class ShoppingRepositoryImpl @Inject constructor(
     private val json: Json,
 ) : ShoppingRepository {
 
+    // Flips true whenever a server round-trip dies as unreachable and the mirror is served;
+    // any successful reconcile clears it. The Shopping screen's offline banner reads this.
+    private val _offline = MutableStateFlow(false)
+    override val offline: StateFlow<Boolean> = _offline
+
     override suspend fun getDefaultList(): ShoppingListOut {
         val activeId = appPreferences.shoppingListId.firstOrNull()
         return try {
@@ -58,7 +65,7 @@ class ShoppingRepositoryImpl @Inject constructor(
             reconcile(fresh)
             localView(fresh.id, fresh.name)
         } catch (_: IOException) {
-            localView(activeId)
+            offlineView(activeId)
         }
     }
 
@@ -124,7 +131,7 @@ class ShoppingRepositoryImpl @Inject constructor(
             reconcile(fresh)
             localView(fresh.id, fresh.name)
         } catch (_: IOException) {
-            localView()
+            offlineView()
         }
     }
 
@@ -160,7 +167,7 @@ class ShoppingRepositoryImpl @Inject constructor(
             reconcile(fresh)
             localView(fresh.id, fresh.name)
         } catch (_: IOException) {
-            localView()
+            offlineView()
         }
     }
 
@@ -197,7 +204,7 @@ class ShoppingRepositoryImpl @Inject constructor(
             reconcile(fresh)
             localView(fresh.id, fresh.name)
         } catch (_: IOException) {
-            localView()
+            offlineView()
         }
     }
 
@@ -226,7 +233,7 @@ class ShoppingRepositoryImpl @Inject constructor(
             reconcile(fresh)
             localView(fresh.id, fresh.name)
         } catch (_: IOException) {
-            localView()
+            offlineView()
         }
     }
 
@@ -242,7 +249,7 @@ class ShoppingRepositoryImpl @Inject constructor(
             reconcile(fresh)
             localView(fresh.id, fresh.name)
         } catch (_: IOException) {
-            localView()
+            offlineView()
         }
     }
 
@@ -308,6 +315,7 @@ class ShoppingRepositoryImpl @Inject constructor(
                 // The row is gone or conflicted server-side; the re-pull below is the truth.
                 if (e.code() == 404 || e.code() == 409) dao.delete(row.localId) else throw e
             } catch (_: IOException) {
+                _offline.value = true
                 return // still offline; keep the backlog for the next reconnect
             }
         }
@@ -320,6 +328,7 @@ class ShoppingRepositoryImpl @Inject constructor(
 
     /** Replace the list's clean mirror rows with the server's; pending rows keep local truth. */
     private suspend fun reconcile(fresh: ShoppingListOut) {
+        _offline.value = false // a server round-trip just succeeded
         dao.deleteClean(fresh.id)
         val pendingIds = dao.pendingRows().mapNotNull { it.serverId }.toSet()
         dao.upsertAll(
@@ -327,6 +336,15 @@ class ShoppingRepositoryImpl @Inject constructor(
                 .filter { it.id !in pendingIds }
                 .map { it.toEntity(json, fresh.id) },
         )
+    }
+
+    /** The IOException fallback: mark the session offline and serve the Room mirror. */
+    private suspend fun offlineView(
+        listId: String? = null,
+        name: String = "Groceries",
+    ): ShoppingListOut {
+        _offline.value = true
+        return localView(listId, name)
     }
 
     private suspend fun localView(

@@ -2,6 +2,7 @@ package com.cookbook.ui.recipe
 
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.repository.RecipeRepository
+import com.cookbook.data.repository.Stale
 import com.cookbook.util.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,7 +44,7 @@ class RecipeListViewModelTest {
     @Test
     fun `load surfaces recipes`() = runTest(dispatcher) {
         whenever(repository.listRecipes()).thenReturn(
-            listOf(summary("1", "Chicken Parm"), summary("2", "Chili")),
+            Stale(listOf(summary("1", "Chicken Parm"), summary("2", "Chili")), asOfMs = null),
         )
 
         viewModel.load()
@@ -52,6 +53,19 @@ class RecipeListViewModelTest {
         val state = viewModel.recipes.value
         assertIs<UiState.Success<List<RecipeSummaryOut>>>(state)
         assertEquals(2, state.data.size)
+    }
+
+    @Test
+    fun `cached load surfaces the staleness stamp`() = runTest(dispatcher) {
+        whenever(repository.listRecipes()).thenReturn(
+            Stale(listOf(summary("1", "Chicken Parm")), asOfMs = 1_234L),
+        )
+
+        viewModel.load()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertIs<UiState.Success<List<RecipeSummaryOut>>>(viewModel.recipes.value)
+        assertEquals(1_234L, viewModel.staleAsOf.value)
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.data.repository.ShoppingRepository
 import com.cookbook.ui.navigation.Screen
 import com.cookbook.util.UiState
+import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,11 @@ class RecipeDetailViewModel @Inject constructor(
     private val _recipe = MutableStateFlow<UiState<RecipeOut>>(UiState.Loading)
     val recipe: StateFlow<UiState<RecipeOut>> = _recipe
 
+    /** Non-null ⇒ the shown recipe came from the offline cache, captured at this epoch-millis
+     *  moment — the screen renders the "Offline — as of …" banner. Null ⇒ fresh. */
+    private val _staleAsOf = MutableStateFlow<Long?>(null)
+    val staleAsOf: StateFlow<Long?> = _staleAsOf
+
     /** One-shot: the recipe was deleted; the screen navigates back. */
     private val _deleted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val deleted: SharedFlow<Unit> = _deleted
@@ -46,7 +52,9 @@ class RecipeDetailViewModel @Inject constructor(
         viewModelScope.launch {
             if (_recipe.value !is UiState.Success) _recipe.value = UiState.Loading
             _recipe.value = try {
-                UiState.Success(recipeRepository.getRecipe(recipeId))
+                val result = recipeRepository.getRecipe(recipeId)
+                _staleAsOf.value = result.asOfMs
+                UiState.Success(result.value)
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Couldn't load recipe")
             }
@@ -59,7 +67,8 @@ class RecipeDetailViewModel @Inject constructor(
                 recipeRepository.deleteRecipe(recipeId)
                 _deleted.tryEmit(Unit)
             } catch (e: Exception) {
-                _error.value = e.message ?: "Couldn't delete recipe"
+                // Deleting is deliberately online-only; name the outage plainly.
+                _error.value = e.offlineAwareMessage("Couldn't delete recipe")
             }
         }
     }
