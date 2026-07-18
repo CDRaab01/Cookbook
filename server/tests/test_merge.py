@@ -165,3 +165,13 @@ def test_merge_incoming_drops_water():
 def test_merge_incoming_preserves_order():
     incoming = [IncomingItem(name=n) for n in ["c", "a", "b"]]
     assert [i.name for i in merge_incoming(incoming)] == ["c", "a", "b"]
+
+
+def test_merge_incoming_first_link_wins():
+    incoming = [
+        IncomingItem(name="Milk", link_url="https://one.example.com/milk"),
+        IncomingItem(name="milk", link_url="https://two.example.com/milk"),
+        IncomingItem(name="Eggs"),
+    ]
+    merged = merge_incoming(incoming)
+    assert [i.link_url for i in merged] == ["https://one.example.com/milk", None]

@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -59,6 +60,8 @@ class ShoppingListItem(Base):
     # of pretending to sum across units.
     measures: Mapped[list | None] = mapped_column(JSON, nullable=True)
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Product-page URL for a pasted-link item (v0.5); the name stays a clean human title.
+    link_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     checked: Mapped[bool] = mapped_column(Boolean, default=False)
     checked_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

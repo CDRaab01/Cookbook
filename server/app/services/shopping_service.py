@@ -14,8 +14,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.limits import MAX_LIST_ITEMS
+from app.limits import MAX_ITEM_NAME_LENGTH, MAX_LIST_ITEMS
 from app.lists.categorize import guess_category
+from app.lists.link_items import name_from_url, split_link
 from app.lists.merge import (
     IncomingItem,
     Measure,
@@ -41,6 +42,7 @@ from app.schemas.shopping import (
     MemberOut,
     SuggestionOut,
 )
+from app.services.link_title_service import resolve_link_title
 from app.services.recipe_service import load_accessible_recipe
 
 DEFAULT_LIST_NAME = "Groceries"
@@ -168,6 +170,9 @@ def _merge_into_list(
             _store_measures(target, measures)
             if target.category is None:
                 target.category = inc.category
+            # First link wins — a merge shouldn't drop or churn an existing product link.
+            if target.link_url is None:
+                target.link_url = inc.link_url
             # Multi-recipe provenance collapses to "manual/mixed" (NULL) rather than lying.
             if recipe_id is not None and target.recipe_id != recipe_id:
                 target.recipe_id = None
@@ -175,6 +180,7 @@ def _merge_into_list(
             new_item = ShoppingListItem(
                 name=inc.name,
                 category=inc.category,
+                link_url=inc.link_url,
                 recipe_id=recipe_id,
                 order=order,
             )
@@ -467,11 +473,32 @@ async def add_item(
 ) -> ListOut:
     shopping_list = await load_accessible_list(db, user_id, list_id)
     _guard_capacity(shopping_list, adding=1)
-    # Uncategorized adds get auto-sorted: the category you used last time, else a keyword guess.
-    category = req.category or await recall_category(db, user_id, req.name)
-    incoming = IncomingItem(name=req.name, quantity=req.quantity, unit=req.unit, category=category)
+    # A pasted product URL becomes a link item (v0.5): the URL splits into link_url and the
+    # name stays human — typed text when there is any, else the page's title, else a name
+    # derived from the URL slug. The list shows things you buy, not tracking parameters.
+    typed, url = split_link(req.name)
+    if url is None:
+        if len(req.name) > MAX_ITEM_NAME_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"item name is limited to {MAX_ITEM_NAME_LENGTH} characters",
+            )
+        name = req.name
+    elif typed:
+        name = typed[:MAX_ITEM_NAME_LENGTH]
+    else:
+        name = (await resolve_link_title(url) or name_from_url(url))[:MAX_ITEM_NAME_LENGTH]
+    # Uncategorized adds get auto-sorted: the category you used last time, else a keyword guess
+    # — always from the cleaned name, so a URL slug can't keyword-match a random aisle.
+    category = req.category or await recall_category(db, user_id, name)
+    incoming = IncomingItem(
+        name=name, quantity=req.quantity, unit=req.unit, category=category, link_url=url
+    )
     _merge_into_list(shopping_list, [incoming], recipe_id=None)
-    await _record_history(db, user_id, [incoming])
+    # History feeds autocomplete with *your* vocabulary: typed text is worth remembering, a
+    # fetched/slug-derived product title (one-off SKU string) is not.
+    if url is None or typed:
+        await _record_history(db, user_id, [incoming])
     await db.commit()
     return ListOut.model_validate(await _reload(db, list_id))
 
@@ -549,6 +576,8 @@ async def update_item(
             )
     if req.category is not None:
         item.category = req.category
+    if req.link_url is not None:
+        item.link_url = req.link_url or None  # "" is the clearing sentinel
     if req.checked is not None and req.checked != item.checked:
         item.checked = req.checked
         item.checked_at = datetime.datetime.now(datetime.timezone.utc) if req.checked else None
