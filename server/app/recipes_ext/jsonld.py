@@ -26,6 +26,19 @@ log = logging.getLogger(__name__)
 
 MAX_PAGE_BYTES = 3 * 1024 * 1024
 
+# A browser-like UA: several big recipe networks (Dotdash Meredith et al.) 403 anything that
+# self-identifies as a script, even for a single personal-use fetch of a public page. Shared
+# with the shopping-link title fetch (link_title_service), which hits retail CDNs that do the
+# same.
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 _SCRIPT_RE = re.compile(
     r"<script[^>]*type\s*=\s*[\"']application/ld\+json[\"'][^>]*>(.*?)</script>",
     re.IGNORECASE | re.DOTALL,
@@ -288,20 +301,7 @@ def extract_jsonld_blocks(html: str):
 
 async def fetch_recipe_from_url(url: str, client: httpx.AsyncClient) -> NormalizedRecipe | None:
     """Fetch a page and extract its Recipe JSON-LD; None when the page has no usable markup."""
-    # A browser-like UA: several big recipe networks (Dotdash Meredith et al.) 403 anything
-    # that self-identifies as a script, even for a single personal-use fetch of a public page.
-    resp = await client.get(
-        url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        },
-        follow_redirects=True,
-    )
+    resp = await client.get(url, headers=BROWSER_HEADERS, follow_redirects=True)
     resp.raise_for_status()
     if len(resp.content) > MAX_PAGE_BYTES:
         log.info("import-url: page too large (%d bytes): %s", len(resp.content), url)

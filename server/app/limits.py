@@ -13,6 +13,11 @@ QUANTITY_BOUNDS = (0.0, 100_000.0)
 
 # Shopping lists
 MAX_LIST_ITEMS = 500
+# The stored item name column is String(255); the raw add-bar text may legitimately be longer
+# because it can carry a pasted product URL that the service strips into link_url.
+MAX_ITEM_NAME_LENGTH = 255
+MAX_ITEM_RAW_INPUT_LENGTH = 2000
+MAX_LINK_URL_LENGTH = 2048
 
 # "Add recipe to list" servings multiplier.
 SCALE_BOUNDS = (0.1, 20.0)

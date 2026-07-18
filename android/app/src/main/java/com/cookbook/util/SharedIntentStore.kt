@@ -6,9 +6,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Hands a URL shared from another app (browser → share sheet → Cookbook) to the Discover
- * screen's import flow. MainActivity writes it from the incoming ACTION_SEND intent; the
- * Discover ViewModel consumes (and clears) it.
+ * Hands a URL shared from another app (browser → share sheet → Cookbook) into the app.
+ * MainActivity writes it from the incoming ACTION_SEND intent; the nav host's share chooser
+ * ("Import as recipe" / "Add to shopping list") consumes it — except when Discover is already
+ * open, whose ViewModel still consumes directly into the pre-filled import dialog.
  */
 @Singleton
 class SharedIntentStore @Inject constructor() {

@@ -3,13 +3,23 @@ import uuid
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.limits import QUANTITY_BOUNDS, SCALE_BOUNDS
+from app.limits import (
+    MAX_ITEM_NAME_LENGTH,
+    MAX_ITEM_RAW_INPUT_LENGTH,
+    MAX_LINK_URL_LENGTH,
+    QUANTITY_BOUNDS,
+    SCALE_BOUNDS,
+)
 from app.lists.merge import canonical_unit
 from app.schemas.recipe import _validate_category
 
 
 class ItemCreate(BaseModel):
-    """A manual one-off add ("paper towels")."""
+    """A manual one-off add ("paper towels"), possibly carrying a pasted product URL.
+
+    The raw text may exceed the stored-name cap because the service splits any URL out into
+    ``link_url`` first; the 255 cap on the *cleaned* name is enforced in the service.
+    """
 
     name: str
     quantity: float | None = Field(default=None, gt=QUANTITY_BOUNDS[0], le=QUANTITY_BOUNDS[1])
@@ -21,6 +31,8 @@ class ItemCreate(BaseModel):
     def name_nonempty(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("item name must not be empty")
+        if len(v.strip()) > MAX_ITEM_RAW_INPUT_LENGTH:
+            raise ValueError("item name is too long")
         return v.strip()
 
     @field_validator("unit")
@@ -35,13 +47,18 @@ class ItemCreate(BaseModel):
 
 
 class ItemUpdate(BaseModel):
-    """Partial edit; the common path is toggling ``checked`` in the store."""
+    """Partial edit; the common path is toggling ``checked`` in the store.
+
+    ``link_url`` follows the house PATCH convention (None = untouched, "" = clear). PATCH does
+    no URL splitting — a URL pasted into the *name* here stays literal name text.
+    """
 
     name: str | None = None
     quantity: float | None = Field(default=None, gt=QUANTITY_BOUNDS[0], le=QUANTITY_BOUNDS[1])
     unit: str | None = None
     category: str | None = None
     checked: bool | None = None
+    link_url: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -50,7 +67,21 @@ class ItemUpdate(BaseModel):
             return None
         if not v.strip():
             raise ValueError("item name must not be empty")
+        if len(v.strip()) > MAX_ITEM_NAME_LENGTH:
+            raise ValueError(f"item name is limited to {MAX_ITEM_NAME_LENGTH} characters")
         return v.strip()
+
+    @field_validator("link_url")
+    @classmethod
+    def link_url_valid(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return v  # None = untouched, "" = clear
+        v = v.strip()
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("link must be an http(s) URL")
+        if len(v) > MAX_LINK_URL_LENGTH:
+            raise ValueError("link URL is too long")
+        return v
 
     @field_validator("unit")
     @classmethod
@@ -160,6 +191,8 @@ class ItemOut(BaseModel):
     # The full aggregate across merges — what the row displays ("2 tbsp + 2 tsp").
     measures: list[MeasureOut] = []
     category: str | None = None
+    # Product-page URL for a pasted-link item; the name stays a clean human title.
+    link_url: str | None = None
     checked: bool
     checked_at: datetime.datetime | None = None
     recipe_id: uuid.UUID | None = None

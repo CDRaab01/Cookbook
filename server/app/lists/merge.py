@@ -177,6 +177,7 @@ class IncomingItem:
     unit: str | None = None
     category: str | None = None
     note: str | None = None
+    link_url: str | None = None
     measures: list[Measure] = field(default_factory=list)
 
     def __post_init__(self):
@@ -200,6 +201,7 @@ def merge_incoming(incoming: list[IncomingItem]) -> list[IncomingItem]:
             # First non-null metadata wins; a merge shouldn't drop information.
             existing.category = existing.category or item.category
             existing.note = existing.note or item.note
+            existing.link_url = existing.link_url or item.link_url
         else:
             merged[key] = item
             order.append(key)

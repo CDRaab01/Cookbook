@@ -92,12 +92,24 @@ private class FakeShoppingDao : ShoppingDao {
 /** Fake server: an in-memory item list + an `offline` switch that throws IOException. */
 private class FakeApi : ApiService {
     var offline = false
+
+    // Models the real bug: names longer than the DB column made the server REJECT the add
+    // (HttpException), which is a different failure mode than being unreachable.
+    var rejectLongNames = false
+    val addRequests = mutableListOf<ShoppingItemCreateRequest>()
     val serverItems = mutableListOf<ShoppingItemOut>()
     val listId = "list-1"
 
     private fun gate() {
         if (offline) throw IOException("offline")
     }
+
+    private fun rejection() = retrofit2.HttpException(
+        retrofit2.Response.error<Any>(
+            422,
+            okhttp3.ResponseBody.create(null, "item name is too long"),
+        ),
+    )
 
     private fun list() = ShoppingListOut(listId, "Groceries", serverItems.toList())
 
@@ -128,6 +140,8 @@ private class FakeApi : ApiService {
         req: ShoppingItemCreateRequest,
     ): ShoppingListOut {
         gate()
+        if (rejectLongNames && req.name.length > 255) throw rejection()
+        addRequests += req
         serverItems += ShoppingItemOut(
             id = UUID.randomUUID().toString(),
             name = req.name,
@@ -342,5 +356,77 @@ class ShoppingRepositorySyncTest {
         repo.syncPending() // still offline: no-op, backlog intact
 
         assertEquals(1, dao.pendingRows().size)
+    }
+
+    // --- Server-rejection regressions (the "my item never reached my spouse's phone" bug) ---
+
+    @Test
+    fun `rejected online add removes the optimistic row and rethrows`() = runTest {
+        api.rejectLongNames = true
+        val repo = repository()
+        repo.getDefaultList()
+
+        val thrown = runCatching { repo.addItem("list-1", "x".repeat(320), null, null, null) }
+
+        assertTrue(thrown.exceptionOrNull() is retrofit2.HttpException)
+        // No ghost: the refused row must not survive as a permanent local-only item.
+        assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `rejected pending row is dropped and the rest of the backlog still syncs`() = runTest {
+        api.rejectLongNames = true
+        val repo = repository()
+        repo.getDefaultList()
+
+        api.offline = true
+        repo.addItem("list-1", "x".repeat(320), null, null, null) // will be rejected on sync
+        repo.addItem("list-1", "Eggs", null, null, null)
+
+        api.offline = false
+        repo.syncPending()
+
+        // The poison row is gone instead of wedging the queue; the good row landed.
+        assertEquals(0, dao.pendingRows().size)
+        assertEquals(listOf("Eggs"), api.serverItems.map { it.name })
+    }
+
+    // --- Link items (pasted product URLs) ---
+
+    @Test
+    fun `offline link add stores a readable split row and syncs the full text`() = runTest {
+        val url = "https://www.meijer.com/shopping/product/haakaa-collectors/942006020367.html"
+        val repo = repository()
+        repo.getDefaultList()
+
+        api.offline = true
+        val list = repo.addItem("list-1", "milk collector $url", null, null, null)
+
+        // The optimistic row is readable: typed text as the name, URL split off.
+        assertEquals("milk collector", list.items.single().name)
+        assertEquals(url, dao.rows.values.single().linkUrl)
+
+        api.offline = false
+        repo.syncPending()
+
+        // The push re-joins name + URL so the server does its own split (and stores the link).
+        assertEquals("milk collector $url", api.addRequests.single().name)
+    }
+
+    @Test
+    fun `url-only offline add gets a slug-derived local name`() = runTest {
+        val repo = repository()
+        repo.getDefaultList()
+
+        api.offline = true
+        val list = repo.addItem(
+            "list-1",
+            "https://www.walmart.com/ip/Great-Value-Whole-Milk-Gallon/10450114",
+            null,
+            null,
+            null,
+        )
+
+        assertEquals("Great Value Whole Milk Gallon", list.items.single().name)
     }
 }

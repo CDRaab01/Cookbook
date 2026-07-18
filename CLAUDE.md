@@ -570,3 +570,39 @@ The suite's 1.0 polish round. The headline landed plus two long-standing gate it
   `household_member_ids` / `household_owner_id` count only `active` members (so the shared default
   list/plan resolution ignores a merely-invited user). Mirrors Magpie's `b2c3d4e5f6a7`. Server **309
   pytest green**; ruff 0.4.4 format+check clean. Android accept/decline UI still to follow.
+
+---
+
+## v0.5 (2026-07-18) — link items + the "Other never syncs" fix (`claude/shopping-list-other-category-9rv0c4`)
+
+A household member pasted "milk collector <320-char Meijer product URL>" into the add bar and the
+item appeared only on her phone (under OTHER). Root cause was **not** category sync:
+`shopping_list_items.name` is `String(255)` with no schema cap, so the POST 500'd; the client's
+optimistic Room row (only `IOException` was caught) stranded as a serverless ghost — and
+`syncPending` **rethrew** non-404/409 `HttpException`s, so that one poison row also aborted every
+reconnect sync pass. Fixes + the feature that falls out:
+
+- **Validation:** `ItemCreate`/`ItemUpdate` name caps → clean 422s (raw add-bar text may run to
+  2000 chars because a URL gets split out; the *cleaned* name caps at 255 in the service).
+- **Sync robustness (client):** a rejected online add deletes its optimistic row and still
+  errors; a rejected pending row is dropped and the drain continues (recipe-ops "server wins"
+  precedent). A pre-fix wedged phone self-heals on its first post-update sync. Shopping-screen
+  grouping now coerces unknown categories into "Other" (defense in depth — nothing can be
+  counted in "to buy" yet render nowhere).
+- **Link items:** pasting a product URL (Meijer/Walmart/anything) yields a readable row with the
+  URL in a new `link_url` column (migration `0017`, Text) and a tappable domain chip. Typed
+  text + URL ⇒ typed text is the name; URL-only ⇒ server fetches the page title (JSON-LD
+  `Product.name` → `og:title` → `<title>`, `lists/link_items.py` + `link_title_service.py`,
+  SSRF guard shared with URL import via new `services/url_guard.py`, 5s budget) with a
+  slug-derived fallback (`name_from_url`). Links merge first-wins by normalized name; URL-derived
+  names never touch `item_history` or keyword categorization. Edit dialog shows/removes the
+  link; Room mirror v5 (`MIGRATION_4_5`) carries `linkUrl`; `util/LinkText.kt` renders the
+  optimistic/offline row (server parse is authoritative).
+- **Share chooser:** ACTION_SEND now lands in a nav-host dialog — "Import as recipe" (the old
+  flow, unchanged when Discover is already open) or "Add to shopping list" (routes the raw text
+  through the normal add path).
+- **Verified:** server **341 pytest green** (31 new: split/slug tables, title-service fetch
+  matrix, endpoint + 422 regressions, merge first-link-wins) + ruff clean at CI scope; alembic
+  chain applies to a fresh DB. Android unit tests written (rejection-ghost, poison-row drain,
+  offline link split, undo-with-link, LinkText tables) but **not run locally — no Pulse checkout
+  in this environment**; CI (which checks out Pulse) is the Android gate for this branch.

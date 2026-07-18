@@ -10,10 +10,8 @@ sites without usable markup.
 """
 
 import hashlib
-import ipaddress
 import logging
 import uuid
-from urllib.parse import urlparse
 
 import httpx
 from fastapi import HTTPException, status
@@ -32,6 +30,7 @@ from app.recipes_ext.jsonld import fetch_recipe_from_url
 from app.recipes_ext.spoonacular import SpoonacularSource, normalize_information
 from app.schemas.recipe import IngredientIn, RecipeCreate, RecipeOut
 from app.services.recipe_service import create_recipe
+from app.services.url_guard import validate_public_http_url
 
 log = logging.getLogger(__name__)
 
@@ -136,22 +135,13 @@ async def import_recipe(
 
 def _validate_import_url(url: str) -> str:
     """http(s) only, no localhost/private-address literals — the server fetches this URL."""
-    bad = HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail="That doesn't look like a public recipe URL.",
-    )
-    parsed = urlparse(url.strip())
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise bad
-    host = parsed.hostname.casefold()
-    if host in ("localhost",) or host.endswith((".local", ".internal")):
-        raise bad
-    try:
-        if ipaddress.ip_address(host).is_private or ipaddress.ip_address(host).is_loopback:
-            raise bad
-    except ValueError:
-        pass  # a hostname, not an IP literal
-    return parsed.geturl()
+    validated = validate_public_http_url(url)
+    if validated is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That doesn't look like a public recipe URL.",
+        )
+    return validated
 
 
 async def import_recipe_from_url(

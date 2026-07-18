@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     recipe_discover_limit: int = 10
     # Timeout (seconds) for outbound Spoonacular calls.
     external_timeout_seconds: float = 8.0
+    # Timeout (seconds) for the best-effort product-page title fetch on a pasted shopping link.
+    # Shorter than external_timeout_seconds because it blocks an interactive add-bar POST.
+    link_title_timeout_seconds: float = 5.0
 
     # Plate integration (Phases 6–7 — CLAUDE.md §6). Cookbook reads recipe exports and food
     # matches from Plate, and writes diary entries, over Plate's cross-app surface. Auth is a

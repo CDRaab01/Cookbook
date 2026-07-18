@@ -86,6 +86,38 @@ class ShoppingViewModelTest {
     }
 
     @Test
+    fun `undo of a link item re-adds name plus url through the split path`() = runTest(dispatcher) {
+        val linked = item("1", "milk collector").copy(linkUrl = "https://meijer.com/p/1")
+        whenever(repository.getDefaultList()).thenReturn(list(linked))
+        whenever(repository.deleteItem(eq("list-1"), eq("1"))).thenReturn(list())
+        whenever(
+            repository.addItem(
+                eq("list-1"),
+                any(),
+                org.mockito.kotlin.anyOrNull(),
+                org.mockito.kotlin.anyOrNull(),
+                org.mockito.kotlin.anyOrNull(),
+            ),
+        ).thenReturn(list(linked))
+        viewModel.load()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.deleteItem("1")
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.undoDelete()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // The re-add carries "name url" so the server's split restores the link.
+        org.mockito.kotlin.verify(repository).addItem(
+            eq("list-1"),
+            eq("milk collector https://meijer.com/p/1"),
+            org.mockito.kotlin.anyOrNull(),
+            org.mockito.kotlin.anyOrNull(),
+            org.mockito.kotlin.anyOrNull(),
+        )
+    }
+
+    @Test
     fun `failed toggle rolls back and surfaces an error`() = runTest(dispatcher) {
         whenever(repository.getDefaultList()).thenReturn(list(item("1", "Milk")))
         whenever(repository.setChecked(any(), any(), any())).doThrow(RuntimeException("offline"))
