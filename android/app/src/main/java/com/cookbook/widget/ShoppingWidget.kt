@@ -174,9 +174,11 @@ private fun WidgetBody(names: List<Pair<String, String>>, toBuy: Int) {
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // Empty checkbox reads as "tap to check off" (Glance can't host a real
+                    // Compose Checkbox); tapping still checks the item and drops it from the list.
                     Text(
-                        "○",
-                        style = TextStyle(color = ColorProvider(HeatOrange), fontSize = 15.sp),
+                        "☐",
+                        style = TextStyle(color = ColorProvider(HeatOrange), fontSize = 16.sp),
                     )
                     Spacer(GlanceModifier.width(8.dp))
                     Text(
