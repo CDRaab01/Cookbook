@@ -9,6 +9,7 @@ os.environ.setdefault("DB_NULLPOOL", "true")
 
 import pytest
 import pytest_asyncio
+import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 
 from app.database import Base, engine
@@ -37,6 +38,11 @@ def event_loop():
 async def setup_tables():
     """Ensure all tables exist before any test runs (safe to call after alembic)."""
     async with engine.begin() as conn:
+        # The suite builds schema with create_all, not migrations, so the fuzzy-suggestion
+        # extensions (added in migration 0016) must be created here or similarity()/levenshtein()
+        # are undefined.
+        await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS fuzzystrmatch"))
         await conn.run_sync(Base.metadata.create_all)
     await engine.dispose()
     yield

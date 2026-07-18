@@ -132,6 +132,20 @@ async def test_suggest_blank_query_empty(auth_client):
     assert resp.json() == []
 
 
+async def test_suggest_fuzzy_similar_spelling(auth_client):
+    """A typo still surfaces the item via pg_trgm trigram similarity ("mlik" -> "milk")."""
+    lst = (await auth_client.get("/lists/default")).json()
+    await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Milk"})
+
+    # Substring miss (no "mlik" inside "milk"), but a close spelling — fuzzy should catch it.
+    hits = (await auth_client.get("/lists/suggest", params={"q": "mlik"})).json()
+    assert any(h["name"].lower() == "milk" for h in hits)
+
+    # An exact substring query still works unchanged.
+    hits = (await auth_client.get("/lists/suggest", params={"q": "mil"})).json()
+    assert any(h["name"].lower() == "milk" for h in hits)
+
+
 # ── Discover preview ─────────────────────────────────────────────────────────
 
 

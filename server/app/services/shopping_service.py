@@ -11,7 +11,7 @@ import datetime
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.limits import MAX_LIST_ITEMS
@@ -45,6 +45,12 @@ from app.services.recipe_service import load_accessible_recipe
 
 DEFAULT_LIST_NAME = "Groceries"
 MAX_SUGGESTIONS = 8
+# pg_trgm's default similarity() cutoff; a name scoring above this is a "similar spelling" hit.
+# Catches near-spellings of longer words ("bananna" -> "banana").
+SIMILARITY_THRESHOLD = 0.3
+# Max edit distance for the levenshtein fallback, which catches short-word typos/transpositions
+# that trigram similarity misses ("mlik" -> "milk" is only 0.11 similar but distance 2).
+MAX_EDIT_DISTANCE = 2
 
 
 async def _reload(db: AsyncSession, list_id: uuid.UUID) -> ShoppingList:
@@ -228,14 +234,37 @@ async def recall_category(db: AsyncSession, user_id: uuid.UUID, name: str) -> st
 
 
 async def suggest_items(db: AsyncSession, user_id: uuid.UUID, q: str) -> list[SuggestionOut]:
-    """Autocomplete for the add dialog: your own most-used items matching the prefix."""
+    """Autocomplete for the add dialog: your own items matching the query.
+
+    Substring matches ("mil" → "milk") come first, ordered by most-used; typo-tolerant fuzzy
+    matches fill in below them, closest first. Two distance measures cover different misspellings:
+    trigram similarity for longer near-spellings ("bananna" → "banana") and levenshtein edit
+    distance for short-word typos/transpositions trigrams miss ("mlik" → "milk"). Both only ever
+    match against the user's own history, so a loose fuzzy match can't surface a stranger's item.
+    """
     text = q.strip()
     if not text:
         return []
+    substring = ItemHistory.name.ilike(f"%{text}%")
+    similarity = func.similarity(ItemHistory.name, text)
+    edit_distance = func.levenshtein(func.lower(ItemHistory.name), text.lower())
     result = await db.execute(
         select(ItemHistory)
-        .where(ItemHistory.user_id == user_id, ItemHistory.name.ilike(f"%{text}%"))
-        .order_by(ItemHistory.use_count.desc(), ItemHistory.last_used.desc())
+        .where(
+            ItemHistory.user_id == user_id,
+            or_(
+                substring,
+                similarity > SIMILARITY_THRESHOLD,
+                edit_distance <= MAX_EDIT_DISTANCE,
+            ),
+        )
+        .order_by(
+            substring.desc(),  # real substring hits first
+            ItemHistory.use_count.desc(),  # then most-used
+            similarity.desc(),  # then closest spelling
+            edit_distance.asc(),  # then fewest edits
+            ItemHistory.last_used.desc(),
+        )
         .limit(MAX_SUGGESTIONS)
     )
     return [
