@@ -28,6 +28,8 @@ data class ShoppingItemEntity(
     val category: String?,
     // Product-page URL for a pasted-link item (v0.5); the name is a clean human title.
     val linkUrl: String? = null,
+    // Product thumbnail for a link item (v0.6).
+    val imageUrl: String? = null,
     val checked: Boolean,
     val recipeId: String?,
     val order: Int,

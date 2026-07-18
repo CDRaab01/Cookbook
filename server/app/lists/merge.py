@@ -178,6 +178,7 @@ class IncomingItem:
     category: str | None = None
     note: str | None = None
     link_url: str | None = None
+    image_url: str | None = None
     measures: list[Measure] = field(default_factory=list)
 
     def __post_init__(self):
@@ -202,6 +203,7 @@ def merge_incoming(incoming: list[IncomingItem]) -> list[IncomingItem]:
             existing.category = existing.category or item.category
             existing.note = existing.note or item.note
             existing.link_url = existing.link_url or item.link_url
+            existing.image_url = existing.image_url or item.image_url
         else:
             merged[key] = item
             order.append(key)

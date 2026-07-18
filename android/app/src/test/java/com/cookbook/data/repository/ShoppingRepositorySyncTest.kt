@@ -414,6 +414,24 @@ class ShoppingRepositorySyncTest {
     }
 
     @Test
+    fun `server thumbnail and link survive the Room round-trip`() = runTest {
+        api.serverItems += ShoppingItemOut(
+            id = "s1",
+            name = "milk collector",
+            linkUrl = "https://meijer.com/p/1",
+            imageUrl = "https://cdn.meijer.com/p1.jpg",
+        )
+        val repo = repository()
+
+        val list = repo.getDefaultList()
+
+        val row = list.items.single()
+        assertEquals("https://meijer.com/p/1", row.linkUrl)
+        assertEquals("https://cdn.meijer.com/p1.jpg", row.imageUrl)
+        assertEquals("https://cdn.meijer.com/p1.jpg", dao.rows.values.single().imageUrl)
+    }
+
+    @Test
     fun `url-only offline add gets a slug-derived local name`() = runTest {
         val repo = repository()
         repo.getDefaultList()

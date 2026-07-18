@@ -118,6 +118,37 @@ class ShoppingViewModelTest {
     }
 
     @Test
+    fun `link quantity stepper is optimistic and calls editItem with the new count`() =
+        runTest(dispatcher) {
+            val linked = item("1", "milk collector").copy(
+                linkUrl = "https://meijer.com/p/1", quantity = 1.0,
+            )
+            whenever(repository.getDefaultList()).thenReturn(list(linked))
+            whenever(
+                repository.editItem(
+                    eq("list-1"), eq("1"), eq("milk collector"), eq(2.0),
+                    org.mockito.kotlin.anyOrNull(), org.mockito.kotlin.anyOrNull(),
+                    org.mockito.kotlin.any(),
+                ),
+            ).thenReturn(list(linked.copy(quantity = 2.0)))
+            viewModel.load()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.setLinkItemQuantity(linked, 2)
+            // Optimistic before the round-trip settles.
+            val optimistic = viewModel.list.value
+            assertIs<UiState.Success<ShoppingListOut>>(optimistic)
+            assertEquals(2.0, optimistic.data.items.single().quantity)
+
+            dispatcher.scheduler.advanceUntilIdle()
+            org.mockito.kotlin.verify(repository).editItem(
+                eq("list-1"), eq("1"), eq("milk collector"), eq(2.0),
+                org.mockito.kotlin.anyOrNull(), org.mockito.kotlin.anyOrNull(),
+                org.mockito.kotlin.any(),
+            )
+        }
+
+    @Test
     fun `failed toggle rolls back and surfaces an error`() = runTest(dispatcher) {
         whenever(repository.getDefaultList()).thenReturn(list(item("1", "Milk")))
         whenever(repository.setChecked(any(), any(), any())).doThrow(RuntimeException("offline"))

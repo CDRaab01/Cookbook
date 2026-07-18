@@ -1,17 +1,23 @@
-"""Best-effort product-page title for a pasted shopping link (v0.5).
+"""Best-effort product-page preview for a pasted shopping link (v0.5 title, v0.6 image).
 
-A URL-only add ("https://www.meijer.com/…/haakaa-…/942006020367.html?gclid=…") deserves a
-human name. This fetches the page (same SSRF guard, browser UA, and size cap as the recipe
-URL import) and extracts a title: JSON-LD ``Product.name`` first (retail pages publish it for
-search engines), then ``og:title``, then ``<title>``. Every failure — unsafe URL, network
-error, non-2xx, oversize page, nothing extractable — degrades to ``None``; the caller falls
-back to a slug-derived name (:func:`app.lists.link_items.name_from_url`). Never raises: a
-missing title must not block adding the item.
+A pasted product URL ("https://www.meijer.com/…/haakaa-…/942006020367.html?gclid=…") deserves
+a human name and a thumbnail. This fetches the page once (same SSRF guard, browser UA, and size
+cap as the recipe URL import) and extracts:
+
+- a **title**: JSON-LD ``Product.name`` first (retail pages publish it for search engines),
+  then ``og:title``, then ``<title>``;
+- an **image**: JSON-LD ``Product.image`` (string / list / ImageObject), then ``og:image``.
+
+Every failure — unsafe URL, network error, non-2xx, oversize page, nothing extractable —
+degrades to an empty :class:`LinkPreview`; the caller falls back to a slug-derived name
+(:func:`app.lists.link_items.name_from_url`). Never raises: a missing preview must not block
+adding the item.
 """
 
 import html as html_lib
 import logging
 import re
+from dataclasses import dataclass
 
 import httpx
 
@@ -21,9 +27,16 @@ from app.services.url_guard import validate_public_http_url
 
 log = logging.getLogger(__name__)
 
+MAX_IMAGE_URL_LENGTH = 2048
+
 _OG_TITLE_RE = re.compile(
     r"<meta\s+[^>]*?(?:property\s*=\s*[\"']og:title[\"'][^>]*?content\s*=\s*[\"']([^\"']+)[\"']"
     r"|content\s*=\s*[\"']([^\"']+)[\"'][^>]*?property\s*=\s*[\"']og:title[\"'])",
+    re.IGNORECASE | re.DOTALL,
+)
+_OG_IMAGE_RE = re.compile(
+    r"<meta\s+[^>]*?(?:property\s*=\s*[\"']og:image[\"'][^>]*?content\s*=\s*[\"']([^\"']+)[\"']"
+    r"|content\s*=\s*[\"']([^\"']+)[\"'][^>]*?property\s*=\s*[\"']og:image[\"'])",
     re.IGNORECASE | re.DOTALL,
 )
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
@@ -31,6 +44,14 @@ _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 # Site-name suffixes ("Haakaa Ladybug Milk Collectors | Meijer") get dropped: split on the
 # common separators and keep the first non-empty part.
 _SITE_SUFFIX_SEPARATORS = (" | ", " – ", " — ")
+
+
+@dataclass
+class LinkPreview:
+    """What a product page yielded. Either field may be None (nothing usable found)."""
+
+    title: str | None = None
+    image_url: str | None = None
 
 
 def _is_product_node(node) -> bool:
@@ -87,11 +108,54 @@ def _clean_title(raw: str) -> str | None:
     return title[:255] or None
 
 
-async def resolve_link_title(url: str, *, client: httpx.AsyncClient | None = None) -> str | None:
-    """The page's product/OpenGraph/document title, or None on any failure. Never raises."""
+def _first_image_url(value) -> str | None:
+    """JSON-LD ``image`` is a string, a list, or an ImageObject ({"url": …}) — pull the first
+    usable URL out of any of those shapes."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        url = value.get("url")
+        return url if isinstance(url, str) else None
+    if isinstance(value, list):
+        for entry in value:
+            url = _first_image_url(entry)
+            if url is not None:
+                return url
+    return None
+
+
+def _product_image(html: str) -> str | None:
+    for payload in extract_jsonld_blocks(html):
+        node = _find_product_node(payload)
+        if node is not None:
+            url = _first_image_url(node.get("image"))
+            if url:
+                return url
+    return None
+
+
+def _og_image(html: str) -> str | None:
+    match = _OG_IMAGE_RE.search(html)
+    if match is None:
+        return None
+    return match.group(1) or match.group(2)
+
+
+def _clean_image_url(raw: str | None) -> str | None:
+    """Only a plain public http(s) image URL survives — a thumbnail the client will fetch."""
+    if not raw:
+        return None
+    url = html_lib.unescape(raw.strip())
+    if not url.startswith(("http://", "https://")) or len(url) > MAX_IMAGE_URL_LENGTH:
+        return None
+    return url
+
+
+async def resolve_link_preview(url: str, *, client: httpx.AsyncClient | None = None) -> LinkPreview:
+    """The page's title + thumbnail (either may be None). Never raises; empty on any failure."""
     safe_url = validate_public_http_url(url)
     if safe_url is None:
-        return None  # the link is still stored; we just don't fetch it
+        return LinkPreview()  # the link is still stored; we just don't fetch it
     try:
         if client is not None:
             resp = await client.get(safe_url, headers=BROWSER_HEADERS, follow_redirects=True)
@@ -100,13 +164,13 @@ async def resolve_link_title(url: str, *, client: httpx.AsyncClient | None = Non
                 resp = await owned.get(safe_url, headers=BROWSER_HEADERS, follow_redirects=True)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
-        log.info("link-title: fetch failed for %s: %s", safe_url, exc)
-        return None
+        log.info("link-preview: fetch failed for %s: %s", safe_url, exc)
+        return LinkPreview()
     if len(resp.content) > MAX_PAGE_BYTES:
-        log.info("link-title: page too large (%d bytes): %s", len(resp.content), safe_url)
-        return None
+        log.info("link-preview: page too large (%d bytes): %s", len(resp.content), safe_url)
+        return LinkPreview()
     html = resp.text
-    raw = _product_name(html) or _og_title(html) or _html_title(html)
-    if raw is None:
-        return None
-    return _clean_title(raw)
+    raw_title = _product_name(html) or _og_title(html) or _html_title(html)
+    title = _clean_title(raw_title) if raw_title else None
+    image_url = _clean_image_url(_product_image(html) or _og_image(html))
+    return LinkPreview(title=title, image_url=image_url)
