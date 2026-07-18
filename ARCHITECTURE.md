@@ -81,7 +81,8 @@ Standard suite MVVM. Feature packages:
 - `ui/shopping/` — the core surface: category-grouped checklist, tap-to-check (optimistic,
   offline-queued), checked items sweep to a dimmed bottom, clear-checked, list switcher
   (multiple named lists; the default = the oldest list), autocomplete + category recall from
-  `item_history`.
+  `item_history` (substring first, then pg_trgm fuzzy/similar-spelling matches). The home-screen
+  Glance widget mirrors the same list and taps to check off (`widget/ShoppingWidget.kt`).
 - `ui/recipe/` — book/detail/editor (servings rescaler is display-only math), cook events
   ("Made it"), share/duplicate; `RecipeDraftStore` receives photo/URL-import drafts. **Family
   mode:** the list splits into **Family** (`shared==true`, household-wide) and **Yours**
