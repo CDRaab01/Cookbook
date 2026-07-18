@@ -193,6 +193,8 @@ class ItemOut(BaseModel):
     category: str | None = None
     # Product-page URL for a pasted-link item; the name stays a clean human title.
     link_url: str | None = None
+    # Product thumbnail for a link item (v0.6); the client fetches it directly.
+    image_url: str | None = None
     checked: bool
     checked_at: datetime.datetime | None = None
     recipe_id: uuid.UUID | None = None

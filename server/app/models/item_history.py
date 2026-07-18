@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -27,6 +27,11 @@ class ItemHistory(Base):
     name: Mapped[str] = mapped_column(String(255))
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # "Buy again" (v0.6): the product link + thumbnail last used for this item name, so re-adding
+    # it by name re-attaches both. Only ever written from *typed* adds, so URL-derived product
+    # titles never leak into autocomplete.
+    link_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     use_count: Mapped[int] = mapped_column(Integer, default=1)
     last_used: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

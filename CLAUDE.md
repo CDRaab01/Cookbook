@@ -606,3 +606,25 @@ reconnect sync pass. Fixes + the feature that falls out:
   chain applies to a fresh DB. Android unit tests written (rejection-ghost, poison-row drain,
   offline link split, undo-with-link, LinkText tables) but **not run locally — no Pulse checkout
   in this environment**; CI (which checks out Pulse) is the Android gate for this branch.
+
+## v0.6 (2026-07-18) — link previews, quantity, "buy again" (same branch)
+
+Three follow-ons that make link items feel finished, built on the v0.5 base:
+
+- **Product thumbnails (image-only):** the one guarded page fetch now returns a
+  `LinkPreview(title, image_url)` — `resolve_link_preview` extracts JSON-LD `Product.image` /
+  `og:image` alongside the title, so a link add (URL-only *or* typed+URL) gets a picture. Stored
+  in `shopping_list_items.image_url` (migration `0018`, Text); the row shows a Coil thumbnail.
+  Deliberately **no price** (per the CLAUDE.md price-scope note; user-confirmed image-only).
+- **Quantity stepper:** link rows get a −/＋ "×N" count (Android `QuantityStepper` →
+  `ShoppingViewModel.setLinkItemQuantity`, optimistic like check-off, reusing `editItem`); the
+  recipe-measures caption is suppressed for link items so the two never double up.
+- **"Buy again" link recall:** `item_history` gained `link_url`/`image_url`, written only from
+  *typed* adds; `recall_link` re-attaches the remembered link + thumbnail when you re-add an item
+  by name (e.g. "milk collector" after clearing it), with no re-paste. URL-only adds still never
+  touch history, so autocomplete stays clean. Clearing a link (edit dialog) drops its thumbnail
+  too, both server- and client-side.
+- **Verified:** server **347 pytest green** (6 new: image extraction, thumbnail on both add
+  paths, buy-again recall + its typed-only guard, clear-drops-thumbnail) + ruff clean; alembic
+  chain (→0018) applies to a fresh DB. Android: DTO/Room `imageUrl` (schema v6, `MIGRATION_5_6`),
+  new VM + repo tests; **not run locally (no Pulse checkout) — CI is the Android gate**.

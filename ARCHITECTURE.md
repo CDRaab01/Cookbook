@@ -35,11 +35,15 @@ pure domain package **`app/lists/`** — the app's kernel:
 - **`lists/categorize.py`** — store-category guesser (fallback behind `item_history` recall).
 - **`lists/link_items.py`** — pasted-product-link splitting (v0.5): `split_link` pulls the first
   URL out of add-bar text; `name_from_url` derives a readable slug-based fallback name. The
-  service layer pairs it with **`services/link_title_service.py`** (best-effort JSON-LD
-  `Product.name` → `og:title` → `<title>` fetch behind the shared SSRF guard
-  `services/url_guard.py`; never raises) so a URL-only add gets a human title. URL-derived names
-  never enter `item_history` (no SKU-title autocomplete pollution), and category
-  recall/guessing only ever sees the cleaned name.
+  service layer pairs it with **`services/link_title_service.py`** — a best-effort
+  `resolve_link_preview` that returns a `LinkPreview(title, image_url)` from one guarded fetch
+  (JSON-LD `Product.name`/`Product.image` → `og:title`/`og:image` → `<title>`, behind the shared
+  SSRF guard `services/url_guard.py`; never raises). A link add gets a human title **and a
+  thumbnail** (v0.6). URL-derived names never enter `item_history` (no SKU-title autocomplete
+  pollution), and category recall/guessing only ever sees the cleaned name.
+- **"Buy again" recall (v0.6):** `item_history` remembers the link + thumbnail from *typed* adds
+  (`recall_link`), so re-adding an item by name ("milk collector") re-attaches both with no
+  re-paste — while URL-only adds still stay out of history entirely.
 - **`lists/pantry_match.py`** — pantry↔recipe ingredient matching (token-set subset in either
   direction, descriptor stopwords, staples logic). Documented looseness ("milk" ⊆ "coconut milk")
   is a decision, not a bug.
@@ -78,7 +82,8 @@ Alembic 0001–0017, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 p
 0011 meal-confirmations, 0012 cook-rating, 0013 plan-entry-scale, 0014 household-sharing,
 0015 household-member-status, 0016 item-history-trigram, 0017 item-link-url —
 `shopping_list_items.link_url`, Text, first-link-wins on merge; item names are capped at 255
-with a clean 422, never a DB 500). ~340 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
+with a clean 422, never a DB 500; 0018 link-preview-and-recall — `shopping_list_items.image_url`
++ `item_history.link_url`/`image_url` for thumbnails and "buy again"). ~347 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
 `DATABASE_URL` on **127.0.0.1:5434**, `DB_NULLPOOL=true` (conftest sets NullPool; bcrypt dropped
 to 4 rounds tests-only). One env-dependent local-only failure when the live `.env` has
 `SUITE_JWKS_URL` set; green in CI.
@@ -92,10 +97,12 @@ Standard suite MVVM. Feature packages:
   (multiple named lists; the default = the oldest list), autocomplete + category recall from
   `item_history` (substring first, then pg_trgm fuzzy/similar-spelling matches). The home-screen
   Glance widget mirrors the same list and taps to check off (`widget/ShoppingWidget.kt`).
-  **Link items (v0.5):** a product URL pasted into the add bar becomes a titled row with a
-  tappable domain chip (opens the browser); `util/LinkText.kt` mirrors the server split for the
-  optimistic/offline row only — the server's parse is authoritative on reconcile. Grouping
-  coerces null *and unknown* categories into "Other" so no item can be counted yet unrendered.
+  **Link items (v0.5/v0.6):** a product URL pasted into the add bar becomes a titled row with a
+  tappable domain chip (opens the browser), a **product thumbnail** (Coil `AsyncImage` off the
+  server's `image_url`), and a **−/＋ count stepper** ("×2" — a distinct product you buy N of).
+  `util/LinkText.kt` mirrors the server split for the optimistic/offline row only — the server's
+  parse (title + image) is authoritative on reconcile. Grouping coerces null *and unknown*
+  categories into "Other" so no item can be counted yet unrendered.
 - `ui/recipe/` — book/detail/editor (servings rescaler is display-only math), cook events
   ("Made it"), share/duplicate; `RecipeDraftStore` receives photo/URL-import drafts. **Family
   mode:** the list splits into **Family** (`shared==true`, household-wide) and **Yours**

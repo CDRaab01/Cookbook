@@ -42,7 +42,7 @@ from app.schemas.shopping import (
     MemberOut,
     SuggestionOut,
 )
-from app.services.link_title_service import resolve_link_title
+from app.services.link_title_service import resolve_link_preview
 from app.services.recipe_service import load_accessible_recipe
 
 DEFAULT_LIST_NAME = "Groceries"
@@ -173,6 +173,8 @@ def _merge_into_list(
             # First link wins — a merge shouldn't drop or churn an existing product link.
             if target.link_url is None:
                 target.link_url = inc.link_url
+            if target.image_url is None:
+                target.image_url = inc.image_url
             # Multi-recipe provenance collapses to "manual/mixed" (NULL) rather than lying.
             if recipe_id is not None and target.recipe_id != recipe_id:
                 target.recipe_id = None
@@ -181,6 +183,7 @@ def _merge_into_list(
                 name=inc.name,
                 category=inc.category,
                 link_url=inc.link_url,
+                image_url=inc.image_url,
                 recipe_id=recipe_id,
                 order=order,
             )
@@ -215,6 +218,11 @@ async def _record_history(db: AsyncSession, user_id: uuid.UUID, items: list[Inco
                 row.unit = unit
             if item.category is not None:
                 row.category = item.category
+            # "Buy again": remember the latest link/thumbnail, but never clobber a remembered
+            # one with None (a later plain add of the same name shouldn't forget the link).
+            if item.link_url is not None:
+                row.link_url = item.link_url
+                row.image_url = item.image_url
         else:
             db.add(
                 ItemHistory(
@@ -223,9 +231,26 @@ async def _record_history(db: AsyncSession, user_id: uuid.UUID, items: list[Inco
                     name=item.name,
                     unit=unit,
                     category=item.category,
+                    link_url=item.link_url,
+                    image_url=item.image_url,
                     last_used=now,
                 )
             )
+
+
+async def recall_link(
+    db: AsyncSession, user_id: uuid.UUID, name: str
+) -> tuple[str, str | None] | None:
+    """The (link_url, image_url) last used for this item name, or None — "buy again"."""
+    result = await db.execute(
+        select(ItemHistory.link_url, ItemHistory.image_url).where(
+            ItemHistory.user_id == user_id, ItemHistory.key == normalize_name(name)
+        )
+    )
+    row = result.first()
+    if row is None or row.link_url is None:
+        return None
+    return row.link_url, row.image_url
 
 
 async def recall_category(db: AsyncSession, user_id: uuid.UUID, name: str) -> str | None:
@@ -477,6 +502,7 @@ async def add_item(
     # name stays human — typed text when there is any, else the page's title, else a name
     # derived from the URL slug. The list shows things you buy, not tracking parameters.
     typed, url = split_link(req.name)
+    link_url, image_url = url, None
     if url is None:
         if len(req.name) > MAX_ITEM_NAME_LENGTH:
             raise HTTPException(
@@ -484,15 +510,27 @@ async def add_item(
                 detail=f"item name is limited to {MAX_ITEM_NAME_LENGTH} characters",
             )
         name = req.name
-    elif typed:
-        name = typed[:MAX_ITEM_NAME_LENGTH]
+        # "Buy again" (v0.6): a plain typed add re-attaches the link + thumbnail last used for
+        # this name, so "milk collector" comes back linked without re-pasting the URL.
+        recalled = await recall_link(db, user_id, name)
+        if recalled is not None:
+            link_url, image_url = recalled
     else:
-        name = (await resolve_link_title(url) or name_from_url(url))[:MAX_ITEM_NAME_LENGTH]
+        # One fetch gets both the title and the thumbnail (v0.6) — used even when the user typed
+        # their own name, so a typed+URL add still gets a picture.
+        preview = await resolve_link_preview(url)
+        image_url = preview.image_url
+        name = (typed or preview.title or name_from_url(url))[:MAX_ITEM_NAME_LENGTH]
     # Uncategorized adds get auto-sorted: the category you used last time, else a keyword guess
     # — always from the cleaned name, so a URL slug can't keyword-match a random aisle.
     category = req.category or await recall_category(db, user_id, name)
     incoming = IncomingItem(
-        name=name, quantity=req.quantity, unit=req.unit, category=category, link_url=url
+        name=name,
+        quantity=req.quantity,
+        unit=req.unit,
+        category=category,
+        link_url=link_url,
+        image_url=image_url,
     )
     _merge_into_list(shopping_list, [incoming], recipe_id=None)
     # History feeds autocomplete with *your* vocabulary: typed text is worth remembering, a
@@ -578,6 +616,8 @@ async def update_item(
         item.category = req.category
     if req.link_url is not None:
         item.link_url = req.link_url or None  # "" is the clearing sentinel
+        if not req.link_url:
+            item.image_url = None  # removing the link drops its thumbnail too
     if req.checked is not None and req.checked != item.checked:
         item.checked = req.checked
         item.checked_at = datetime.datetime.now(datetime.timezone.utc) if req.checked else None

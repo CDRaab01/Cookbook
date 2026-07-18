@@ -62,6 +62,9 @@ class ShoppingListItem(Base):
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Product-page URL for a pasted-link item (v0.5); the name stays a clean human title.
     link_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Product thumbnail (og:image / JSON-LD Product.image) for a link item (v0.6); the client
+    # fetches it directly. NULL when the page had none.
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     checked: Mapped[bool] = mapped_column(Boolean, default=False)
     checked_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
