@@ -2,6 +2,7 @@ package com.cookbook.ui.shopping
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,8 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Link
@@ -29,22 +32,21 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -110,17 +112,12 @@ fun ShoppingScreen(
     // launcher shortcut can focus it, and it survives while the list reloads underneath.
     var addQuery by remember { mutableStateOf("") }
     val addFocus = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
     val onAddQueryChange: (String) -> Unit = { q ->
         addQuery = q
         viewModel.onAddNameChanged(q)
     }
-    // Jump straight into the docked add bar. runCatching: the bar isn't composed until the list
-    // loads (Success), so a tap during the brief Loading state is a no-op rather than a crash.
-    fun focusAddBar() {
-        runCatching { addFocus.requestFocus() }
-        keyboard?.show()
-    }
+    // The add UI is now a pop-up sheet raised by the bottom-right + bubble (no docked bar).
+    var showAddSheet by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ShoppingItemOut?>(null) }
     var listMenuOpen by remember { mutableStateOf(false) }
     var namingList by remember { mutableStateOf<String?>(null) } // "new" or "rename"
@@ -130,7 +127,7 @@ fun ShoppingScreen(
     // Honor the "Add item" launcher shortcut once we've landed here.
     LaunchedEffect(openAddItem) {
         if (openAddItem) {
-            focusAddBar()
+            showAddSheet = true
             onAddItemConsumed()
         }
     }
@@ -241,9 +238,6 @@ fun ShoppingScreen(
                     IconButton(onClick = viewModel::load) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
-                    IconButton(onClick = { focusAddBar() }) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Add item")
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -251,17 +245,16 @@ fun ShoppingScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = {
-            // Persistent "Add an item" bar, docked above the tab bar and lifting over the
-            // keyboard. Only shown once a list exists (adds target the current list).
+        floatingActionButton = {
+            // The add UI is a pop-up now: a floating + bubble raises the add sheet.
             if (state is UiState.Success) {
-                AddItemBar(
-                    query = addQuery,
-                    suggestions = suggestions,
-                    onQueryChanged = onAddQueryChange,
-                    onAdd = { name, unit, category -> viewModel.addItem(name, null, unit, category) },
-                    focusRequester = addFocus,
-                )
+                FloatingActionButton(
+                    onClick = { showAddSheet = true },
+                    containerColor = CookbookTheme.colors.heat.base,
+                    contentColor = CookbookTheme.colors.heat.on,
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = "Add an item")
+                }
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -317,6 +310,18 @@ fun ShoppingScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (showAddSheet) {
+        ModalBottomSheet(onDismissRequest = { showAddSheet = false }) {
+            AddItemSheet(
+                query = addQuery,
+                suggestions = suggestions,
+                onQueryChanged = onAddQueryChange,
+                onAdd = { name, unit, category -> viewModel.addItem(name, null, unit, category) },
+                focusRequester = addFocus,
+            )
         }
     }
 
@@ -404,7 +409,10 @@ internal fun ShoppingListBody(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        // Extra bottom room so the last rows clear the floating + bubble.
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         grocerySpend?.let { spend ->
@@ -564,14 +572,22 @@ private fun ShoppingItemRow(
             .alpha(if (item.checked) 0.55f else 1f),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(
-            checked = item.checked,
-            onCheckedChange = onToggle,
-            colors = CheckboxDefaults.colors(
-                checkedColor = colors.fresh.base,
-                checkmarkColor = colors.fresh.on,
-            ),
-        )
+        // Compact icon checkbox (no Material 48dp min-touch floor) so rows pack tightly. Green
+        // when checked, matching the buy-amount cue; the whole square is the tap target.
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clickable { onToggle(!item.checked) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (item.checked) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
+                contentDescription = if (item.checked) "Uncheck ${item.name}" else "Check ${item.name}",
+                tint = if (item.checked) colors.fresh.base else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+        Spacer(Modifier.width(6.dp))
         // A link item's product thumbnail leads the row so you recognize it on the shelf.
         item.imageUrl?.let { image ->
             AsyncImage(
@@ -691,14 +707,14 @@ private fun categoryEmoji(category: String?): String = when (category) {
 }
 
 /**
- * The persistent "Add an item" bar docked at the bottom of the shopping list. Type an item and
- * send it (the keyboard action, the button, or a tap on a history suggestion) — it's added and
- * the field clears but keeps focus, so a whole mental list rattles off without reopening anything.
- * History suggestions (substring + fuzzy, from the server) appear just above the field as you
- * type; no quantity/unit/category up front — set those later via tap-to-edit on the row.
+ * The "Add an item" pop-up sheet, raised by the floating + bubble. Type an item and send it (the
+ * keyboard action, the button, or a tap on a history suggestion) — it's added and the field clears
+ * but keeps focus, so a whole mental list rattles off without dismissing the sheet. History
+ * suggestions (substring + fuzzy, from the server) appear above the field as you type; no
+ * quantity/unit/category up front — set those later via tap-to-edit on the row.
  */
 @Composable
-private fun AddItemBar(
+private fun AddItemSheet(
     query: String,
     suggestions: List<SuggestionOut>,
     onQueryChanged: (String) -> Unit,
@@ -717,65 +733,71 @@ private fun AddItemBar(
         keyboard?.show()
     }
 
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 3.dp,
-        modifier = Modifier.fillMaxWidth().imePadding(),
+    // Open straight onto the keyboard so the sheet is ready to type into.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(120)
+        runCatching { focusRequester.requestFocus() }
+        keyboard?.show()
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .imePadding()
+            .padding(bottom = 12.dp),
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            if (query.isNotBlank() && suggestions.isNotEmpty()) {
-                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
-                    items(suggestions, key = { it.name }) { hit ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { submit(hit.name, hit.unit, hit.category) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(categoryEmoji(hit.category), style = MaterialTheme.typography.titleMedium)
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                hit.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Caption(categoryLabel(hit.category))
-                        }
+        if (query.isNotBlank() && suggestions.isNotEmpty()) {
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
+                items(suggestions, key = { it.name }) { hit ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { submit(hit.name, hit.unit, hit.category) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(categoryEmoji(hit.category), style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.width(12.dp))
+                        Text(
+                            hit.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Caption(categoryLabel(hit.category))
                     }
                 }
-                androidx.compose.material3.HorizontalDivider()
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            androidx.compose.material3.HorizontalDivider()
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = onQueryChanged,
+                modifier = Modifier.weight(1f).focusRequester(focusRequester),
+                placeholder = { Text("Add an item") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Done,
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submit(query) }),
+            )
+            Spacer(Modifier.width(8.dp))
+            FilledIconButton(
+                onClick = { submit(query) },
+                enabled = query.isNotBlank(),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = colors.heat.base,
+                    contentColor = colors.heat.on,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
             ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChanged,
-                    modifier = Modifier.weight(1f).focusRequester(focusRequester),
-                    placeholder = { Text("Add an item") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Done,
-                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { submit(query) }),
-                )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = { submit(query) },
-                    enabled = query.isNotBlank(),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = colors.heat.base,
-                        contentColor = colors.heat.on,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Icon(Icons.Outlined.Add, contentDescription = "Add item")
-                }
+                Icon(Icons.Outlined.Add, contentDescription = "Add item")
             }
         }
     }
