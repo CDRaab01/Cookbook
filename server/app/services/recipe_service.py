@@ -164,6 +164,17 @@ async def create_recipe(
     source: str = "manual",
     source_id: str | None = None,
 ) -> RecipeOut:
+    # Imports carry a stable source_id (Spoonacular id / url:<hash>). Re-importing the same page —
+    # or a double-tap that beats the client guard — must not create a second copy: return the
+    # existing recipe instead. Manual recipes (source_id=None) are always distinct new rows.
+    if source_id is not None:
+        existing = await db.execute(
+            select(Recipe).where(Recipe.user_id == user_id, Recipe.source_id == source_id).limit(1)
+        )
+        already = existing.scalar_one_or_none()
+        if already is not None:
+            return RecipeOut.model_validate(await _reload(db, already.id))
+
     recipe = Recipe(
         user_id=user_id,
         name=req.name,

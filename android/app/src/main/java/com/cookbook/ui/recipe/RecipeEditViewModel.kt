@@ -155,6 +155,16 @@ class RecipeEditViewModel @Inject constructor(
         it.copy(steps = it.steps.mapIndexed { i, s -> if (i == index) text else s })
     }
 
+    /** Move a step one slot toward `index + delta` (delta ±1); no-op if it would fall off an end.
+     * The server renumbers `order` from list position on save, so reordering here is enough. */
+    fun moveStep(index: Int, delta: Int) = update {
+        val target = index + delta
+        if (index !in it.steps.indices || target !in it.steps.indices) return@update it
+        val reordered = it.steps.toMutableList()
+        reordered.add(target, reordered.removeAt(index))
+        it.copy(steps = reordered)
+    }
+
     /** Client-side validation mirror of the server rules; returns null when the draft is savable. */
     fun validate(d: RecipeDraft = _draft.value): String? {
         if (d.name.isBlank()) return "Give the recipe a name"

@@ -147,6 +147,36 @@ async def test_import_url_endpoint(auth_client, monkeypatch):
     assert body["ingredients"][0]["category"] == "meat"
 
 
+async def test_import_url_is_idempotent(auth_client, monkeypatch):
+    """Re-importing the same URL returns the existing recipe, not a duplicate row — the fix for
+    the same recipe appearing twice in the list after two imports (or a double-tap)."""
+    from app.recipes_ext.base import NormalizedIngredient, NormalizedRecipe
+
+    async def fake_fetch(url, client):
+        return NormalizedRecipe(
+            source_id=url,
+            title="Blog Chili",
+            ingredients=[
+                NormalizedIngredient(name="ground beef", quantity=1.5, unit="lb", category="meat")
+            ],
+            steps=["Cook it."],
+            servings=4,
+            source_url=url,
+        )
+
+    monkeypatch.setattr("app.services.recipe_discovery_service.fetch_recipe_from_url", fake_fetch)
+    url = "https://blog.example.com/chili"
+
+    first = await auth_client.post("/recipes/import-url", json={"url": url})
+    second = await auth_client.post("/recipes/import-url", json={"url": url})
+    assert first.status_code == 201 and second.status_code == 201, second.text
+    assert first.json()["id"] == second.json()["id"]
+
+    listing = await auth_client.get("/recipes")
+    assert listing.status_code == 200
+    assert sum(1 for r in listing.json() if r["name"] == "Blog Chili") == 1
+
+
 async def test_import_url_rejects_unsafe_urls(auth_client):
     for url in (
         "ftp://example.com/recipe",
