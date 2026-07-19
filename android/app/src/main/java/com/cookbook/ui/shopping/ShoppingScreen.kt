@@ -591,10 +591,12 @@ private fun ShoppingItemRow(
                     DataText(
                         label,
                         style = CookbookTheme.dataType.numeral,
+                        // Buy-amounts read in recovery green (a "good, keep this" cue) — these are
+                        // the amounts that survive the cooking-measure filter, so you shop by them.
                         color = if (item.checked) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
-                            colors.heat.base
+                            colors.fresh.base
                         },
                     )
                 }
