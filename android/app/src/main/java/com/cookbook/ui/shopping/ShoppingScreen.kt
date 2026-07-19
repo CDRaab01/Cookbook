@@ -65,6 +65,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -393,7 +394,7 @@ internal fun ShoppingListBody(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         grocerySpend?.let { spend ->
             item(key = "grocery_spend") {
@@ -549,7 +550,8 @@ private fun ShoppingItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .alpha(if (item.checked) 0.55f else 1f),
+            .alpha(if (item.checked) 0.55f else 1f)
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
@@ -577,7 +579,10 @@ private fun ShoppingItemRow(
         Column(modifier = Modifier.weight(1f).clickable(onClick = onEdit)) {
             Text(
                 item.name,
-                style = MaterialTheme.typography.bodyLarge.copy(
+                // Big, bold rows: a shopping list is read at arm's length in a store aisle, so
+                // the item name leads at titleLarge/Medium (was bodyLarge) for glanceability.
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Medium,
                     textDecoration = if (item.checked) TextDecoration.LineThrough else TextDecoration.None,
                 ),
                 // Safety net: an over-long name (e.g. a pasted URL on an old server) must not
