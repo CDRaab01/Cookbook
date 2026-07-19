@@ -52,6 +52,9 @@ class ShoppingRepositoryImpl @Inject constructor(
     override val offline: StateFlow<Boolean> = _offline
 
     override suspend fun getDefaultList(): ShoppingListOut {
+        // On the first load of a launch, jump to the user's pinned default (if any); after that,
+        // a within-session switch holds and the pin re-applies next cold start.
+        appPreferences.seedActiveListFromPin()
         val activeId = appPreferences.shoppingListId.firstOrNull()
         return try {
             val fresh = if (activeId == null) {
@@ -79,6 +82,13 @@ class ShoppingRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setActiveList(listId: String) {
+        appPreferences.setShoppingListId(listId)
+    }
+
+    override suspend fun setDefaultList(listId: String) {
+        // Pin it AND make it active now, so "Set as default" both takes effect immediately and
+        // survives across launches (seeded back into the active list on the next cold start).
+        appPreferences.setPinnedList(listId)
         appPreferences.setShoppingListId(listId)
     }
 

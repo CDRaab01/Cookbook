@@ -44,6 +44,8 @@ class ShoppingViewModelTest {
         val prefs = org.mockito.kotlin.mock<com.cookbook.util.AppPreferences> {
             org.mockito.kotlin.whenever(it.aisleOrder)
                 .thenReturn(kotlinx.coroutines.flow.flowOf(com.cookbook.util.DEFAULT_AISLE_ORDER))
+            org.mockito.kotlin.whenever(it.pinnedListId)
+                .thenReturn(kotlinx.coroutines.flow.flowOf(null))
         }
         viewModel = ShoppingViewModel(repository, mock(), prefs)
     }
@@ -147,6 +149,15 @@ class ShoppingViewModelTest {
                 org.mockito.kotlin.any(),
             )
         }
+
+    @Test
+    fun `setDefaultList pins the list through the repository`() = runTest(dispatcher) {
+        whenever(repository.getDefaultList()).thenReturn(list(item("1", "Milk")))
+        viewModel.setDefaultList("list-99")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        org.mockito.kotlin.verify(repository).setDefaultList(eq("list-99"))
+    }
 
     @Test
     fun `failed toggle rolls back and surfaces an error`() = runTest(dispatcher) {

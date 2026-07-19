@@ -686,8 +686,17 @@ sections stay as history, this is the current truth.
   `shopping_list_items` row (recomputing legacy quantity/unit) and nulls any cooking-only
   `item_history.unit`. Pure helper `cleaned_item` is unit-tested (`tests/test_cooking_measures_migration.py`,
   8 cases); data-only, one-way downgrade, no-ops on a fresh DB.
-- **Also in this branch (Android-only, earlier):** shopping rows kept compact (16sp) with tighter
-  2dp row gaps after a bigger-font experiment was reverted per user preference.
+- **Also in this branch (Android-only):**
+  - Shopping rows kept compact (16sp) with tighter 2dp row gaps after a bigger-font experiment was
+    reverted per user preference; the surviving buy-amount caption ("8 oz") now reads in fresh/green.
+  - **Pinned default list (both tabs).** A household owner's own empty "Groceries" was winning as the
+    server default (`get_default_list` → owner's oldest), so the app opened to it instead of the list
+    actually shared with a partner; the Plan tab also only held its context in memory and picked an
+    arbitrary `shared.first()`. New client-side **pinned default** (`AppPreferences.pinnedListId`,
+    DataStore): a "Set as default" action in the Shopping list switcher (+ a "· Default" marker) pins
+    a list; `seedActiveListFromPin` makes it the active list once per launch (in-session switches
+    still hold, pin re-applies next cold start); `PlanViewModel` defaults its context to the same pin.
+    Server default logic unchanged.
 - **Verified:** the pure merge + migration helpers pass locally (no server deps in this env — CI
   runs the full pytest suite incl. updated `test_lists`/`test_sharing` router tests, which were the
   cases that encoded the old keep-cooking-measures behavior). New/updated tests: `test_merge`
