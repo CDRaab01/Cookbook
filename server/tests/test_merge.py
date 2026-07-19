@@ -10,7 +10,9 @@ from app.lists.merge import (
     IncomingItem,
     Measure,
     add_measure,
+    buyable_measures,
     canonical_unit,
+    is_buyable_measure,
     is_purchasable,
     merge_incoming,
     merge_key,
@@ -122,6 +124,48 @@ def test_add_measure_bare_counts():
     measures = add_measure([], 3.0, None)
     measures = add_measure(measures, 2.0, None)
     assert measures == [Measure(5.0, None)]
+
+
+@pytest.mark.parametrize(
+    ("unit", "buyable"),
+    [
+        (None, True),  # bare count "3 eggs"
+        ("tsp", False),
+        ("tbsp", False),
+        ("cup", False),
+        ("pinch", False),
+        ("dash", False),
+        ("teaspoons", False),  # canonicalized first
+        ("Cups", False),
+        ("lb", True),
+        ("oz", True),
+        ("g", True),
+        ("ml", True),
+        ("l", True),
+        ("can", True),
+        ("bag", True),
+        ("bottle", True),
+        ("box", True),
+        ("bunch", True),
+        ("head", True),
+        ("package", True),
+    ],
+)
+def test_is_buyable_measure(unit, buyable):
+    assert is_buyable_measure(unit) is buyable
+
+
+def test_buyable_measures_drops_cooking_keeps_store_units_and_counts():
+    # A recipe's "8 oz + 2 tbsp" cream cheese keeps the oz you shop by, drops the tbsp.
+    kept = buyable_measures([Measure(8.0, "oz"), Measure(2.0, "tbsp")])
+    assert kept == [Measure(8.0, "oz")]
+    # All-cooking ("2 tbsp + 2 tsp" oil) collapses to nothing — buy a bottle.
+    assert buyable_measures([Measure(2.0, "tbsp"), Measure(2.0, "tsp")]) == []
+    # Bare counts and store units are untouched.
+    assert buyable_measures([Measure(3.0, None), Measure(2.0, "can")]) == [
+        Measure(3.0, None),
+        Measure(2.0, "can"),
+    ]
 
 
 @pytest.mark.parametrize(

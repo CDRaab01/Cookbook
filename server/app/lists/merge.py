@@ -11,6 +11,9 @@ v0.2.1 redesign, after the first real store run showed the flaw: a shopping list
 - **Units are canonical** ("cups"/"cup" ⇒ cup, "teaspoons"/"tsp" ⇒ tsp) so spelling can't defeat
   a merge.
 - **Non-purchasables never reach the list** — water is the canonical example.
+- **Cooking-only measures don't land on the buy list** — "2 tbsp oil"/"2 cups broth" tell you how
+  to cook, not what to buy, so tsp/tbsp/cup/pinch/dash are dropped from a shopping item's measures
+  (the item stays; you buy a bottle/bag). Store units (lb/oz/g/can/bag…) and bare counts are kept.
 
 Normalization stays "singularize-lite": lowercase, whitespace-collapsed, common English plurals
 folded without a language library. Clients never merge independently; they render what the
@@ -129,6 +132,28 @@ def merge_key(name: str) -> str:
     """The identity a line item merges on — the normalized name, nothing else. You buy one
     "oil" whether the recipes measured it in tablespoons or teaspoons."""
     return normalize_name(name)
+
+
+# Units that measure how you COOK, not how you BUY. "2 tbsp oil" or "2 cups broth" tells you
+# nothing about what to purchase — you buy a bottle, a carton — so a cooking-volume amount never
+# becomes a buy quantity; the item stays on the list, just without a nonsensical measure. The
+# purchase-sized units (lb/oz/g/kg/ml/l, can/bag/box/bottle/jar/tub/package, bunch/head) and bare
+# counts ("3 eggs") DO help you shop and are kept. These keys are canonical (see _CANONICAL_UNITS).
+_COOKING_ONLY_UNITS = frozenset({"tsp", "tbsp", "cup", "pinch", "dash"})
+
+
+def is_buyable_measure(unit: str | None) -> bool:
+    """Whether an amount in this unit belongs on a *buy* list. A bare count (None) and store
+    units are buyable; cooking-volume units (tsp/tbsp/cup/pinch/dash) are not. Canonicalizes
+    first, so a raw "tablespoons" or "Cups" is judged the same as "tbsp"/"cup"."""
+    return canonical_unit(unit) not in _COOKING_ONLY_UNITS
+
+
+def buyable_measures(measures: list["Measure"]) -> list["Measure"]:
+    """Keep only amounts you'd actually shop by ("8 oz", "2 cans", "3"), dropping cooking-only
+    measures ("2 tbsp"). An item left with no buyable measure still belongs on the list — its
+    presence means "buy some"."""
+    return [m for m in measures if is_buyable_measure(m.unit)]
 
 
 def is_purchasable(name: str) -> bool:

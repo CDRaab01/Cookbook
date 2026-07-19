@@ -664,3 +664,32 @@ while a deliberately-placed item (e.g. chicken you filed in pantry) stays put. T
 carries a **frozen snapshot of the old keyword map** to make that distinction; `resort_category`
 is the pure, unit-tested helper (`tests/test_resort_migration.py`, 13 cases). Data-only,
 downgrade is a no-op, and it no-ops on a fresh DB (no rows). Server **397 pytest green**.
+
+## v0.8 (2026-07-19) — cooking measures off the buy list (`claude/shopping-list-font-scroll-pse16q`)
+
+User feedback on the real list: items still showed nonsensical cooking amounts ("craisins 2 cups",
+"2 tbsp oil", "3 tsp yeast"). A shopping list is a list of things you **buy**, and a cooking-volume
+unit tells you how to *cook*, not what to *purchase* — you buy a bag, a bottle. This **reverses the
+v0.2.1 decision to keep "2 tbsp + 2 tsp"** side by side (that was unreadable in-store); those older
+sections stay as history, this is the current truth.
+
+- **Rule (pure, in `lists/merge.py`):** `_COOKING_ONLY_UNITS = {tsp, tbsp, cup, pinch, dash}`;
+  `is_buyable_measure(unit)` / `buyable_measures(measures)` drop them. Store units
+  (lb/oz/g/kg/ml/l, can/bag/box/bottle/jar/tub/package, bunch/head) and bare counts ("3 eggs")
+  are **kept** — they help you shop. `add_measure`/`merge_incoming` are unchanged (still aggregate);
+  the buy-list filter is a separate, later step.
+- **One choke point:** applied in `shopping_service._store_measures`, which every write path goes
+  through (recipe add, plan-to-list, manual add, edit), so a cooking amount can't reach the list
+  from anywhere. The item always stays; it just reads by name. `_record_history` also forgets a
+  cooking-only unit so autocomplete/recall never re-suggests one.
+- **Existing list backfilled — migration `0020`:** strips cooking-only measures from every
+  `shopping_list_items` row (recomputing legacy quantity/unit) and nulls any cooking-only
+  `item_history.unit`. Pure helper `cleaned_item` is unit-tested (`tests/test_cooking_measures_migration.py`,
+  8 cases); data-only, one-way downgrade, no-ops on a fresh DB.
+- **Also in this branch (Android-only, earlier):** shopping rows kept compact (16sp) with tighter
+  2dp row gaps after a bigger-font experiment was reverted per user preference.
+- **Verified:** the pure merge + migration helpers pass locally (no server deps in this env — CI
+  runs the full pytest suite incl. updated `test_lists`/`test_sharing` router tests, which were the
+  cases that encoded the old keep-cooking-measures behavior). New/updated tests: `test_merge`
+  (`is_buyable_measure` table + `buyable_measures`), `test_lists` (cooking-dropped, store-unit-kept,
+  new `test_cooking_units_never_land_on_the_list`), `test_sharing` (merge now uses liters).
