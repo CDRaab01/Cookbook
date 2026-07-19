@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -204,6 +206,18 @@ fun RecipeEditScreen(
                         label = { Text("Step ${index + 1}") },
                         modifier = Modifier.weight(1f),
                     )
+                    IconButton(
+                        onClick = { viewModel.moveStep(index, -1) },
+                        enabled = index > 0,
+                    ) {
+                        Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "Move step up")
+                    }
+                    IconButton(
+                        onClick = { viewModel.moveStep(index, 1) },
+                        enabled = index < draft.steps.lastIndex,
+                    ) {
+                        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Move step down")
+                    }
                     if (draft.steps.size > 1) {
                         IconButton(onClick = { viewModel.removeStep(index) }) {
                             Icon(Icons.Outlined.Close, contentDescription = "Remove step")

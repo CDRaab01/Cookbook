@@ -100,6 +100,26 @@ class RecipeEditViewModelTest {
     }
 
     @Test
+    fun `moveStep reorders steps and clamps at the ends`() {
+        val viewModel = newViewModel()
+        viewModel.updateStep(0, "one")
+        viewModel.addStep(); viewModel.updateStep(1, "two")
+        viewModel.addStep(); viewModel.updateStep(2, "three")
+
+        viewModel.moveStep(2, -1) // three moves up past two
+        assertEquals(listOf("one", "three", "two"), viewModel.draft.value.steps)
+
+        viewModel.moveStep(0, -1) // already first — no-op
+        assertEquals(listOf("one", "three", "two"), viewModel.draft.value.steps)
+
+        viewModel.moveStep(2, 1) // already last — no-op
+        assertEquals(listOf("one", "three", "two"), viewModel.draft.value.steps)
+
+        viewModel.moveStep(0, 1) // one moves down
+        assertEquals(listOf("three", "one", "two"), viewModel.draft.value.steps)
+    }
+
+    @Test
     fun `save with invalid draft errors without hitting the repository`() = runTest(dispatcher) {
         val viewModel = newViewModel()
         viewModel.save()
