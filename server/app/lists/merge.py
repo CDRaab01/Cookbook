@@ -125,6 +125,22 @@ def canonical_unit(unit: str | None) -> str | None:
     return _CANONICAL_UNITS.get(key, key)
 
 
+# Cooking measures you can't shop by — you buy a bottle of oil, not "2 tbsp of it". When a recipe
+# is added to a list these are dropped so a line reads "olive oil", not "olive oil · 0.25 cup".
+# Weights (oz/lb/g/kg), bare counts, and package units (can/jar/bag/bunch…) stay — those *are*
+# how you buy. Compared against the canonical form, so "cups"/"Tablespoons" are covered too.
+_COOKING_ONLY_UNITS = frozenset({"cup", "tbsp", "tsp", "pinch", "dash", "clove", "ml", "l"})
+
+
+def shopping_measure(quantity: float | None, unit: str | None) -> tuple[float | None, str | None]:
+    """The (quantity, unit) to show on a shopping list: a recipe cooking measure (cups, tbsp…)
+    collapses to no amount (the item's presence already says "buy some"); everything else — a
+    weight, a count, a package unit — passes through unchanged."""
+    if canonical_unit(unit) in _COOKING_ONLY_UNITS:
+        return None, None
+    return quantity, unit
+
+
 def merge_key(name: str) -> str:
     """The identity a line item merges on — the normalized name, nothing else. You buy one
     "oil" whether the recipes measured it in tablespoons or teaspoons."""

@@ -433,6 +433,21 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(rf"\b{re.escape(keyword)}(?:e?s)?\b"), category) for keyword, category in _ORDERED
 ]
 
+# Product-form head words that name what an item *is* and must beat a longer word sitting in
+# front of them: "pineapple juice" is a beverage, not produce, even though "pineapple" is the
+# longer keyword the length-ordered table would pick. Checked *before* `_PATTERNS`, so the form
+# word wins. Deliberately unambiguous only — "soda" is excluded because it collides with "baking
+# soda" (pantry) and "soda bread" (bakery), which the length-ordered table already handles.
+_PRIORITY: list[tuple[re.Pattern, str]] = [
+    (re.compile(rf"\b{keyword}(?:e?s)?\b"), category)
+    for keyword, category in (
+        ("juice", "beverages"),
+        ("lemonade", "beverages"),
+        ("smoothie", "beverages"),
+        ("kombucha", "beverages"),
+    )
+]
+
 
 def guess_category(name: str) -> str | None:
     """Best-effort store category for a free-text item name; None when unsure.
@@ -442,6 +457,9 @@ def guess_category(name: str) -> str | None:
     """
     raw = " ".join(name.casefold().split())
     norm = normalize_name(name)
+    for pattern, category in _PRIORITY:
+        if pattern.search(raw) or pattern.search(norm):
+            return category
     for pattern, category in _PATTERNS:
         if pattern.search(raw) or pattern.search(norm):
             return category

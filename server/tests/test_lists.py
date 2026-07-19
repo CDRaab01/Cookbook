@@ -188,8 +188,10 @@ async def test_deleting_recipe_keeps_list_items(auth_client):
     assert all(i["recipe_id"] is None for i in body["items"])
 
 
-async def test_same_item_different_units_is_one_line_with_measures(auth_client):
-    """The v0.2.1 buyable-list rule: you buy one 'oil' no matter how recipes measured it."""
+async def test_recipe_add_strips_cooking_measures_keeps_shoppable(auth_client):
+    """A shopping list is what you buy, not cooking measures: recipe cups/tbsp/tsp are dropped so a
+    line reads just "Oil", while weights/counts you actually shop by (2 lb, 1 can) pass through.
+    Oil still collapses to one line regardless of the units the recipe used."""
     recipe = (
         await auth_client.post(
             "/recipes",
@@ -199,30 +201,30 @@ async def test_same_item_different_units_is_one_line_with_measures(auth_client):
                     {"name": "Oil", "quantity": 2, "unit": "tablespoons"},
                     {"name": "oil", "quantity": 2, "unit": "tsp"},
                     {"name": "Bread flour", "quantity": 4, "unit": "Cups"},
+                    {"name": "Chicken breast", "quantity": 2, "unit": "lb"},
+                    {"name": "Black beans", "quantity": 1, "unit": "can"},
                 ],
             },
         )
     ).json()
-    # Units are canonicalized at the recipe layer already.
-    assert {i["unit"] for i in recipe["ingredients"]} == {"tbsp", "tsp", "cup"}
 
     lst = await _default_list(auth_client)
     items = (
         await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]})
     ).json()["items"]
 
-    assert len(items) == 2  # oil collapsed to one line
-    oil = next(i for i in items if i["name"] == "Oil")
-    assert oil["measures"] == [
-        {"quantity": 2.0, "unit": "tbsp"},
-        {"quantity": 2.0, "unit": "tsp"},
-    ]
-    # Mixed measures ⇒ the legacy single-measure columns go null rather than lying.
-    assert oil["quantity"] is None and oil["unit"] is None
+    assert len(items) == 4  # oil's two cooking measures collapse to one line
+    by_name = {i["name"]: i for i in items}
 
-    flour = next(i for i in items if i["name"] == "Bread flour")
-    assert flour["quantity"] == 4 and flour["unit"] == "cup"
-    assert flour["measures"] == [{"quantity": 4.0, "unit": "cup"}]
+    # Cooking measures stripped — the line is just the thing to buy.
+    oil = by_name["Oil"]
+    assert oil["measures"] == [] and oil["quantity"] is None and oil["unit"] is None
+    flour = by_name["Bread flour"]
+    assert flour["measures"] == [] and flour["quantity"] is None
+
+    # Weights and counts are how you buy — they survive.
+    assert by_name["Chicken breast"]["quantity"] == 2 and by_name["Chicken breast"]["unit"] == "lb"
+    assert by_name["Black beans"]["measures"] == [{"quantity": 1.0, "unit": "can"}]
 
 
 async def test_water_never_reaches_the_list(auth_client):
@@ -243,7 +245,8 @@ async def test_water_never_reaches_the_list(auth_client):
         await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]})
     ).json()["items"]
     assert [i["name"] for i in items] == ["Yeast"]
-    assert items[0]["unit"] == "tsp"
+    # Water is dropped as non-purchasable; the yeast's teaspoons are a cooking measure, stripped.
+    assert items[0]["unit"] is None and items[0]["measures"] == []
 
 
 async def test_all_water_recipe_400s(auth_client):

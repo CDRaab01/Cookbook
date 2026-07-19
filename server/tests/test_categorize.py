@@ -36,6 +36,13 @@ from app.lists.categorize import guess_category
         ("Tortilla chips", "snacks"),
         ("Peanuts", "snacks"),
         ("Orange juice", "beverages"),
+        # ── product-form head words beat a longer produce word in front of them (v0.7.1) ──
+        ("Pineapple juice", "beverages"),  # NOT produce — "pineapple" is longer but "juice" wins
+        ("Cranberry juice", "beverages"),
+        ("Pineapple juice (no sugar added)", "beverages"),
+        ("Strawberry smoothie", "beverages"),
+        ("Strawberry lemonade", "beverages"),
+        ("Baking soda", "pantry"),  # priority "soda" must NOT hijack this to beverages
         ("Iced coffee", "beverages"),  # was miscategorized as pantry before
         ("Sparkling water", "beverages"),
         ("Diet coke", "beverages"),

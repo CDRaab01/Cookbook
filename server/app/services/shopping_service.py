@@ -27,6 +27,7 @@ from app.lists.merge import (
     merge_key,
     normalize_name,
     scale_quantity,
+    shopping_measure,
 )
 from app.models.item_history import ItemHistory
 from app.models.shopping_list import ListMember, ShoppingList, ShoppingListItem
@@ -563,18 +564,15 @@ async def add_recipe(
                 detail="This recipe's items are already on the list. Re-add to double up.",
             )
 
-    incoming = merge_incoming(
-        [
-            IncomingItem(
-                name=ing.name,
-                quantity=scale_quantity(ing.quantity, req.scale),
-                unit=ing.unit,
-                category=ing.category,
-                note=ing.note,
-            )
-            for ing in recipe.ingredients
-        ]
-    )
+    def _recipe_incoming(ing) -> IncomingItem:
+        # A recipe's cooking measure (0.25 cup, 1 tbsp) means nothing on a shopping list — you buy
+        # a bottle, not a quarter cup — so drop it here; weights and counts pass through.
+        quantity, unit = shopping_measure(scale_quantity(ing.quantity, req.scale), ing.unit)
+        return IncomingItem(
+            name=ing.name, quantity=quantity, unit=unit, category=ing.category, note=ing.note
+        )
+
+    incoming = merge_incoming([_recipe_incoming(ing) for ing in recipe.ingredients])
     if not incoming:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -16,7 +16,32 @@ from app.lists.merge import (
     merge_key,
     normalize_name,
     scale_quantity,
+    shopping_measure,
 )
+
+
+@pytest.mark.parametrize(
+    ("quantity", "unit", "expected"),
+    [
+        # cooking measures you can't shop by → collapse to no amount
+        (0.25, "cup", (None, None)),
+        (2, "cups", (None, None)),
+        (1, "tbsp", (None, None)),
+        (0.5, "teaspoon", (None, None)),
+        (1, "pinch", (None, None)),
+        (3, "cloves", (None, None)),
+        (250, "ml", (None, None)),
+        # weights, counts, and package units are how you buy → pass through unchanged
+        (2, "lb", (2, "lb")),
+        (16, "oz", (16, "oz")),
+        (3, None, (3, None)),  # bare count "3 eggs"
+        (1, "can", (1, "can")),
+        (2, "bag", (2, "bag")),
+        (1, "bottle", (1, "bottle")),
+    ],
+)
+def test_shopping_measure(quantity, unit, expected):
+    assert shopping_measure(quantity, unit) == expected
 
 
 @pytest.mark.parametrize(
