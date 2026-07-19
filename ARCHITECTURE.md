@@ -27,10 +27,14 @@ pure domain package **`app/lists/`** — the app's kernel:
 
 - **`lists/merge.py`** — shopping-list merge math. Merge identity is the **normalized name only**
   (casefold/trim/singularize-lite); amounts aggregate into a `measures` JSON column
-  (`Measure(quantity, unit)`) — same canonical unit sums, mixed units sit side by side
-  ("2 tbsp + 2 tsp"). `canonical_unit` normalizes spellings everywhere. Non-purchasables (water)
-  are filtered at add-recipe. Exhaustively table-driven-tested; **clients never merge
-  independently** — every path into a list (recipe add, plan-to-list, manual add, undo rebuild)
+  (`Measure(quantity, unit)`) — same canonical unit sums, mixed units sit side by side.
+  `canonical_unit` normalizes spellings everywhere. Non-purchasables (water) are filtered at
+  add-recipe. **Cooking-only units (tsp/tbsp/cup/pinch/dash) never land on the buy list**
+  (`buyable_measures`/`is_buyable_measure`, v0.8) — "2 tbsp oil" says how to cook, not what to buy;
+  the amount is dropped (the item stays), while store units (lb/oz/g/can/bag…) and bare counts are
+  kept. The filter is applied at the single storage choke point, `shopping_service._store_measures`
+  (migration `0020` backfilled the existing list). Exhaustively table-driven-tested; **clients
+  never merge independently** — every path into a list (recipe add, plan-to-list, manual add, undo rebuild)
   goes through this module.
 - **`lists/categorize.py`** — store-category guesser (fallback behind `item_history` recall).
   v0.7: the aisle set widened from 7 food-only buckets to 13 store aisles (adds deli, snacks,

@@ -9,11 +9,13 @@ import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.repository.PlanRepository
 import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.data.repository.ShoppingRepository
+import com.cookbook.util.AppPreferences
 import com.cookbook.util.UiState
 import com.cookbook.util.offlineAwareMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,6 +30,7 @@ class PlanViewModel @Inject constructor(
     private val planRepository: PlanRepository,
     private val recipeRepository: RecipeRepository,
     private val shoppingRepository: ShoppingRepository,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val fmt = DateTimeFormatter.ISO_LOCAL_DATE
@@ -70,11 +73,20 @@ class PlanViewModel @Inject constructor(
                 shoppingRepository.lists().filter { it.shared }
             }.getOrDefault(emptyList())
             _sharedLists.value = shared
-            // Default to the shared household plan when one exists, so a partner's planning shows
-            // up without the user having to switch contexts. They can still pick "My plan".
-            if (_selectedListId.value == null && shared.isNotEmpty()) {
-                _selectedListId.value = shared.first().id
-                load()
+            // Default the plan context to match the Shopping tab: if a default is pinned, use it
+            // when it's a shared list (else "My plan"); with no pin, fall back to the first shared
+            // list so a partner's planning still shows up. They can always switch contexts.
+            if (_selectedListId.value == null) {
+                val pinned = appPreferences.pinnedListId.firstOrNull()
+                val target = when {
+                    pinned != null -> pinned.takeIf { id -> shared.any { it.id == id } }
+                    shared.isNotEmpty() -> shared.first().id
+                    else -> null
+                }
+                if (target != null) {
+                    _selectedListId.value = target
+                    load()
+                }
             }
         }
     }

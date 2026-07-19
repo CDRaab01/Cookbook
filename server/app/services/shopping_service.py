@@ -21,7 +21,9 @@ from app.lists.merge import (
     IncomingItem,
     Measure,
     add_measure,
+    buyable_measures,
     canonical_unit,
+    is_buyable_measure,
     is_purchasable,
     merge_incoming,
     merge_key,
@@ -140,7 +142,14 @@ def _item_measures(item: ShoppingListItem) -> list[Measure]:
 
 
 def _store_measures(item: ShoppingListItem, measures: list[Measure]) -> None:
-    """Write the aggregate back, keeping the legacy single-measure columns coherent."""
+    """Write the aggregate back, keeping the legacy single-measure columns coherent.
+
+    Cooking-only measures (tsp/tbsp/cup/pinch/dash) are dropped here — a shopping item is a thing
+    you BUY, and "2 tbsp" tells you nothing about what to purchase. The single write choke point
+    for every path (recipe add, plan-to-list, manual add, edit), so nonsensical cooking amounts
+    can't reach the list from anywhere. The item itself still lands; it just reads by name.
+    """
+    measures = buyable_measures(measures)
     item.measures = [{"quantity": m.quantity, "unit": m.unit} for m in measures]
     if len(measures) == 1:
         item.quantity = measures[0].quantity
@@ -209,6 +218,10 @@ async def _record_history(db: AsyncSession, user_id: uuid.UUID, items: list[Inco
     now = datetime.datetime.now(datetime.timezone.utc)
     for key, item in keys.items():
         unit = item.measures[0].unit if item.measures else canonical_unit(item.unit)
+        # Don't remember a cooking-only unit for autocomplete/recall — it would never make it
+        # back onto the buy list anyway (see _store_measures).
+        if not is_buyable_measure(unit):
+            unit = None
         row = existing.get(key)
         if row is not None:
             row.use_count += 1

@@ -22,6 +22,9 @@ interface ShoppingRepository {
     suspend fun lists(): List<ListSummaryOut>
 
     suspend fun setActiveList(listId: String)
+
+    /** Pin [listId] as the default both tabs open to on launch (and make it active now). */
+    suspend fun setDefaultList(listId: String)
     suspend fun createList(name: String): ShoppingListOut
     suspend fun renameList(listId: String, name: String): ShoppingListOut
     suspend fun deleteList(listId: String)

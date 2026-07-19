@@ -175,29 +175,30 @@ async def test_concurrent_cross_user_adds_merge_into_one_list(client):
     lid = (await client.get("/lists/default", headers=_h(owner))).json()["id"]
     await client.post(f"/lists/{lid}/members", json={"email": invitee_email}, headers=_h(owner))
 
-    # Owner and invitee independently add "milk" (different case + unit spelling) to the shared list.
+    # Owner and invitee independently add "milk" (different case + unit spelling) to the shared
+    # list. Liters is a unit you actually buy milk by, so it belongs on the list and merges.
     await client.post(
         f"/lists/{lid}/items",
-        json={"name": "Milk", "quantity": 1, "unit": "cup"},
+        json={"name": "Milk", "quantity": 1, "unit": "liter"},
         headers=_h(owner),
     )
     await client.post(
         f"/lists/{lid}/items",
-        json={"name": "milk", "quantity": 1, "unit": "cups"},
+        json={"name": "milk", "quantity": 1, "unit": "liters"},
         headers=_h(invitee),
     )
     # Each also adds something only they need.
     await client.post(f"/lists/{lid}/items", json={"name": "Eggs"}, headers=_h(owner))
     await client.post(f"/lists/{lid}/items", json={"name": "Bread"}, headers=_h(invitee))
 
-    # Both members see the SAME list, and milk is a single merged line summing to 2 cups.
+    # Both members see the SAME list, and milk is a single merged line summing to 2 L.
     for tok in (owner, invitee):
         items = (await client.get(f"/lists/{lid}", headers=_h(tok))).json()["items"]
         names = sorted(i["name"].lower() for i in items)
         assert names == ["bread", "eggs", "milk"]  # one milk line, not two
         milk = next(i for i in items if i["name"].lower() == "milk")
-        assert milk["quantity"] == 2.0 and milk["unit"] == "cup"
-        assert milk["measures"] == [{"quantity": 2.0, "unit": "cup"}]
+        assert milk["quantity"] == 2.0 and milk["unit"] == "l"
+        assert milk["measures"] == [{"quantity": 2.0, "unit": "l"}]
 
 
 async def test_non_member_cannot_access_or_mutate_shared_list(client):

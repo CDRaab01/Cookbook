@@ -39,6 +39,11 @@ class ShoppingViewModel @Inject constructor(
     val aisleOrder: StateFlow<List<String>> = appPreferences.aisleOrder
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DEFAULT_AISLE_ORDER)
 
+    /** The pinned default list (what both tabs open to on launch); null when none is pinned. Drives
+     *  the "· Default" marker in the list switcher. */
+    val pinnedListId: StateFlow<String?> = appPreferences.pinnedListId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     init {
         // Any successful list state (load or mutation) redraws the home-screen widget, so it
         // never sits stale next to a fresh app.
@@ -79,6 +84,14 @@ class ShoppingViewModel @Inject constructor(
     fun switchList(listId: String) {
         viewModelScope.launch {
             shoppingRepository.setActiveList(listId)
+            load()
+        }
+    }
+
+    /** Pin the current list as the default both tabs open to on launch. */
+    fun setDefaultList(listId: String) {
+        viewModelScope.launch {
+            shoppingRepository.setDefaultList(listId)
             load()
         }
     }

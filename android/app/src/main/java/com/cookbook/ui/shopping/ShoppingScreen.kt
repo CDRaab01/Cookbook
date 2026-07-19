@@ -104,6 +104,7 @@ fun ShoppingScreen(
     val allLists by viewModel.allLists.collectAsState()
     val grocerySpend by viewModel.grocerySpend.collectAsState()
     val aisleOrder by viewModel.aisleOrder.collectAsState()
+    val pinnedListId by viewModel.pinnedListId.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     // The persistent add bar's text lives here (hoisted) so the + button and the "Add item"
     // launcher shortcut can focus it, and it survives while the list reloads underneath.
@@ -185,15 +186,14 @@ fun ShoppingScreen(
                         onDismissRequest = { listMenuOpen = false },
                     ) {
                         allLists.forEach { entry ->
+                            val isDefault = entry.id == pinnedListId
                             androidx.compose.material3.DropdownMenuItem(
                                 text = {
-                                    Text(
-                                        if (entry.uncheckedCount > 0) {
-                                            "${entry.name}  ·  ${entry.uncheckedCount} to buy"
-                                        } else {
-                                            entry.name
-                                        },
-                                    )
+                                    val suffix = when {
+                                        entry.uncheckedCount > 0 -> "  ·  ${entry.uncheckedCount} to buy"
+                                        else -> ""
+                                    }
+                                    Text(entry.name + suffix + if (isDefault) "  ·  Default" else "")
                                 },
                                 onClick = {
                                     listMenuOpen = false
@@ -202,6 +202,18 @@ fun ShoppingScreen(
                             )
                         }
                         androidx.compose.material3.HorizontalDivider()
+                        // Pin the current list as the default both tabs open to on launch.
+                        (state as? UiState.Success)?.data?.let { current ->
+                            if (current.id != pinnedListId) {
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text("Set as default") },
+                                    onClick = {
+                                        listMenuOpen = false
+                                        viewModel.setDefaultList(current.id)
+                                    },
+                                )
+                            }
+                        }
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("New list…") },
                             onClick = {
@@ -393,7 +405,7 @@ internal fun ShoppingListBody(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         grocerySpend?.let { spend ->
             item(key = "grocery_spend") {
@@ -591,10 +603,12 @@ private fun ShoppingItemRow(
                     DataText(
                         label,
                         style = CookbookTheme.dataType.numeral,
+                        // Buy-amounts read in recovery green (a "good, keep this" cue) — these are
+                        // the amounts that survive the cooking-measure filter, so you shop by them.
                         color = if (item.checked) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
-                            colors.heat.base
+                            colors.fresh.base
                         },
                     )
                 }

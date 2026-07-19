@@ -188,8 +188,9 @@ async def test_deleting_recipe_keeps_list_items(auth_client):
     assert all(i["recipe_id"] is None for i in body["items"])
 
 
-async def test_same_item_different_units_is_one_line_with_measures(auth_client):
-    """The v0.2.1 buyable-list rule: you buy one 'oil' no matter how recipes measured it."""
+async def test_same_item_one_line_cooking_measures_dropped(auth_client):
+    """Buy-list rule (v0.8): you buy one 'oil' no matter how recipes measured it, and cooking-only
+    amounts (tbsp/tsp/cup) never land — you buy a bottle/bag. Store units (oz) are kept."""
     recipe = (
         await auth_client.post(
             "/recipes",
@@ -199,30 +200,33 @@ async def test_same_item_different_units_is_one_line_with_measures(auth_client):
                     {"name": "Oil", "quantity": 2, "unit": "tablespoons"},
                     {"name": "oil", "quantity": 2, "unit": "tsp"},
                     {"name": "Bread flour", "quantity": 4, "unit": "Cups"},
+                    {"name": "Cream cheese", "quantity": 8, "unit": "ounces"},
                 ],
             },
         )
     ).json()
     # Units are canonicalized at the recipe layer already.
-    assert {i["unit"] for i in recipe["ingredients"]} == {"tbsp", "tsp", "cup"}
+    assert {i["unit"] for i in recipe["ingredients"]} == {"tbsp", "tsp", "cup", "oz"}
 
     lst = await _default_list(auth_client)
     items = (
         await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]})
     ).json()["items"]
 
-    assert len(items) == 2  # oil collapsed to one line
+    assert len(items) == 3  # oil collapsed to one line; nothing dropped from the list itself
     oil = next(i for i in items if i["name"] == "Oil")
-    assert oil["measures"] == [
-        {"quantity": 2.0, "unit": "tbsp"},
-        {"quantity": 2.0, "unit": "tsp"},
-    ]
-    # Mixed measures ⇒ the legacy single-measure columns go null rather than lying.
+    # Both amounts were cooking-only ⇒ no measure survives, item reads by name ("buy some").
+    assert oil["measures"] == []
     assert oil["quantity"] is None and oil["unit"] is None
 
     flour = next(i for i in items if i["name"] == "Bread flour")
-    assert flour["quantity"] == 4 and flour["unit"] == "cup"
-    assert flour["measures"] == [{"quantity": 4.0, "unit": "cup"}]
+    assert flour["measures"] == []  # "4 cups" is a cooking amount, not a buy amount
+    assert flour["quantity"] is None and flour["unit"] is None
+
+    # A store unit you'd actually shop by survives.
+    cheese = next(i for i in items if i["name"] == "Cream cheese")
+    assert cheese["measures"] == [{"quantity": 8.0, "unit": "oz"}]
+    assert cheese["quantity"] == 8 and cheese["unit"] == "oz"
 
 
 async def test_water_never_reaches_the_list(auth_client):
@@ -243,7 +247,9 @@ async def test_water_never_reaches_the_list(auth_client):
         await auth_client.post(f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]})
     ).json()["items"]
     assert [i["name"] for i in items] == ["Yeast"]
-    assert items[0]["unit"] == "tsp"
+    # "3 teaspoons" is a cooking amount, dropped from the buy list — you buy a jar of yeast.
+    assert items[0]["measures"] == []
+    assert items[0]["unit"] is None
 
 
 async def test_all_water_recipe_400s(auth_client):
@@ -265,23 +271,36 @@ async def test_all_water_recipe_400s(auth_client):
 
 async def test_unquantified_add_keeps_known_amounts(auth_client):
     lst = await _default_list(auth_client)
+    # Use a buyable unit (oz) — a bare re-add must not erase a known *buy* amount.
     await auth_client.post(
-        f"/lists/{lst['id']}/items", json={"name": "Oil", "quantity": 2, "unit": "tbsp"}
+        f"/lists/{lst['id']}/items", json={"name": "Oil", "quantity": 12, "unit": "oz"}
     )
-    # Bare re-add must not erase the 2 tbsp (the old combine rule nulled it).
     resp = await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "oil"})
     item = resp.json()["items"][0]
-    assert item["quantity"] == 2 and item["unit"] == "tbsp"
+    assert item["quantity"] == 12 and item["unit"] == "oz"
+
+
+async def test_cooking_units_never_land_on_the_list(auth_client):
+    """A manual add with a cooking unit keeps the item but drops the nonsensical amount."""
+    lst = await _default_list(auth_client)
+    resp = await auth_client.post(
+        f"/lists/{lst['id']}/items", json={"name": "Craisins", "quantity": 2, "unit": "cups"}
+    )
+    item = resp.json()["items"][0]
+    assert item["name"] == "Craisins"
+    assert item["measures"] == []
+    assert item["quantity"] is None and item["unit"] is None
 
 
 async def test_edit_replaces_the_aggregate(auth_client):
     lst = await _default_list(auth_client)
+    # Two buyable units that don't merge ⇒ a genuine two-measure aggregate to override.
     await auth_client.post(
-        f"/lists/{lst['id']}/items", json={"name": "Oil", "quantity": 2, "unit": "tbsp"}
+        f"/lists/{lst['id']}/items", json={"name": "Oil", "quantity": 8, "unit": "oz"}
     )
     items = (
         await auth_client.post(
-            f"/lists/{lst['id']}/items", json={"name": "oil", "quantity": 2, "unit": "tsp"}
+            f"/lists/{lst['id']}/items", json={"name": "oil", "quantity": 1, "unit": "bottle"}
         )
     ).json()["items"]
     oil = items[0]
