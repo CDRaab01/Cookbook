@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.cross_app_token import cross_app_configured, fetch_cross_app_token
-from app.services.recipe_service import load_owned_recipe
+from app.services.recipe_service import load_accessible_recipe
 
 log = logging.getLogger(__name__)
 
@@ -155,7 +155,10 @@ async def get_recipe_nutrition(
     client: httpx.AsyncClient | None = None,
 ) -> RecipeNutritionOut:
     _guard_configured()
-    recipe = await load_owned_recipe(db, user.id, recipe_id)
+    # Accessible, not owner-only: family mode makes a shared recipe fully collaborative, so a
+    # household co-member can pull its macro breakdown (and the plate_food_id bookkeeping write
+    # below is the same collaborative-edit contract as editing the recipe).
+    recipe = await load_accessible_recipe(db, user.id, recipe_id)
     if not recipe.ingredients:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Recipe has no ingredients"
@@ -228,7 +231,10 @@ async def log_recipe_to_plate(
     client: httpx.AsyncClient | None = None,
 ) -> LogToPlateResult:
     _guard_configured()
-    recipe = await load_owned_recipe(db, user.id, recipe_id)
+    # Accessible, not owner-only: a household member can log a family recipe their co-member
+    # created (marking it "made" pops this same dialog), matching the confirmation-log path which
+    # deliberately lets co-members log the planner's recipe into their own diary.
+    recipe = await load_accessible_recipe(db, user.id, recipe_id)
     if not recipe.ingredients:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Recipe has no ingredients"

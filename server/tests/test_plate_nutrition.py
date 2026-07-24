@@ -158,6 +158,82 @@ async def test_log_to_plate_scales_by_servings_eaten(client, plate_configured):
     assert beef["quantity"] == pytest.approx(0.5)
 
 
+async def _household_member_and_shared_recipe(client) -> tuple[User, str]:
+    """Owner creates a CHILI recipe and shares it (family recipe); the wife joins the household.
+    Returns (wife_user, recipe_id) — the wife is a co-member, NOT the recipe's creator."""
+    uid = uuid.uuid4().hex[:8]
+    owner_email = f"fo_{uid}@cookbook.com"
+    wife_email = f"fw_{uid}@cookbook.com"
+    owner = (await client.post(
+        "/auth/register", json={"name": "Owner", "email": owner_email, "password": "Testpass123!"}
+    )).json()["access_token"]
+    wife = (await client.post(
+        "/auth/register", json={"name": "Wife", "email": wife_email, "password": "Testpass123!"}
+    )).json()["access_token"]
+
+    oh = {"Authorization": f"Bearer {owner}"}
+    recipe_id = (await client.post("/recipes", json=CHILI, headers=oh)).json()["id"]
+    share = await client.post(f"/recipes/{recipe_id}/share", json={"shared": True}, headers=oh)
+    assert share.status_code == 200, share.text
+
+    await client.post("/household/members", json={"email": wife_email}, headers=oh)
+    acc = await client.post("/household/accept", headers={"Authorization": f"Bearer {wife}"})
+    assert acc.status_code == 200, acc.text
+
+    async with AsyncSessionLocal() as session:
+        wife_user = (await session.execute(select(User).where(User.email == wife_email))).scalar_one()
+    return wife_user, recipe_id
+
+
+async def test_household_member_can_log_and_price_family_recipe(client, plate_configured):
+    """Regression: a co-member logging a partner's FAMILY recipe used to 404 (the endpoints loaded
+    the recipe creator-only). Family mode makes shared recipes collaborative, so both the log and
+    the nutrition breakdown must succeed for the co-member."""
+    wife, recipe_id = await _household_member_and_shared_recipe(client)
+
+    async with AsyncSessionLocal() as db:
+        logged = await log_recipe_to_plate(
+            db,
+            wife,
+            uuid.UUID(recipe_id),
+            LogToPlateRequest(date="2026-07-01", meal="dinner", servings_eaten=2.0),
+            client=_fake_plate([]),
+        )
+    assert logged.logged == 2 and logged.skipped == 1
+
+    async with AsyncSessionLocal() as db:
+        nut = await get_recipe_nutrition(db, wife, uuid.UUID(recipe_id), client=_fake_plate([]))
+    assert nut.matched_count == 2
+
+
+async def test_non_member_cannot_log_someone_elses_recipe(client, plate_configured):
+    """A stranger (no household, recipe not shared) still can't log another user's recipe → 404."""
+    from fastapi import HTTPException
+
+    _, _, recipe_id = await _user_with_recipe(client)  # a private recipe owned by someone else
+    uid = uuid.uuid4().hex[:8]
+    stranger_email = f"str_{uid}@cookbook.com"
+    await client.post(
+        "/auth/register",
+        json={"name": "Str", "email": stranger_email, "password": "Testpass123!"},
+    )
+    async with AsyncSessionLocal() as session:
+        stranger = (
+            await session.execute(select(User).where(User.email == stranger_email))
+        ).scalar_one()
+
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(HTTPException) as exc:
+            await log_recipe_to_plate(
+                db,
+                stranger,
+                uuid.UUID(recipe_id),
+                LogToPlateRequest(date="2026-07-01", meal="dinner"),
+                client=_fake_plate([]),
+            )
+    assert exc.value.status_code == 404
+
+
 def _fake_plate_capture(seen: list[dict]) -> httpx.AsyncClient:
     """Records every cross-app request (method/path/query/body) and acks log + unlog."""
     import json as _json
