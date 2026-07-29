@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private val ingredientDraftIds = java.util.concurrent.atomic.AtomicLong(0)
+
 /** One editable ingredient row. Quantity is kept as raw text until save so typing "1." works. */
 data class IngredientDraft(
     val name: String = "",
@@ -24,6 +26,18 @@ data class IngredientDraft(
     val unit: String = "",
     val category: String? = null,
     val note: String = "",
+    /**
+     * Non-null ⇒ a section heading ("Steak Marinade") starts at this row; every row below
+     * belongs to it until the next marker. `""` is a heading being typed but not yet named.
+     *
+     * The wire format is denormalized — one `section` per ingredient — but editing it that way
+     * breaks: two runs would silently merge the instant you finish typing a name that matches
+     * the run above, and clearing a heading would collapse the field you're typing in. A marker
+     * on the row that *starts* the run has neither failure.
+     */
+    val sectionHeader: String? = null,
+    /** Stable identity for list keys, so a heading field keeps focus as rows move. */
+    val id: Long = ingredientDraftIds.incrementAndGet(),
 )
 
 data class RecipeDraft(
@@ -71,14 +85,24 @@ class RecipeEditViewModel @Inject constructor(
                     servings = photo.servings?.toString() ?: "1",
                     prepMinutes = photo.prepMinutes?.toString().orEmpty(),
                     cookMinutes = photo.cookMinutes?.toString().orEmpty(),
-                    ingredients = photo.ingredients.map {
-                        IngredientDraft(
-                            name = it.name,
-                            quantity = it.quantity?.let { q ->
-                                if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
-                            }.orEmpty(),
-                            unit = it.unit.orEmpty(),
-                        )
+                    ingredients = run {
+                        var previous: String? = null
+                        photo.ingredients.map {
+                            val marker = if (it.section != previous) (it.section ?: "") else null
+                            previous = it.section
+                            IngredientDraft(
+                                name = it.name,
+                                quantity = it.quantity?.let { q ->
+                                    if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
+                                }.orEmpty(),
+                                unit = it.unit.orEmpty(),
+                                // The photo draft carries these now; dropping them made every
+                                // photo-imported ingredient land uncategorized.
+                                category = it.category,
+                                note = it.note.orEmpty(),
+                                sectionHeader = marker,
+                            )
+                        }
                     }.ifEmpty { listOf(IngredientDraft()) },
                     steps = photo.steps.ifEmpty { listOf("") },
                 )
@@ -97,16 +121,26 @@ class RecipeEditViewModel @Inject constructor(
                         cookMinutes = recipe.cookMinutes?.toString().orEmpty(),
                         imageUrl = recipe.imageUrl.orEmpty(),
                         tags = recipe.tags,
-                        ingredients = recipe.ingredients.map {
-                            IngredientDraft(
-                                name = it.name,
-                                quantity = it.quantity?.let { q ->
-                                    if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
-                                }.orEmpty(),
-                                unit = it.unit.orEmpty(),
-                                category = it.category,
-                                note = it.note.orEmpty(),
-                            )
+                        ingredients = run {
+                            var previous: String? = null
+                            recipe.ingredients.map {
+                                // Denormalized → marker: a heading row only where the section
+                                // changes. The `?: ""` matters — a run that goes back to "no
+                                // section" needs an explicit empty marker, or those rows would
+                                // render as though they belonged to the heading above.
+                                val marker = if (it.section != previous) (it.section ?: "") else null
+                                previous = it.section
+                                IngredientDraft(
+                                    name = it.name,
+                                    quantity = it.quantity?.let { q ->
+                                        if (q % 1.0 == 0.0) q.toInt().toString() else q.toString()
+                                    }.orEmpty(),
+                                    unit = it.unit.orEmpty(),
+                                    category = it.category,
+                                    note = it.note.orEmpty(),
+                                    sectionHeader = marker,
+                                )
+                            }
                         }.ifEmpty { listOf(IngredientDraft()) },
                         steps = recipe.steps.map { it.text }.ifEmpty { listOf("") },
                     )
@@ -125,8 +159,49 @@ class RecipeEditViewModel @Inject constructor(
 
     fun addIngredient() = update { it.copy(ingredients = it.ingredients + IngredientDraft()) }
 
+    /** Start a new section: the next ingredients typed belong to it until the next heading. */
+    fun addSection() = update {
+        it.copy(ingredients = it.ingredients + IngredientDraft(sectionHeader = ""))
+    }
+
+    /** Rename the heading that starts at [index], or pass null to delete it (merging this run
+     *  into the one above). */
+    fun setSectionHeader(index: Int, title: String?) = update {
+        it.copy(
+            ingredients = it.ingredients.mapIndexed { i, ing ->
+                if (i == index) ing.copy(sectionHeader = title) else ing
+            },
+        )
+    }
+
     fun removeIngredient(index: Int) = update {
-        it.copy(ingredients = it.ingredients.filterIndexed { i, _ -> i != index })
+        val ingredients = it.ingredients
+        // A heading lives on the row that starts its run, so deleting that row would take the
+        // whole section's heading with it. Hand the marker down to the next row first.
+        val marker = ingredients.getOrNull(index)?.sectionHeader
+        val handedDown =
+            if (marker != null && ingredients.getOrNull(index + 1)?.sectionHeader == null) {
+                ingredients.mapIndexed { i, ing ->
+                    if (i == index + 1) ing.copy(sectionHeader = marker) else ing
+                }
+            } else {
+                ingredients
+            }
+        it.copy(ingredients = handedDown.filterIndexed { i, _ -> i != index })
+    }
+
+    /** Move an ingredient one slot toward `index + delta` (delta ±1); no-op at either end.
+     *  Section markers stay pinned to their position — moving a row means moving it within or
+     *  across sections, not dragging the heading along with it. */
+    fun moveIngredient(index: Int, delta: Int) = update {
+        val target = index + delta
+        if (index !in it.ingredients.indices || target !in it.ingredients.indices) return@update it
+        val moved = it.ingredients.toMutableList()
+        val a = moved[index]
+        val b = moved[target]
+        moved[index] = b.copy(sectionHeader = a.sectionHeader)
+        moved[target] = a.copy(sectionHeader = b.sectionHeader)
+        it.copy(ingredients = moved)
     }
 
     fun updateIngredient(index: Int, transform: (IngredientDraft) -> IngredientDraft) = update {
@@ -187,17 +262,26 @@ class RecipeEditViewModel @Inject constructor(
             _saveState.value = UiState.Error(validationError)
             return
         }
-        val ingredients = d.ingredients
-            .filter { it.name.isNotBlank() }
-            .map {
+        // Marker → denormalized, walking in order so each row carries the heading it sits under.
+        // The fold runs BEFORE the blank-name filter, so a heading typed above rows that are
+        // still empty still applies to the real rows below it. A trailing heading with nothing
+        // under it contributes nothing and is dropped, which is what you'd want.
+        var section: String? = null
+        val ingredients = d.ingredients.mapNotNull {
+            it.sectionHeader?.let { header -> section = header.trim().ifEmpty { null } }
+            if (it.name.isBlank()) {
+                null
+            } else {
                 IngredientIn(
                     name = it.name.trim(),
                     quantity = it.quantity.toDoubleOrNull(),
                     unit = it.unit.trim().lowercase().ifEmpty { null },
                     category = it.category,
+                    section = section,
                     note = it.note.trim().ifEmpty { null },
                 )
             }
+        }
         val steps = d.steps.map { it.trim() }.filter { it.isNotEmpty() }
 
         viewModelScope.launch {

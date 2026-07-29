@@ -216,7 +216,8 @@ class RecipeDetailViewModel @Inject constructor(
             appendLine("Serves ${r.servings}")
             appendLine()
             appendLine("Ingredients:")
-            r.ingredients.forEach { ing ->
+            ingredientRows(r.ingredients).forEach { (heading, ing) ->
+                if (heading != null) appendLine("$heading:")
                 val qty = formatQuantity(ing.quantity, ing.unit)
                 appendLine(if (qty != null) "- $qty ${ing.name}" else "- ${ing.name}")
             }

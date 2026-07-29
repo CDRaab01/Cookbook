@@ -63,21 +63,6 @@ import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.StaleBanner
 
-/** Default store-walk order for grouping ingredients/items; users can customize it (aisle order). */
-internal val CATEGORY_ORDER = com.cookbook.util.DEFAULT_AISLE_ORDER
-
-// Display labels for the store aisles; multi-word ones can't be derived by capitalizing the key.
-private val CATEGORY_LABELS = mapOf(
-    "meat" to "Meat & Seafood",
-    "dairy" to "Dairy & Eggs",
-    "personal" to "Personal care",
-)
-
-internal fun categoryLabel(category: String?): String {
-    val key = category ?: "other"
-    return CATEGORY_LABELS[key] ?: key.replaceFirstChar { it.uppercase() }
-}
-
 /** "2 lb Chicken breast" / "Salt (to taste)" — quantity formatting shared by detail + list rows.
  *  Quantities render as human cooking fractions ("1½ cups", not "1.5") via [humanQuantity]. */
 internal fun formatQuantity(quantity: Double?, unit: String?): String? {
@@ -494,10 +479,13 @@ internal fun RecipeDetailBody(
         item {
             PanelCard(modifier = Modifier.fillMaxWidth()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    val grouped = recipe.ingredients.groupBy { it.category ?: "other" }
-                    CATEGORY_ORDER.filter { grouped.containsKey(it) }.forEach { category ->
-                        Caption(categoryLabel(category), color = colors.fresh.base)
-                        grouped.getValue(category).forEach { IngredientRow(it, scale) }
+                    // A recipe reads in the order it was written, under its own headings
+                    // ("Steak Marinade"). Store aisles are a buy-list concept and belong on the
+                    // shopping screen — grouping by them here scrambled the recipe and made
+                    // "combine the ingredients for the marinade" refer to nothing.
+                    ingredientRows(recipe.ingredients).forEach { (heading, ingredient) ->
+                        if (heading != null) Caption(heading, color = colors.fresh.base)
+                        IngredientRow(ingredient, scale)
                     }
                 }
             }
@@ -832,9 +820,13 @@ private fun IngredientRow(ingredient: IngredientOut, scale: Double = 1.0) {
         }
         Column(Modifier.weight(1f)) {
             Text(ingredient.name, style = MaterialTheme.typography.bodyLarge)
-            if (!ingredient.note.isNullOrBlank()) {
+            // Importers keep the source's whole line as the note, which for most ingredients
+            // just restates the amount and name already on this row ("¼ cup pineapple juice"
+            // under "¼ cup" + "pineapple juice"). Show it only when it actually adds something.
+            val note = ingredient.note?.takeIf { noteAddsDetail(it, ingredient) }
+            if (note != null) {
                 Text(
-                    ingredient.note,
+                    note,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

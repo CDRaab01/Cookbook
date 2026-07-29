@@ -23,8 +23,10 @@ from app.services.shopping_service import (
     _guard_capacity,
     _merge_into_list,
     _record_history,
+    _shopping_category,
     get_default_list,
     load_accessible_list,
+    remembered_categories,
 )
 
 log = logging.getLogger(__name__)
@@ -268,6 +270,10 @@ async def plan_to_list(
 
     shopping_list = await load_accessible_list(db, user_id, plan_list)
 
+    planned = [ing for entry in entries if entry.recipe for ing in entry.recipe.ingredients]
+    # One lookup for the whole week's worth of ingredients, not one per ingredient.
+    remembered = await remembered_categories(db, user_id, [i.name for i in planned])
+
     incoming: list[IncomingItem] = []
     for entry in entries:
         recipe = entry.recipe
@@ -282,7 +288,7 @@ async def plan_to_list(
                     name=ing.name,
                     quantity=scale_quantity(ing.quantity, entry_scale),
                     unit=ing.unit,
-                    category=ing.category,
+                    category=_shopping_category(ing, remembered),
                 )
             )
     merged = merge_incoming(incoming)

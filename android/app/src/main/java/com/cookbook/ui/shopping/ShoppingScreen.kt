@@ -75,10 +75,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.SuggestionOut
-import com.cookbook.ui.recipe.CATEGORY_ORDER
-import com.cookbook.ui.recipe.categoryLabel
 import com.cookbook.ui.theme.CookbookTheme
+import com.cookbook.util.DEFAULT_AISLE_ORDER
 import com.cookbook.util.LinkText
+import com.cookbook.util.categoryLabel
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.DataText
@@ -397,7 +397,7 @@ internal fun ShoppingListBody(
     onEdit: (ShoppingItemOut) -> Unit,
     onQuantityChange: (ShoppingItemOut, Int) -> Unit,
     onClearChecked: () -> Unit,
-    aisleOrder: List<String> = CATEGORY_ORDER,
+    aisleOrder: List<String> = DEFAULT_AISLE_ORDER,
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
@@ -840,7 +840,7 @@ private fun ItemFields(
             )
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(CATEGORY_ORDER, key = { it }) { option ->
+            items(DEFAULT_AISLE_ORDER, key = { it }) { option ->
                 FilterChip(
                     selected = category == option,
                     onClick = { onCategory(if (category == option) null else option) },

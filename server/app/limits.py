@@ -4,6 +4,8 @@
 # Recipes
 MAX_RECIPE_STEPS = 50
 MAX_RECIPE_INGREDIENTS = 100
+# An ingredient's section heading ("Steak Marinade") — a label, not prose. Matches the column.
+MAX_SECTION_LENGTH = 80
 SERVINGS_BOUNDS = (1, 100)
 MINUTES_BOUNDS = (0, 24 * 60)
 

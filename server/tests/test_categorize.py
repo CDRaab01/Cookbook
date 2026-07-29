@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.lists.categorize import guess_category
+from app.lists.categorize import clean_for_category, guess_category
 
 
 @pytest.mark.parametrize(
@@ -63,6 +63,27 @@ from app.lists.categorize import guess_category
         ("Orange juice", "beverages"),  # "juice" not swallowed by "ice" → frozen
         ("Chipotle peppers", "produce"),  # "chip" must not fire; "pepper" → produce
         ("Buttermilk", "dairy"),  # matches "milk" as a word? no — but butter→dairy anyway
+        # ── v0.9: prep notes are stripped before matching ──
+        # A prep clause borrows another aisle's vocabulary; matching it filed a pepper as meat.
+        ("large poblano (ribs and seeds removed then sliced)", "produce"),
+        ("poblano peppers, ribs and seeds removed", "produce"),
+        ("red pepper flakes (or more to taste)", "pantry"),  # dried spice, NOT fresh pepper
+        ("black beans, drained and rinsed", "pantry"),
+        ("garlic cloves, minced", "produce"),
+        ("butter, softened", "dairy"),
+        ("Salt to taste", "pantry"),
+        # ── v0.9: "ground <spice>" is a spice, not meat ──
+        ("ground cumin", "pantry"),  # bare "ground" used to outrank the spice
+        ("ground ginger", "pantry"),
+        ("ground cinnamon", "pantry"),
+        ("Ground beef", "meat"),  # ...while the meats still resolve
+        ("ground chuck", "meat"),
+        ("Ground turkey", "meat"),
+        ("ground pork", "meat"),
+        # ── v0.9: the juice family is decided deliberately, not by keyword length ──
+        ("pineapple juice (no sugar added)", "beverages"),
+        ("lime juice", "produce"),  # bottled citrus sits with the fruit
+        ("freshly squeezed lemon juice", "produce"),
         # ── genuine misses stay None ──
         ("Light bulb", "household"),
         ("Mystery widget", None),
@@ -71,3 +92,26 @@ from app.lists.categorize import guess_category
 )
 def test_guess_category(name, expected):
     assert guess_category(name) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("large poblano (ribs and seeds removed then sliced)", "large poblano"),
+        ("bell peppers (thinly sliced (any color))", "bell peppers"),
+        ("black beans, drained and rinsed", "black beans"),
+        ("Salt to taste", "Salt"),
+        ("red pepper flakes, or more to taste", "red pepper flakes"),
+        # A comma clause that isn't prep is identity and must survive.
+        ("salt and pepper", "salt and pepper"),
+        ("chicken, beef or pork", "chicken beef or pork"),
+        # Nothing to strip — cleaning is the identity function, which is why no existing
+        # categorization moves.
+        ("all-purpose flour", "all-purpose flour"),
+        # A name that is *entirely* a parenthetical leaves nothing to match on: keep the
+        # original rather than guessing from an empty string.
+        ("(optional garnish)", "(optional garnish)"),
+    ],
+)
+def test_clean_for_category(name, expected):
+    assert clean_for_category(name) == expected

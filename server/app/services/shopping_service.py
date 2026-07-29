@@ -266,15 +266,60 @@ async def recall_link(
     return row.link_url, row.image_url
 
 
-async def recall_category(db: AsyncSession, user_id: uuid.UUID, name: str) -> str | None:
-    """The category to use for an uncategorized add: your history first, keyword guess second."""
+async def remembered_categories(
+    db: AsyncSession, user_id: uuid.UUID, names: list[str]
+) -> dict[str, str]:
+    """``normalize_name(name) -> remembered category``, for the names that have one.
+
+    One query regardless of how many names — a recipe can carry 100 ingredients and the
+    per-name version would be 100 round trips.
+    """
+    keys = {normalize_name(name) for name in names if name.strip()}
+    if not keys:
+        return {}
     result = await db.execute(
-        select(ItemHistory.category).where(
-            ItemHistory.user_id == user_id, ItemHistory.key == normalize_name(name)
+        select(ItemHistory.key, ItemHistory.category).where(
+            ItemHistory.user_id == user_id,
+            ItemHistory.key.in_(keys),
+            ItemHistory.category.is_not(None),
         )
     )
-    remembered = result.scalar_one_or_none()
-    return remembered or guess_category(name)
+    return {key: category for key, category in result.all()}
+
+
+async def recall_category(db: AsyncSession, user_id: uuid.UUID, name: str) -> str | None:
+    """The category to use for an uncategorized add: your history first, keyword guess second."""
+    remembered = await remembered_categories(db, user_id, [name])
+    return remembered.get(normalize_name(name)) or guess_category(name)
+
+
+async def _remember_category(
+    db: AsyncSession, user_id: uuid.UUID, name: str, category: str
+) -> None:
+    """Record a deliberate re-file so the next add of this item lands there by itself.
+
+    Without this the learning loop is open: you can move an item to the right aisle in the
+    store, but the next recipe that mentions it drops it back where the guesser thinks it goes.
+    """
+    key = normalize_name(name)
+    if not key:
+        return
+    result = await db.execute(
+        select(ItemHistory).where(ItemHistory.user_id == user_id, ItemHistory.key == key)
+    )
+    row = result.scalar_one_or_none()
+    if row is not None:
+        row.category = category
+    else:
+        db.add(
+            ItemHistory(
+                user_id=user_id,
+                key=key,
+                name=name,
+                category=category,
+                last_used=datetime.datetime.now(datetime.timezone.utc),
+            )
+        )
 
 
 async def suggest_items(db: AsyncSession, user_id: uuid.UUID, q: str) -> list[SuggestionOut]:
@@ -554,6 +599,25 @@ async def add_item(
     return ListOut.model_validate(await _reload(db, list_id))
 
 
+def _shopping_category(ingredient, remembered: dict[str, str]) -> str | None:
+    """Which store aisle a recipe ingredient should land in on the buy list.
+
+    Precedence: where *you* last filed this item, then whatever the recipe stored, then a
+    keyword guess. History wins over the recipe deliberately — a recipe ingredient's category
+    is almost always a machine guess made at import time, while a remembered one is where you
+    actually found the thing in your store. That ordering is what lets a single correction in
+    the aisle stick for every future recipe that mentions the item.
+
+    (This differs from `add_item`, where `req.category` is a choice the user is making right
+    now and therefore outranks history.)
+    """
+    return (
+        remembered.get(normalize_name(ingredient.name))
+        or ingredient.category
+        or guess_category(ingredient.name)
+    )
+
+
 async def add_recipe(
     db: AsyncSession, user_id: uuid.UUID, list_id: uuid.UUID, req: AddRecipeRequest
 ) -> ListOut:
@@ -576,13 +640,14 @@ async def add_recipe(
                 detail="This recipe's items are already on the list. Re-add to double up.",
             )
 
+    remembered = await remembered_categories(db, user_id, [i.name for i in recipe.ingredients])
     incoming = merge_incoming(
         [
             IncomingItem(
                 name=ing.name,
                 quantity=scale_quantity(ing.quantity, req.scale),
                 unit=ing.unit,
-                category=ing.category,
+                category=_shopping_category(ing, remembered),
                 note=ing.note,
             )
             for ing in recipe.ingredients
@@ -627,6 +692,7 @@ async def update_item(
             )
     if req.category is not None:
         item.category = req.category
+        await _remember_category(db, user_id, item.name, req.category)
     if req.link_url is not None:
         item.link_url = req.link_url or None  # "" is the clearing sentinel
         if not req.link_url:
@@ -670,6 +736,7 @@ __all__ = [
     "load_accessible_list",
     "load_owned_list",
     "recall_category",
+    "remembered_categories",
     "remove_member",
     "suggest_items",
     "update_item",

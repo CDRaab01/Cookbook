@@ -200,3 +200,86 @@ async def test_import_url_no_recipe_found(auth_client, monkeypatch):
         "/recipes/import-url", json={"url": "https://blog.example.com/not-a-recipe"}
     )
     assert resp.status_code == 422
+
+
+# ── Ingredient sections (v0.9) ───────────────────────────────────────────────
+
+WPRM_HTML = """
+<div class="wprm-recipe-ingredients-container">
+  <div class="wprm-recipe-ingredient-group">
+    <h4 class="wprm-recipe-group-name">Steak Marinade:</h4>
+    <ul><li class="wprm-recipe-ingredient">1/3 cup lime juice, freshly squeezed</li>
+        <li class="wprm-recipe-ingredient">2 teaspoons ground cumin</li></ul>
+  </div>
+  <div class="wprm-recipe-ingredient-group">
+    <h4 class="wprm-recipe-group-name">Fajitas:</h4>
+    <ul><li class="wprm-recipe-ingredient">1 1/2 pounds skirt steak</li>
+        <li class="wprm-recipe-ingredient">2 medium white onions</li></ul>
+  </div>
+</div>
+<div class="wprm-recipe-instructions-container"></div>
+"""
+
+FAJITAS_NODE = {
+    "@type": "Recipe",
+    "name": "Steak Fajitas",
+    "recipeIngredient": [
+        "1/3 cup lime juice, freshly squeezed",
+        "2 teaspoons ground cumin",
+        "1 1/2 pounds skirt steak",
+        "2 medium white onions",
+    ],
+}
+
+
+def test_sections_recovered_from_the_page_markup():
+    """schema.org has no ingredient-group field, so the headings come from the HTML."""
+    recipe = normalize_jsonld(FAJITAS_NODE, "https://x.test/f", page_html=WPRM_HTML)
+    assert [i.section for i in recipe.ingredients] == [
+        "Steak Marinade",
+        "Steak Marinade",
+        "Fajitas",
+        "Fajitas",
+    ]
+    # ...and the aisles are right for the buy list, which is a separate concern.
+    assert [i.category for i in recipe.ingredients] == ["produce", "pantry", "meat", "produce"]
+
+
+def test_sections_recovered_from_inline_headings():
+    """Some sites emit the heading as a recipeIngredient entry; no page markup needed."""
+    node = {
+        "@type": "Recipe",
+        "name": "Steak Fajitas",
+        "recipeIngredient": [
+            "For the marinade:",
+            "1/3 cup lime juice",
+            "2 teaspoons ground cumin",
+            "Fajitas:",
+            "1 1/2 pounds skirt steak",
+        ],
+    }
+    recipe = normalize_jsonld(node, "https://x.test/f")
+    # The heading lines are consumed, not imported as ingredients.
+    assert [i.name for i in recipe.ingredients] == [
+        "lime juice",
+        "ground cumin",
+        "skirt steak",
+    ]
+    assert [i.section for i in recipe.ingredients] == ["Marinade", "Marinade", "Fajitas"]
+
+
+def test_import_without_sections_is_unchanged():
+    """The degradation contract: no markup, no inline headings ⇒ byte-for-byte the old import."""
+    recipe = normalize_jsonld(FAJITAS_NODE, "https://x.test/f")
+    assert all(i.section is None for i in recipe.ingredients)
+    assert len(recipe.ingredients) == 4
+
+
+def test_import_ignores_markup_that_does_not_match_the_recipe():
+    """A page whose ingredient block doesn't line up with its JSON-LD gets no sections rather
+    than wrong ones."""
+    html = (
+        '<div class="recipe-ingredients"><h4>Nope:</h4><ul><li>900 g of something</li></ul></div>'
+    )
+    recipe = normalize_jsonld(FAJITAS_NODE, "https://x.test/f", page_html=html)
+    assert all(i.section is None for i in recipe.ingredients)

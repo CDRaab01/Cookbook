@@ -38,8 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.cookbook.ui.recipe.categoryLabel
 import com.cookbook.ui.theme.CookbookTheme
+import com.cookbook.util.categoryLabel
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.EmptyState
 import design.pulse.ui.components.PanelCard

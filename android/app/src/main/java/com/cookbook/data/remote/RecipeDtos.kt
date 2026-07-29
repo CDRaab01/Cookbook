@@ -8,7 +8,10 @@ data class IngredientIn(
     val name: String,
     val quantity: Double? = null,
     val unit: String? = null,
+    /** Store aisle — shopping-list routing only, never how the recipe is laid out. */
     val category: String? = null,
+    /** The recipe's own heading for this ingredient ("Steak Marinade"); null when ungrouped. */
+    val section: String? = null,
     val note: String? = null,
 )
 
@@ -55,6 +58,7 @@ data class IngredientOut(
     val quantity: Double? = null,
     val unit: String? = null,
     val category: String? = null,
+    val section: String? = null,
     val note: String? = null,
     @SerialName("plate_food_id") val plateFoodId: String? = null,
 )
@@ -191,6 +195,7 @@ data class PreviewIngredientOut(
     val quantity: Double? = null,
     val unit: String? = null,
     val category: String? = null,
+    val section: String? = null,
     val note: String? = null,
 )
 

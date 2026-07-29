@@ -42,4 +42,21 @@ class AisleOrderTest {
         assertEquals("meat", result[0])
         assertEquals("produce", result[1])
     }
+
+    @Test
+    fun `category labels cover the multi-word aisles and the null case`() {
+        // Moved here from RecipeDetailScreen when the recipe screen stopped grouping by aisle —
+        // aisles are a shopping concern, so their labels live with the aisle order.
+        assertEquals("Meat & Seafood", categoryLabel("meat"))
+        assertEquals("Dairy & Eggs", categoryLabel("dairy"))
+        assertEquals("Personal care", categoryLabel("personal"))
+        assertEquals("Produce", categoryLabel("produce"))
+        assertEquals("Other", categoryLabel(null))
+        // Every canonical aisle gets a non-empty, capitalized label.
+        DEFAULT_AISLE_ORDER.forEach {
+            val label = categoryLabel(it)
+            assert(label.isNotBlank())
+            assertEquals(label.first().uppercaseChar(), label.first())
+        }
+    }
 }

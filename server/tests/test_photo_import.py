@@ -65,6 +65,55 @@ class TestParseDraft:
         assert draft.ingredients[0].quantity == 2.0
         assert draft.ingredients[0].unit == "cup"
 
+    def test_captures_sections_and_aisles(self):
+        """A photographed recipe keeps its own headings, and its ingredients arrive with a
+        store aisle instead of landing uncategorized in the editor."""
+        draft = parse_draft(
+            json.dumps(
+                {
+                    "name": "Fajitas",
+                    "ingredients": [
+                        {
+                            "name": "Lime juice",
+                            "quantity": 1,
+                            "unit": "cup",
+                            "section": "For the marinade:",
+                            "category": "produce",
+                        },
+                        {"name": "Skirt steak", "quantity": 2, "unit": "lb", "section": "Fajitas"},
+                    ],
+                    "steps": [],
+                }
+            )
+        )
+        assert draft is not None
+        # The trailing colon is the model copying the card; one canonical form is stored.
+        assert draft.ingredients[0].section == "For the marinade"
+        assert draft.ingredients[1].section == "Fajitas"
+        # No category offered ⇒ the keyword guesser fills it in.
+        assert draft.ingredients[1].category == "meat"
+
+    def test_rejects_a_made_up_aisle(self):
+        draft = parse_draft(
+            json.dumps(
+                {
+                    "name": "X",
+                    "ingredients": [{"name": "Chicken breast", "category": "condiments"}],
+                    "steps": [],
+                }
+            )
+        )
+        assert draft is not None
+        assert draft.ingredients[0].category == "meat"  # guessed, not the invented aisle
+
+    def test_sections_and_categories_are_optional(self):
+        draft = parse_draft(
+            json.dumps({"name": "X", "ingredients": [{"name": "Mystery widget"}], "steps": []})
+        )
+        assert draft is not None
+        assert draft.ingredients[0].section is None
+        assert draft.ingredients[0].category is None
+
     def test_empty_object_is_unreadable(self):
         assert parse_draft("{}") is None
 

@@ -8,7 +8,10 @@ naive json.loads() would fail on a large fraction of otherwise-usable responses.
 import json
 import re
 
+from app.limits import MAX_SECTION_LENGTH
+from app.lists.categorize import guess_category
 from app.lists.merge import canonical_unit
+from app.models.recipe import STORE_CATEGORIES
 from app.schemas.photo import RecipePhotoDraft
 
 MAX_INGREDIENTS = 60
@@ -30,11 +33,17 @@ VISION_USER_PROMPT = (
     "code fences, shaped exactly like this:\n"
     '{"name": string, "servings": number or null, "prep_minutes": number or null, '
     '"cook_minutes": number or null, '
-    '"ingredients": [{"name": string, "quantity": number or null, "unit": string or null}], '
+    '"ingredients": [{"name": string, "quantity": number or null, "unit": string or null, '
+    '"section": string or null, "category": string or null}], '
     '"steps": [string, ...]}\n'
     'Keep each ingredient\'s name just the food (put prep notes like "diced" in the name if '
-    "that's how the card wrote it). Keep each step as one instruction. If you cannot read a "
-    "recipe in the photo at all, respond with exactly {} and nothing else."
+    "that's how the card wrote it). Keep each step as one instruction.\n"
+    'If the recipe groups its ingredients under headings ("For the marinade", "Topping"), put '
+    'that heading in "section" for every ingredient beneath it, copied as written but without '
+    "a trailing colon; use null when the recipe has no headings.\n"
+    f'"category" is the grocery-store aisle you would buy the item in, one of: '
+    f"{', '.join(STORE_CATEGORIES)}. Use null if you aren't sure.\n"
+    "If you cannot read a recipe in the photo at all, respond with exactly {} and nothing else."
 )
 
 
@@ -114,11 +123,19 @@ def parse_draft(raw_text: str) -> RecipePhotoDraft | None:
             continue
         unit_raw = raw.get("unit")
         unit = canonical_unit(str(unit_raw).strip()) if unit_raw else None
+        section = " ".join(str(raw.get("section") or "").split()).rstrip(":").strip()
+        # Trust the model's aisle only if it's a real one; otherwise fall back to the keyword
+        # guesser rather than dropping the category (the pantry-scan precedent).
+        category = str(raw.get("category") or "").strip().lower() or None
+        if category not in STORE_CATEGORIES:
+            category = guess_category(name)
         ingredients.append(
             {
                 "name": name,
                 "quantity": _coerce_number(raw.get("quantity")),
                 "unit": unit,
+                "section": section[:MAX_SECTION_LENGTH] or None,
+                "category": category,
             }
         )
 

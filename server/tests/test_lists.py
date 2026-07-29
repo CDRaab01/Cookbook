@@ -328,3 +328,83 @@ async def test_cross_user_list_isolation(auth_client, client):
     headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
     resp = await client.post(f"/lists/{lst['id']}/items", json={"name": "Sneaky"}, headers=headers)
     assert resp.status_code == 404
+
+
+async def test_add_recipe_prefers_the_aisle_you_last_used(auth_client):
+    """Where you filed an item beats the recipe's stored category.
+
+    A recipe ingredient's category is nearly always a machine guess made at import time; a
+    remembered one is where you actually found the thing in your store. So one correction in
+    the aisle sticks for every future recipe that mentions the item.
+    """
+    lst = await _default_list(auth_client)
+    # File it by hand once, then clear it off the list so only the memory remains.
+    added = await auth_client.post(
+        f"/lists/{lst['id']}/items", json={"name": "Ground cumin", "category": "pantry"}
+    )
+    await auth_client.delete(f"/lists/{lst['id']}/items/{added.json()['items'][0]['id']}")
+
+    # ...then add a recipe that still carries the old wrong guess.
+    recipe = (
+        await auth_client.post(
+            "/recipes",
+            json={
+                "name": "Fajitas",
+                "ingredients": [{"name": "ground cumin", "quantity": 2, "category": "meat"}],
+            },
+        )
+    ).json()
+    resp = await auth_client.post(
+        f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["items"][0]["category"] == "pantry"
+
+
+async def test_add_recipe_guesses_when_nothing_is_stored(auth_client):
+    """An uncategorized ingredient (manual entry, photo import, Plate migration) used to land
+    in Other; it now gets the same keyword guess a manual add would."""
+    recipe = (
+        await auth_client.post(
+            "/recipes",
+            json={"name": "Simple", "ingredients": [{"name": "Chicken breast", "quantity": 1}]},
+        )
+    ).json()
+    lst = await _default_list(auth_client)
+    resp = await auth_client.post(
+        f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]}
+    )
+    assert resp.json()["items"][0]["category"] == "meat"
+
+
+async def test_add_recipe_keeps_the_recipes_category_without_history(auth_client):
+    """With nothing remembered, the recipe's own value still wins over a fresh guess."""
+    recipe = (
+        await auth_client.post(
+            "/recipes",
+            json={
+                "name": "Odd",
+                "ingredients": [{"name": "Chicken breast", "quantity": 1, "category": "frozen"}],
+            },
+        )
+    ).json()
+    lst = await _default_list(auth_client)
+    resp = await auth_client.post(
+        f"/lists/{lst['id']}/add-recipe", json={"recipe_id": recipe["id"]}
+    )
+    assert resp.json()["items"][0]["category"] == "frozen"
+
+
+async def test_recategorizing_an_item_is_remembered(auth_client):
+    """Re-filing an item in the store teaches the app — without this write-back the recall in
+    the recipe path could never learn anything."""
+    lst = await _default_list(auth_client)
+    added = await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "Tahini"})
+    item = added.json()["items"][0]
+    await auth_client.patch(
+        f"/lists/{lst['id']}/items/{item['id']}", json={"category": "beverages"}
+    )
+    await auth_client.delete(f"/lists/{lst['id']}/items/{item['id']}")
+
+    again = await auth_client.post(f"/lists/{lst['id']}/items", json={"name": "tahini"})
+    assert again.json()["items"][0]["category"] == "beverages"

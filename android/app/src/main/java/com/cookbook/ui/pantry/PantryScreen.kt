@@ -67,10 +67,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.DisposableEffect
 import com.cookbook.data.remote.PantryItemOut
-import com.cookbook.ui.recipe.CATEGORY_ORDER
-import com.cookbook.ui.recipe.categoryLabel
 import com.cookbook.ui.theme.CookbookTheme
+import com.cookbook.util.DEFAULT_AISLE_ORDER
 import com.cookbook.util.ImageBytes
+import com.cookbook.util.categoryLabel
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.EmptyState
@@ -333,7 +333,7 @@ internal fun PantryList(
     val colors = CookbookTheme.colors
     val grouped = items.groupBy { it.category ?: "other" }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        CATEGORY_ORDER.filter { grouped.containsKey(it) }.forEach { category ->
+        DEFAULT_AISLE_ORDER.filter { grouped.containsKey(it) }.forEach { category ->
             item(key = "header_$category") {
                 SectionHeader(
                     categoryLabel(category),
@@ -392,7 +392,7 @@ internal fun PantryItemDialog(
                 )
                 Spacer(Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(CATEGORY_ORDER, key = { it }) { option ->
+                    items(DEFAULT_AISLE_ORDER, key = { it }) { option ->
                         FilterChip(
                             selected = category == option,
                             onClick = { category = if (category == option) null else option },

@@ -60,6 +60,38 @@ pure domain package **`app/lists/`** — the app's kernel:
   direction, descriptor stopwords, staples logic). Documented looseness ("milk" ⊆ "coconut milk")
   is a decision, not a bug.
 
+### The recipe/shopping boundary (v0.9) — a layer rule, not a preference
+
+`recipe_ingredients` carries two fields that look similar and must never be conflated:
+
+- **`section`** — the recipe's own heading for a run of ingredients ("Steak Marinade", "Fajitas").
+  *Recipe presentation.* Contiguous runs in `order`, never a sort key. Nothing about merging,
+  categorizing or shopping reads it.
+- **`category`** — the store aisle the item is *bought* in. *Shopping-list routing.* It must never
+  be rendered as recipe structure: grouping a recipe's ingredients by aisle scrambles the recipe
+  (a spice files under Meat & Seafood) and destroys the grouping the instructions refer to.
+
+So: the recipe detail screen, cook mode and share-as-text render **source order + `section`**; the
+shopping list and pantry render **`category`** in the user's aisle order. `ui/recipe/
+IngredientSections.kt::ingredientRows` is the one shared helper for the former; `util/AisleOrder.kt`
+(`DEFAULT_AISLE_ORDER`, `categoryLabel`) owns the latter — it lives there, not in a recipe screen,
+precisely so the two don't drift back together.
+
+Sections are recovered on import by **`recipes_ext/ingredient_groups.py`** (schema.org has no
+ingredient-group vocabulary): inline heading entries inside `recipeIngredient` first, then a
+regex scrape of the page's own markup (WP Recipe Maker / Tasty Recipes / Mediavine Create and
+anything with the same heading-then-`<li>` shape), aligned back onto the JSON-LD lines by
+normalized text. **Every step declines rather than guesses** — below a match-confidence gate, or
+if the assigned sections aren't contiguous, it returns "no sections" and the import is exactly
+what it was before the module existed. Spoonacular has no group data and is deliberately left flat.
+
+Category *routing* precedence on the bulk paths (`add_recipe`, `plan_to_list`) is
+**your `item_history` → the recipe's stored value → keyword guess**, batched into one query via
+`shopping_service.remembered_categories`. History outranks the recipe on purpose: the recipe's
+category is nearly always a machine guess from import time, so one correction in the aisle
+(written back by `update_item`) sticks for every future recipe mentioning that item. This is
+inverted from `add_item`, where the client's `category` is a choice being made right now.
+
 ### Domain map
 
 | Domain | Router | Service | Models |

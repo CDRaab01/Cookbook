@@ -78,6 +78,7 @@ def _build_ingredients(items: list[IngredientIn]) -> list[RecipeIngredient]:
             quantity=i.quantity,
             unit=i.unit,
             category=i.category,
+            section=i.section,
             note=i.note,
         )
         for order, i in enumerate(items)

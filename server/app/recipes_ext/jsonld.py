@@ -11,6 +11,10 @@ Ingredient lines arrive as free text ("1 ½ cups all-purpose flour, sifted") and
 "lite": leading amount (unicode fractions, "1 1/2", decimals) + a known unit word + the rest as
 the name, with the original line kept as the note. A line that defies parsing simply becomes a
 name — never dropped.
+
+``recipeIngredient`` is flat by spec, so the recipe's own headings ("Steak Marinade:") are
+recovered separately in :mod:`app.recipes_ext.ingredient_groups`, which declines rather than
+guesses; when it declines the import is identical to what it was before sections existed.
 """
 
 import json
@@ -21,6 +25,11 @@ import httpx
 
 from app.lists.categorize import guess_category
 from app.recipes_ext.base import NormalizedIngredient, NormalizedRecipe
+from app.recipes_ext.ingredient_groups import (
+    align_sections,
+    extract_ingredient_groups,
+    split_inline_sections,
+)
 
 log = logging.getLogger(__name__)
 
@@ -155,7 +164,7 @@ def _leading_amount(text: str) -> tuple[float | None, str]:
 _RANGE_TAIL_RE = re.compile(r"^(?:[-–—]|to\s)\s*(?:\d+(?:\.\d+)?(?:\s*/\s*\d+)?\s*)+")
 
 
-def parse_ingredient_line(line: str) -> NormalizedIngredient:
+def parse_ingredient_line(line: str, *, section: str | None = None) -> NormalizedIngredient:
     original = " ".join(line.split())
     quantity, rest = _leading_amount(original)
     if quantity is not None:
@@ -179,6 +188,7 @@ def parse_ingredient_line(line: str) -> NormalizedIngredient:
         unit=unit,
         category=guess_category(name),
         original_text=original if original != name else None,
+        section=section,
     )
 
 
@@ -263,14 +273,23 @@ def find_recipe_node(payload) -> dict | None:
     return None
 
 
-def normalize_jsonld(node: dict, source_url: str) -> NormalizedRecipe | None:
+def normalize_jsonld(
+    node: dict, source_url: str, *, page_html: str | None = None
+) -> NormalizedRecipe | None:
     title = (node.get("name") or "").strip()
     raw_ingredients = node.get("recipeIngredient") or node.get("ingredients") or []
-    ingredients = [
-        parse_ingredient_line(line)
-        for line in raw_ingredients
-        if isinstance(line, str) and line.strip()
-    ]
+    lines = [line for line in raw_ingredients if isinstance(line, str) and line.strip()]
+
+    # A recipe's own grouping ("Steak Marinade") is what makes step 1 ("combine the ingredients
+    # for the marinade") legible, but schema.org has no field for it. Recover it if we can:
+    # inline heading entries first (free), the page's markup second. Either may decline, and
+    # then this is exactly the flat import it always was.
+    pairs = split_inline_sections(lines)
+    if page_html and not any(section for section, _ in pairs):
+        texts = [text for _, text in pairs]
+        pairs = list(zip(align_sections(texts, extract_ingredient_groups(page_html)), texts))
+
+    ingredients = [parse_ingredient_line(text, section=section) for section, text in pairs]
     if not title or not ingredients:
         return None
     total = _minutes(node.get("totalTime"))
@@ -309,7 +328,7 @@ async def fetch_recipe_from_url(url: str, client: httpx.AsyncClient) -> Normaliz
     for payload in extract_jsonld_blocks(resp.text):
         node = find_recipe_node(payload)
         if node is not None:
-            normalized = normalize_jsonld(node, url)
+            normalized = normalize_jsonld(node, url, page_html=resp.text)
             if normalized is not None:
                 return normalized
     return None

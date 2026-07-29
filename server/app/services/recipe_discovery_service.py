@@ -85,6 +85,7 @@ def _normalized_to_create(normalized: NormalizedRecipe) -> RecipeCreate:
                 ),
                 unit=ing.unit,
                 category=ing.category,
+                section=ing.section,
                 # The provider's original phrasing ("2 boneless chicken breasts") is worth keeping
                 # when it says more than quantity+unit do.
                 note=(ing.original_text or "")[:255] or None

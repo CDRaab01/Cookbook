@@ -33,6 +33,14 @@ _KEYWORDS: dict[str, str] = {
     "pepper": "produce",
     "bell pepper": "produce",
     "jalapeno": "produce",
+    "poblano": "produce",
+    "serrano": "produce",
+    "habanero": "produce",
+    "anaheim": "produce",
+    "tomatillo": "produce",
+    # Bottled citrus juice is shelved with the fruit, not with the sodas.
+    "lime juice": "produce",
+    "lemon juice": "produce",
     "lettuce": "produce",
     "romaine": "produce",
     "arugula": "produce",
@@ -98,7 +106,16 @@ _KEYWORDS: dict[str, str] = {
     "steak": "meat",
     "ground beef": "meat",
     "ground turkey": "meat",
-    "ground": "meat",
+    "ground pork": "meat",
+    "ground chicken": "meat",
+    "ground lamb": "meat",
+    "ground sausage": "meat",
+    "ground chuck": "meat",
+    "ground round": "meat",
+    "ground sirloin": "meat",
+    "ground bison": "meat",
+    "ground venison": "meat",
+    "ground meat": "meat",
     "salmon": "meat",
     "shrimp": "meat",
     "tuna": "meat",
@@ -231,6 +248,14 @@ _KEYWORDS: dict[str, str] = {
     "paprika": "pantry",
     "oregano": "pantry",
     "cinnamon": "pantry",
+    # Dried chile in the spice aisle, not the fresh pepper it's made from.
+    "red pepper flake": "pantry",
+    "pepper flake": "pantry",
+    "crushed red pepper": "pantry",
+    "chili flake": "pantry",
+    "chile flake": "pantry",
+    "salt and pepper": "pantry",
+    "ground ginger": "pantry",
     "vanilla": "pantry",
     "garlic powder": "pantry",
     "onion powder": "pantry",
@@ -309,6 +334,12 @@ _KEYWORDS: dict[str, str] = {
     "juice": "beverages",
     "orange juice": "beverages",
     "apple juice": "beverages",
+    # Spelled out so the juice family is decided on purpose rather than by which keyword
+    # happened to be the longer string ("pineapple juice" used to land in produce).
+    "pineapple juice": "beverages",
+    "cranberry juice": "beverages",
+    "grape juice": "beverages",
+    "tomato juice": "beverages",
     "water": "beverages",
     "sparkling water": "beverages",
     "coconut water": "beverages",
@@ -434,14 +465,57 @@ _PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 
+# Words that mark a clause as prep instruction rather than identity. A trailing comma-clause
+# containing one of these is describing what you DO to the food, not what the food is — and it
+# routinely smuggles in another aisle's vocabulary ("poblano, ribs and seeds removed" → meat).
+_PREP_WORDS = (
+    "chopped|diced|minced|sliced|divided|softened|melted|drained|rinsed|thinly|finely|freshly|"
+    "grated|shredded|peeled|seeded|removed|cubed|halved|quartered|beaten|packed|optional|"
+    "crumbled|trimmed|julienned|zested|juiced|room temperature|for garnish|for serving|"
+    "plus more|cut into|to taste|well shaken"
+)
+_PAREN_RE = re.compile(r"\([^)]*\)")
+_PREP_CLAUSE_RE = re.compile(rf",\s*[^,]*\b(?:{_PREP_WORDS})\b.*$", re.IGNORECASE)
+_TRAILING_TASTE_RE = re.compile(r"\b(?:or more\s+)?to taste\b.*$", re.IGNORECASE)
+
+
+def clean_for_category(name: str) -> str:
+    """The part of an ingredient line that says WHAT it is, with prep noise stripped.
+
+    Recipe lines carry instructions inside the name — "large poblano (ribs and seeds removed
+    then sliced)", "red pepper flakes (or more to taste)" — and those clauses borrow other
+    aisles' words, which is how a poblano ended up in Meat & Seafood. Matching identity words
+    only is the fix.
+
+    Categorization-only. `merge.normalize_name` remains the identity function for merging and
+    `item_history` keys, and is deliberately untouched — a change there would move every
+    remembered item.
+    """
+    text = _PAREN_RE.sub(" ", name)
+    text = _PREP_CLAUSE_RE.sub("", text)
+    text = _TRAILING_TASTE_RE.sub("", text)
+    # Nested parentheses ("bell peppers (thinly sliced (any color))") leave an unbalanced
+    # bracket behind; it's punctuation either way, so drop what's left.
+    text = " ".join(text.replace(",", " ").replace("(", " ").replace(")", " ").split())
+    # A name that was *entirely* parenthetical/prep leaves nothing to match on — keep the
+    # original rather than guessing from an empty string.
+    return text or " ".join(name.split())
+
+
 def guess_category(name: str) -> str | None:
     """Best-effort store category for a free-text item name; None when unsure.
 
-    Matched against both the plain casefolded name and the merge-normalized form, so both the
-    "cookies"→"cooky" quirk of `normalize_name` and its "berries"→"berry" fold are covered.
+    Prep noise is stripped first (see `clean_for_category`), then matched against both the
+    casefolded name and the merge-normalized form, so both the "cookies"→"cooky" quirk of
+    `normalize_name` and its "berries"→"berry" fold are covered.
+
+    The raw name is deliberately *not* used as a fallback: a prep clause that matched a keyword
+    is exactly the bug this strips, so letting it back in through a second pass would undo it.
+    Cleaning is identity for a name with no parenthetical or prep clause, so nothing else moves.
     """
-    raw = " ".join(name.casefold().split())
-    norm = normalize_name(name)
+    cleaned = clean_for_category(name)
+    raw = " ".join(cleaned.casefold().split())
+    norm = normalize_name(cleaned)
     for pattern, category in _PATTERNS:
         if pattern.search(raw) or pattern.search(norm):
             return category
