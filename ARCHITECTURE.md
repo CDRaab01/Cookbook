@@ -102,7 +102,7 @@ inverted from `add_item`, where the client's `category` is a choice being made r
 | Shopping lists | `lists.py` | `shopping_service` | `ShoppingList`, `ShoppingListItem`, `ItemHistory` |
 | Meal planner | `plan.py` | `plan_service` | `MealPlanEntry` |
 | Pantry (v0.4 AI round) | `pantry.py` | `pantry_service` (+ `services/ai/`) | `PantryItem`, `PantryStaple` |
-| Household / family sharing | `household.py` | `household_service` | `Household`, `HouseholdMember` (+ `recipes.shared`) |
+| Household / family sharing | `household.py` (+ `POST /recipes/share-all`) | `household_service`, `recipe_service.{share_all_own_recipes,count_unshared_own_recipes}` | `Household`, `HouseholdMember` (+ `recipes.shared`) |
 | Plate integration | `migrate.py` + recipe endpoints | `plate_migration_service`, `plate_nutrition_service`, `cross_app_token` | — |
 | Export | `export.py` | `export_service` | generic dump |
 
@@ -153,6 +153,11 @@ Standard suite MVVM. Feature packages:
   (`shared==false`) sections with a family badge on shared cards; recipe detail carries the
   creator-only "Share with family" / "Make private" toggle (`POST /recipes/{id}/share`), and
   `is_owner` gates both that toggle and Delete (a co-member viewing a family recipe sees neither).
+  **Bulk opt-in:** the book shows a dismissible prompt when you're in an actually-shared household
+  and still have private recipes (`HouseholdOut.unshared_recipe_count` > 0 && `shared`), offering
+  `POST /recipes/share-all`. Dismissal is a one-way DataStore flag
+  (`AppPreferences.shareAllNudgeDismissed`) — "not now" means never again on that device, and the
+  action itself stays in Settings → Family.
 - `ui/settings/` — server URL, Plate migration, pantry-staples/aisle-order editors, and
   **Settings → Family** — the single household-sharing surface: invite by email, member roster
   (owner badge, **pending** badge on unaccepted invites), owner-removes / member-leaves
@@ -237,6 +242,11 @@ socket message; server rejections keep their own messages.
 7. **Sharing is household-wide, one surface** (Settings → Family / `/household`). Recipes/lists/
    plans are shared via household membership, not per-object ACLs; the client never uses the
    legacy per-list member endpoints (server still accepts them).
+8. **Recipe sharing is opt-in per recipe, and only its creator may opt it in.** Joining a household
+   shares lists and plans at once, but a recipe stays private until its creator flips `shared` —
+   `POST /recipes/share-all` is the bulk form of that same choice and is filtered to the caller's
+   own rows, so it can never share a co-member's cookbook for them. There is deliberately no bulk
+   *un*-share, and no server path that shares another user's recipes.
 
 ## Where to make common changes
 

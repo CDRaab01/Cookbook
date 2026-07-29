@@ -316,6 +316,13 @@ class RecipeShareRequest(BaseModel):
     shared: bool
 
 
+class RecipeShareAllOut(BaseModel):
+    """Result of the bulk "share all my recipes" opt-in: how many private recipes just became
+    family recipes (0 when they already all were)."""
+
+    shared_count: int
+
+
 class CookedRequest(BaseModel):
     """Optional payload for "I made this": a 1–5 "would make again" rating (omit to rate nothing)."""
 

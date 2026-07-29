@@ -773,3 +773,50 @@ directions say to mix marinade but idk what that is"*. Three defects, all fixed 
   heading. WPRM's group `<div>` carries `…-ingredient-group`, and matching it made the heading
   branch swallow the entire list it was supposed to label (zero ingredients scraped). The heading
   capture now refuses to span `<li`/`<ul`/`<ol`/`<div`.
+
+## v0.10 (2026-07-29) — bulk "share all my recipes" + the unshared-recipes prompt
+
+Reported as *"sharing is broken — I can't see my wife's recipes."* It wasn't: the household was
+`active` for both accounts, every endpoint was deployed, and `test_household.py` passed. The live
+DB just had **`shared = false` on all 364 recipes** — nobody had ever used the per-recipe toggle.
+
+The real defect was a **discoverability gap, not a bug**: accepting an invite shares the shopping
+lists and meal plans *immediately*, while every recipe stays private until its creator opts it in
+one at a time — and no surface said so. Two people who deliberately joined a household to share a
+cookbook got a shared list and an invisible cookbook. Fixed by making the choice reachable, without
+weakening who is allowed to make it.
+
+- **`POST /recipes/share-all`** (`recipe_service.share_all_own_recipes`) — one bulk `UPDATE` setting
+  `shared = true` on the caller's still-private recipes, returning `shared_count` (what actually
+  changed, so a second call reports 0 rather than a total). **Filtered to `user_id == caller`**:
+  the creator-only rule of the per-recipe toggle is preserved, so this can never share a
+  co-member's cookbook on their behalf. There is deliberately **no bulk un-share** — reversing a
+  share stays per-recipe, where you can see which one you're making private again.
+- **`HouseholdOut.unshared_recipe_count`** (`count_unshared_own_recipes`, one indexed COUNT on the
+  existing `GET /household` read) — how many of *your* recipes are still private. Per-caller, so a
+  co-member with none of her own sees 0. The client doesn't re-derive it from a list it may have
+  filtered.
+- **Two surfaces, one action.** Settings → Family gains a "Share all my recipes" button (with a
+  confirm dialog naming the count and stating only-yours-are-shared) shown when
+  `shared && unshared_recipe_count > 0`; the recipe book gains a dismissible prompt in the same
+  condition. Dismissal is a one-way DataStore flag (`AppPreferences.shareAllNudgeDismissed`) —
+  "Not now" means *never again on this device*, not "re-nag next time", and nothing is lost because
+  the Settings action is permanent. The prompt is strictly additive: a failed/offline `GET
+  /household` just means no prompt, and an older server omitting the field defaults it to 0.
+- **Deliberately not done:** flipping the existing 364 rows in prod, and defaulting new recipes to
+  `shared` inside a household. Both were considered and rejected — the first overrides a privacy
+  choice on data the actor doesn't own (the exact thing `is_owner` exists to prevent) and would be
+  invisible to its owner; the second changes a privacy default and deserves its own decision.
+  **A recipe still only becomes visible because its creator said so.**
+- **Verified:** server **525 passed** (4 new in `test_household.py`: yours-only incl. an assertion
+  that a co-member's private recipe survives, idempotence/solo, the count driving the prompt, auth)
+  + `ruff check`/`ruff format --check` clean **on CI's pinned 0.4.4**, not just the newer pyproject
+  pin. Android **118 unit tests, 0 failures** (5 new nudge tests) + `:app:compileDebugKotlin`, run
+  locally against the sibling Pulse checkout.
+- **Pre-existing local failures, confirmed not mine** by re-running the same files on a clean
+  worktree of `main`: 8 env-dependent tests (`test_suite_auth` ×1, `test_plate_*` ×6, `test_pantry`
+  ×1) fail identically before and after, because mounting the live `server/.env` into the test
+  container supplies `SUITE_JWKS_URL`/`PLATE_BASE_URL` and they reach for real config. Green in CI.
+  **Worth keeping:** the prod image has no `pytest` and its entrypoint ignores a passed command —
+  run the suite with `--entrypoint sh` and `pip install pytest`, or you get a booted API and an
+  empty log instead of a test run.

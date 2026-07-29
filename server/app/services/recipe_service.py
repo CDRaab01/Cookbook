@@ -9,7 +9,7 @@ import datetime
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cook_event import CookEvent
@@ -58,6 +58,40 @@ async def set_recipe_shared(
     recipe.shared = shared
     await db.commit()
     return await _reload(db, recipe_id)
+
+
+async def share_all_own_recipes(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """Bulk opt-in: make every private recipe **this user created** a family recipe, and return how
+    many actually changed.
+
+    The creator-only rule of ``set_recipe_shared`` still holds — the ``user_id`` filter means a
+    household co-member's private recipes are untouched, so this can never share someone else's
+    cookbook on their behalf. Already-shared rows are excluded so the count is what the caller
+    just opted in (0 when there was nothing left to share), not a total.
+
+    There is deliberately no bulk *un*-share: reversing a share is per-recipe, where you can see
+    which one you're making private again.
+    """
+    result = await db.execute(
+        update(Recipe)
+        .where(Recipe.user_id == user_id, Recipe.shared.is_(False))
+        .values(shared=True)
+    )
+    await db.commit()
+    return result.rowcount or 0
+
+
+async def count_unshared_own_recipes(db: AsyncSession, user_id: uuid.UUID) -> int:
+    """How many of this user's own recipes are still private — what the "share all" nudge counts.
+    Cheap enough to sit on the household read (one indexed COUNT), and it keeps the client from
+    having to infer the number from a recipe list it may have filtered."""
+    return (
+        await db.execute(
+            select(func.count())
+            .select_from(Recipe)
+            .where(Recipe.user_id == user_id, Recipe.shared.is_(False))
+        )
+    ).scalar_one()
 
 
 async def _reload(db: AsyncSession, recipe_id: uuid.UUID) -> Recipe:

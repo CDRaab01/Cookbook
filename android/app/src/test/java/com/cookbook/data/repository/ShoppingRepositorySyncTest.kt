@@ -204,6 +204,7 @@ private class FakeApi : ApiService {
     override suspend fun getHouseholdInvite() = error("unused")
     override suspend fun acceptHouseholdInvite() = error("unused")
     override suspend fun declineHouseholdInvite() = error("unused")
+    override suspend fun shareAllRecipes() = error("unused")
     override suspend fun deletePlanEntry(id: String) = error("unused")
     override suspend fun planToList(req: PlanToListRequest): PlanToListResult = error("unused")
     override suspend fun addRecipeToList(

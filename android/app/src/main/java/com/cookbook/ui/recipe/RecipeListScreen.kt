@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -67,6 +68,7 @@ import design.pulse.ui.components.Caption
 import design.pulse.ui.components.DataText
 import design.pulse.ui.components.EmptyState
 import design.pulse.ui.components.PanelCard
+import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 import design.pulse.ui.components.StaleBanner
 
@@ -85,6 +87,8 @@ fun RecipeListScreen(
     val sort by viewModel.sort.collectAsState()
     val favoritesOnly by viewModel.favoritesOnly.collectAsState()
     val selectedTag by viewModel.selectedTag.collectAsState()
+    val unsharedCount by viewModel.unsharedCount.collectAsState()
+    val sharingAll by viewModel.sharingAll.collectAsState()
     var sortMenuOpen by remember { mutableStateOf(false) }
     val colors = CookbookTheme.colors
 
@@ -178,6 +182,16 @@ fun RecipeListScreen(
                                 StaleBanner(asOfMs = asOf, channel = colors.heat.base)
                             }
                         }
+                        if (unsharedCount > 0) {
+                            item(key = "share_all_nudge") {
+                                ShareAllNudge(
+                                    count = unsharedCount,
+                                    sharing = sharingAll,
+                                    onShareAll = viewModel::shareAllRecipes,
+                                    onDismiss = viewModel::dismissNudge,
+                                )
+                            }
+                        }
                         item {
                             OutlinedTextField(
                                 value = query,
@@ -265,6 +279,61 @@ fun RecipeListScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Shown when you're in a shared household but your recipes are still private — the gap that made
+ * family mode look broken: accepting an invite shares the lists and plans immediately, while every
+ * recipe waits on its creator's per-recipe toggle, and nothing said so. Offers the bulk opt-in
+ * (yours only, server-enforced). "Not now" is permanent on this device; the action itself lives on
+ * in Settings → Family.
+ */
+@Composable
+private fun ShareAllNudge(
+    count: Int,
+    sharing: Boolean,
+    onShareAll: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = CookbookTheme.colors
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.People,
+                    contentDescription = null,
+                    tint = colors.fresh.base,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (count == 1) "1 recipe isn't shared yet" else "$count recipes aren't shared yet",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Your family can see your shopping lists and meal plans, but recipes stay private " +
+                    "until you share them.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PulseButton(
+                    text = if (sharing) "Sharing…" else "Share all",
+                    onClick = onShareAll,
+                    compact = true,
+                    channel = colors.fresh.base,
+                    onChannel = colors.fresh.on,
+                    dimChannel = colors.fresh.dim,
+                    enabled = !sharing,
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onDismiss, enabled = !sharing) { Text("Not now") }
             }
         }
     }

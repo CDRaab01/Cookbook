@@ -2,12 +2,15 @@ package com.cookbook.ui.recipe
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cookbook.data.remote.ApiService
 import com.cookbook.data.remote.RecipeSummaryOut
 import com.cookbook.data.repository.RecipeRepository
+import com.cookbook.util.AppPreferences
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,6 +24,8 @@ enum class RecipeSort(val label: String) {
 @HiltViewModel
 class RecipeListViewModel @Inject constructor(
     private val recipeRepository: RecipeRepository,
+    private val api: ApiService,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     private val _recipes = MutableStateFlow<UiState<List<RecipeSummaryOut>>>(UiState.Loading)
@@ -43,6 +48,17 @@ class RecipeListViewModel @Inject constructor(
     private val _selectedTag = MutableStateFlow<String?>(null)
     val selectedTag: StateFlow<String?> = _selectedTag
 
+    /**
+     * How many of your recipes are still private while you're in an actually-shared household —
+     * 0 hides the prompt. Joining a household shares the lists and plans but leaves every recipe
+     * private until its creator opts in, and nothing on this screen said so.
+     */
+    private val _unsharedCount = MutableStateFlow(0)
+    val unsharedCount: StateFlow<Int> = _unsharedCount
+
+    private val _sharingAll = MutableStateFlow(false)
+    val sharingAll: StateFlow<Boolean> = _sharingAll
+
     fun load() {
         viewModelScope.launch {
             // Only show the spinner when nothing is on screen yet (Spotter convention) so a
@@ -55,7 +71,46 @@ class RecipeListViewModel @Inject constructor(
             } catch (e: Exception) {
                 UiState.Error(e.message ?: "Couldn't load recipes")
             }
+            refreshNudge()
         }
+    }
+
+    /** Best-effort, like the other household reads — offline or an older server just means no prompt. */
+    private suspend fun refreshNudge() {
+        if (appPreferences.shareAllNudgeDismissed.first()) {
+            _unsharedCount.value = 0
+            return
+        }
+        val household = runCatching { api.getHousehold() }.getOrNull()
+        _unsharedCount.value =
+            if (household != null && household.shared) household.unsharedRecipeCount else 0
+    }
+
+    /** Bulk opt-in from the prompt. Yours only — server-enforced. Reloads so the list re-splits. */
+    fun shareAllRecipes() {
+        if (_sharingAll.value) return
+        viewModelScope.launch {
+            _sharingAll.value = true
+            try {
+                api.shareAllRecipes()
+                _unsharedCount.value = 0
+                val result = runCatching { recipeRepository.listRecipes() }.getOrNull()
+                if (result != null) {
+                    _staleAsOf.value = result.asOfMs
+                    _recipes.value = UiState.Success(result.value)
+                }
+            } catch (_: Exception) {
+                // Leave the prompt up; the Settings → Family action reports errors properly.
+            } finally {
+                _sharingAll.value = false
+            }
+        }
+    }
+
+    /** "Not now" — never ask again on this device; the action stays in Settings → Family. */
+    fun dismissNudge() {
+        _unsharedCount.value = 0
+        viewModelScope.launch { appPreferences.dismissShareAllNudge() }
     }
 
     fun setQuery(value: String) {

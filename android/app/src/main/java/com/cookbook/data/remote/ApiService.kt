@@ -198,6 +198,11 @@ interface ApiService {
     @POST("household/decline")
     suspend fun declineHouseholdInvite()
 
+    // Bulk opt-in: make every private recipe YOU created a family recipe. A co-member's private
+    // recipes are untouched (server-enforced) — this is the per-recipe toggle applied to your own.
+    @POST("recipes/share-all")
+    suspend fun shareAllRecipes(): ShareAllOut
+
     // --- Pantry ---
     @Multipart
     @POST("pantry/scan")

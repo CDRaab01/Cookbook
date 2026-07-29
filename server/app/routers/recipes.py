@@ -19,6 +19,7 @@ from app.schemas.recipe import (
     RecipeOut,
     RecipePreviewOut,
     RecipeSummaryOut,
+    RecipeShareAllOut,
     RecipeShareRequest,
     RecipeUpdate,
 )
@@ -45,6 +46,7 @@ from app.services.recipe_service import (
     mark_cooked,
     unmark_cooked,
     set_recipe_shared,
+    share_all_own_recipes,
     update_recipe,
 )
 
@@ -158,6 +160,19 @@ async def create(req: RecipeCreate, current_user: CurrentUser, db: DbSession):
 @router.get("", response_model=list[RecipeSummaryOut])
 async def list_all(current_user: CurrentUser, db: DbSession):
     return await list_recipes(db, current_user.id)
+
+
+# Fixed path (see the note above /discover) — one segment, so it can never shadow
+# POST /{recipe_id}/share, which is the per-recipe toggle this is the bulk form of.
+@router.post("/share-all", response_model=RecipeShareAllOut)
+async def share_all(current_user: CurrentUser, db: DbSession):
+    """Make every private recipe **you** created a family recipe, in one action (Settings → Family).
+
+    Yours only: a household co-member's private recipes are theirs to share, the same rule the
+    per-recipe toggle enforces. Safe to call when solo or when everything is already shared — it
+    just reports ``shared_count: 0``.
+    """
+    return RecipeShareAllOut(shared_count=await share_all_own_recipes(db, current_user.id))
 
 
 @router.get("/{recipe_id}", response_model=RecipeOut)

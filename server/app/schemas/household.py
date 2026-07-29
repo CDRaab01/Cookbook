@@ -15,6 +15,10 @@ class HouseholdOut(BaseModel):
     members: list[HouseholdMemberOut]
     you_are_owner: bool
     shared: bool  # more than one ACTIVE member — the cookbook + lists are actually being shared
+    # How many of YOUR recipes are still private. Drives the "share all my recipes" nudge, which
+    # only makes sense when `shared` is true: joining a household shares the lists and plans, but
+    # recipes stay private until their creator opts each one in, and nothing said so.
+    unshared_recipe_count: int = 0
 
 
 class AddMemberRequest(BaseModel):

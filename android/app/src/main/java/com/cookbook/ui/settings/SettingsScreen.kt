@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,8 @@ fun SettingsScreen(
     val household by viewModel.household.collectAsState()
     val householdError by viewModel.householdError.collectAsState()
     val invite by viewModel.invite.collectAsState()
+    val sharingAll by viewModel.sharingAll.collectAsState()
+    val shareAllResult by viewModel.shareAllResult.collectAsState()
     var editedUrl by remember(serverUrl) { mutableStateOf(serverUrl) }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
 
@@ -69,6 +72,12 @@ fun SettingsScreen(
         migrationStatus?.let {
             snackbar.showSnackbar(it)
             viewModel.clearMigrationStatus()
+        }
+    }
+    LaunchedEffect(shareAllResult) {
+        shareAllResult?.let {
+            snackbar.showSnackbar(it)
+            viewModel.dismissShareAllResult()
         }
     }
 
@@ -127,9 +136,11 @@ fun SettingsScreen(
             HouseholdBlock(
                 household = household,
                 error = householdError,
+                sharingAll = sharingAll,
                 onAddMember = viewModel::addHouseholdMember,
                 onRemoveMember = viewModel::removeHouseholdMember,
                 onLeave = viewModel::leaveHousehold,
+                onShareAll = viewModel::shareAllRecipes,
             )
 
             SectionHeader("Server", channel = colors.info.base)
@@ -290,9 +301,11 @@ private fun InviteBanner(
 private fun HouseholdBlock(
     household: HouseholdOut?,
     error: String?,
+    sharingAll: Boolean,
     onAddMember: (String) -> Unit,
     onRemoveMember: (String) -> Unit,
     onLeave: () -> Unit,
+    onShareAll: () -> Unit,
 ) {
     val colors = CookbookTheme.colors
     PanelCard(modifier = Modifier.fillMaxWidth()) {
@@ -330,6 +343,54 @@ private fun HouseholdBlock(
                             Text(if (m.status == "pending") "Cancel" else "Remove")
                         }
                     }
+                }
+            }
+            // Joining a household shares the lists and plans, but each recipe stays private until
+            // its creator opts it in — which nothing used to say. Offer the bulk opt-in right where
+            // the household is managed, but only when it would actually do something.
+            if (household != null && household.shared && household.unsharedRecipeCount > 0) {
+                var confirming by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(12.dp))
+                val n = household.unsharedRecipeCount
+                Text(
+                    if (n == 1) {
+                        "1 of your recipes is still private — your family can't see it."
+                    } else {
+                        "$n of your recipes are still private — your family can't see them."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                PulseButton(
+                    text = if (sharingAll) "Sharing…" else "Share all my recipes",
+                    onClick = { confirming = true },
+                    compact = true,
+                    tonal = true,
+                    enabled = !sharingAll,
+                )
+                if (confirming) {
+                    AlertDialog(
+                        onDismissRequest = { confirming = false },
+                        title = { Text("Share all your recipes?") },
+                        text = {
+                            Text(
+                                "This makes all $n of your private recipes family recipes — your " +
+                                    "household will be able to see and edit them. Only recipes " +
+                                    "you created are shared. You can make any one private again " +
+                                    "from its recipe page.",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirming = false
+                                onShareAll()
+                            }) { Text("Share all") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirming = false }) { Text("Cancel") }
+                        },
+                    )
                 }
             }
             Spacer(Modifier.height(8.dp))
