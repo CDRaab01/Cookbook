@@ -98,6 +98,7 @@ async def discover_preview(
                 quantity=i.quantity,
                 unit=i.unit,
                 category=i.category,
+                section=i.section,
                 note=i.original_text if i.original_text != i.name else None,
             )
             for i in normalized.ingredients

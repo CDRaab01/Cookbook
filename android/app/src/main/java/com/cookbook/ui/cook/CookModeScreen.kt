@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cookbook.data.remote.RecipeOut
 import com.cookbook.ui.recipe.formatQuantity
+import com.cookbook.ui.recipe.ingredientRows
 import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
@@ -184,20 +185,31 @@ fun CookModeScreen(
                             )
                         }
                     }
-                    items(recipe.ingredients) { ing ->
-                        Row {
-                            val qty = formatQuantity(ing.quantity?.let { it * scale }, ing.unit)
-                            if (qty != null) {
-                                DataText(
-                                    qty,
-                                    style = CookbookTheme.dataType.numeral,
-                                    color = colors.heat.base,
-                                    modifier = Modifier.width(76.dp),
+                    // Mid-cook, "the marinade" has to be unambiguous — same section headings
+                    // the detail screen shows, same source order.
+                    items(ingredientRows(recipe.ingredients)) { (heading, ing) ->
+                        Column {
+                            if (heading != null) {
+                                Text(
+                                    heading,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = colors.fresh.base,
                                 )
-                            } else {
-                                Spacer(Modifier.width(76.dp))
                             }
-                            Text(ing.name, style = MaterialTheme.typography.bodyLarge)
+                            Row {
+                                val qty = formatQuantity(ing.quantity?.let { it * scale }, ing.unit)
+                                if (qty != null) {
+                                    DataText(
+                                        qty,
+                                        style = CookbookTheme.dataType.numeral,
+                                        color = colors.heat.base,
+                                        modifier = Modifier.width(76.dp),
+                                    )
+                                } else {
+                                    Spacer(Modifier.width(76.dp))
+                                }
+                                Text(ing.name, style = MaterialTheme.typography.bodyLarge)
+                            }
                         }
                     }
                 }

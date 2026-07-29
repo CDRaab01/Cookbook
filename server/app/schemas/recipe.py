@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.limits import (
     MAX_RECIPE_INGREDIENTS,
     MAX_RECIPE_STEPS,
+    MAX_SECTION_LENGTH,
     MINUTES_BOUNDS,
     QUANTITY_BOUNDS,
     SERVINGS_BOUNDS,
@@ -32,6 +33,18 @@ def _normalize_unit(v: str | None) -> str | None:
     return canonical_unit(v)
 
 
+def _validate_section(v: str | None) -> str | None:
+    """The recipe's own heading for a run of ingredients ("Steak Marinade"), never an aisle.
+
+    Trailing colons are how sites and cooks write them ("For the sauce:") but they'd double up
+    against the UI's own punctuation, so they're dropped here — one canonical form in the DB.
+    """
+    if v is None:
+        return None
+    key = " ".join(v.split()).rstrip(":").strip()
+    return key[:MAX_SECTION_LENGTH] or None
+
+
 MAX_TAGS = 10
 MAX_TAG_LENGTH = 30
 
@@ -55,6 +68,7 @@ class IngredientIn(BaseModel):
     quantity: float | None = Field(default=None, gt=QUANTITY_BOUNDS[0], le=QUANTITY_BOUNDS[1])
     unit: str | None = None
     category: str | None = None
+    section: str | None = None
     note: str | None = None
 
     @field_validator("name")
@@ -73,6 +87,11 @@ class IngredientIn(BaseModel):
     @classmethod
     def category_valid(cls, v: str | None) -> str | None:
         return _validate_category(v)
+
+    @field_validator("section")
+    @classmethod
+    def section_clean(cls, v: str | None) -> str | None:
+        return _validate_section(v)
 
 
 class RecipeCreate(BaseModel):
@@ -162,6 +181,7 @@ class IngredientOut(BaseModel):
     quantity: float | None = None
     unit: str | None = None
     category: str | None = None
+    section: str | None = None
     note: str | None = None
     plate_food_id: uuid.UUID | None = None
 
@@ -248,6 +268,7 @@ class PreviewIngredientOut(BaseModel):
     quantity: float | None = None
     unit: str | None = None
     category: str | None = None
+    section: str | None = None
     note: str | None = None
 
 

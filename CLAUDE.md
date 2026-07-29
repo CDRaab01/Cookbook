@@ -702,3 +702,74 @@ sections stay as history, this is the current truth.
   cases that encoded the old keep-cooking-measures behavior). New/updated tests: `test_merge`
   (`is_buyable_measure` table + `buyable_measures`), `test_lists` (cooking-dropped, store-unit-kept,
   new `test_cooking_units_never_land_on_the_list`), `test_sharing` (merge now uses liters).
+
+## v0.9 (2026-07-29) — recipes read like recipes; aisles belong to the shopping list
+
+User feedback (via the household's other member) on an imported steak-fajitas recipe: the recipe
+detail screen chopped its ingredients into **store aisles** — PRODUCE / MEAT & SEAFOOD / PANTRY —
+instead of the way the recipe is written. Verbatim: *"the recipe should parse ingredients to the
+shopping list categories but not parse it in recipe … recipe needs to maintain the recipe format
+but when it parses ingredients to shopping list it should send to right category"*, and *"the
+directions say to mix marinade but idk what that is"*. Three defects, all fixed here.
+
+- **Aisle grouping is gone from the recipe screen.** `RecipeDetailScreen` renders ingredients in
+  the recipe's own order; cook mode and share-as-text match. **This supersedes the v0.7 implication
+  that the 13 store aisles order a recipe** — they order a *buy list*. The old `groupBy(category)`
+  also silently dropped any ingredient whose category wasn't one of the 13 (nothing can be dropped
+  now) and ignored the user's custom aisle order that the shopping screen honors.
+- **Ingredient sections** (`recipe_ingredients.section`, migration `0021`, `String(80)`): the
+  recipe's own heading ("Steak Marinade", "Fajitas"), rendered as contiguous runs — never a sort
+  key, never read by merge/categorize/shopping. Recovered on import by the new
+  `recipes_ext/ingredient_groups.py` since schema.org has **no** ingredient-group field: inline
+  heading entries inside `recipeIngredient` ("For the marinade:") first, then a regex scrape of
+  the page markup (one shape-based heading→`<li>` scanner covering WPRM/Tasty/Mediavine and
+  anything similar, *not* three per-plugin parsers), aligned back onto the JSON-LD lines by
+  normalized text. **The contract is that every stage declines rather than guesses** — a match
+  ratio below 70%, non-contiguous assignments, or more headings than ingredients all return "no
+  sections", making the import byte-identical to before. A false-positive heading *deletes* an
+  ingredient, hence the paranoia (`is_section_heading` requires no digit/fraction anywhere, ≤60
+  chars, and a colon / "For the …" / short ALL-CAPS that isn't a recognizable food). Spoonacular
+  is left flat on purpose: `extendedIngredients` carries no groups and `analyzedInstructions[].name`
+  groups *steps*, not ingredients. Photo import asks the vision model for `section` **and**
+  `category` (the latter closes a standing gap — photo ingredients used to land uncategorized).
+- **Categories are right now.** Verified bugs: `"ground cumin"` → meat (a bare `"ground": "meat"`
+  keyword outranked the spice), `"large poblano (ribs and seeds removed then sliced)"` → meat
+  (`"rib"` matched inside the *prep note*), `"red pepper flakes"` → produce, and `pineapple juice`
+  vs `lime juice` disagreeing by keyword length. Fixes: a new `clean_for_category` strips
+  parentheticals and trailing prep clauses **before** matching (`merge.normalize_name` is
+  untouched — merge identity and `item_history` keys do not move); bare `"ground"` is gone in
+  favor of the explicit cuts; ~20 keywords added. Cleaning is the identity function for a name
+  with no parenthetical or prep clause, which is why nothing previously-correct moved (the
+  existing table plus 20 new rows all pass).
+- **The recipe → list path finally learns.** `add_recipe` and `plan_to_list` used to pass
+  `ing.category` verbatim, skipping the history→guesser precedence manual adds use. Now:
+  **history → recipe's value → guess**, batched into one query (`remembered_categories`). History
+  outranks the recipe deliberately — the recipe's value is a machine guess from import, yours is
+  where you actually found it. `update_item` now writes a re-file back to `item_history`, without
+  which the recall could never learn anything.
+- **Migration `0022`** re-sorts existing `recipe_ingredients` + `shopping_list_items` +
+  `item_history` so the *already-imported* recipe benefits. Follows 0019's rule (rewrite only when
+  the stored value equals the old auto-guess, so hand-picked aisles survive) but **reconstructs the
+  old guesser from a ~25-line frozen `_REMOVED`/`_ADDED` diff instead of copying the 390-entry map
+  again** — 0019 had to freeze the whole map because the matching *algorithm* changed; here only
+  the map did. Documented coupling: a future keyword edit shifts this migration's notion of "old"
+  for a DB that hasn't run it yet. Bounded, and why those literals must never be "kept in sync".
+- **Editor:** sections are edited as a **marker on the row that starts each run**
+  (`IngredientDraft.sectionHeader`), not derived by comparing values. Deriving breaks twice: two
+  runs silently merge the instant you finish typing a name matching the run above, and clearing a
+  heading collapses the field you're typing in. Ingredients also gained up/down reordering (they
+  had none), and the row of **all 13 aisle chips under every ingredient** — a shopping concern
+  shouting in the recipe editor — is now one compact "Aisle: …" dropdown.
+- Also: an imported ingredient's note (the source's whole line) is suppressed when it only
+  restates the row it sits under, which was doubling the height of every imported recipe.
+  `CATEGORY_ORDER`/`categoryLabel` moved from `ui/recipe/RecipeDetailScreen.kt` to
+  `util/AisleOrder.kt` (six call sites), so aisle vocabulary no longer lives in a recipe screen.
+- **Verified:** the stdlib-pure server suites run green **locally** (168: categorize incl. the new
+  `clean_for_category` table, the whole `ingredient_groups` module, the 0022 helper, and every
+  JSON-LD parser test) + `ruff check`/`format` clean at CI scope. The DB-backed additions
+  (`test_recipes` section round-trip, `test_lists` recall precedence, `test_photo_import`) and all
+  Android tests are **CI-gated** — this environment has no Postgres and no Pulse checkout.
+- **Gotcha worth keeping:** a regex heading-scanner must not treat a *container* class as a
+  heading. WPRM's group `<div>` carries `…-ingredient-group`, and matching it made the heading
+  branch swallow the entire list it was supposed to label (zero ingredients scraped). The heading
+  capture now refuses to span `<li`/`<ul`/`<ol`/`<div`.

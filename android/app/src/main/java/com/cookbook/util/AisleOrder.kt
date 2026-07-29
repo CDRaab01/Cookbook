@@ -11,6 +11,19 @@ val DEFAULT_AISLE_ORDER: List<String> =
         "snacks", "beverages", "household", "personal", "baby", "other",
     )
 
+// Display labels for the store aisles; multi-word ones can't be derived by capitalizing the key.
+private val CATEGORY_LABELS = mapOf(
+    "meat" to "Meat & Seafood",
+    "dairy" to "Dairy & Eggs",
+    "personal" to "Personal care",
+)
+
+/** The human name of a store aisle. Null (uncategorized) reads as "Other". */
+fun categoryLabel(category: String?): String {
+    val key = category ?: "other"
+    return CATEGORY_LABELS[key] ?: key.replaceFirstChar { it.uppercase() }
+}
+
 /**
  * Reconcile a saved aisle order against the canonical set: keep the known categories in the saved
  * order, drop anything no longer a real category, and append any canonical category the save is

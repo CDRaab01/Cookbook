@@ -135,3 +135,59 @@ async def test_validation_rejects_bad_input(auth_client):
 async def test_recipes_require_auth(client):
     assert (await client.get("/recipes")).status_code == 401
     assert (await client.post("/recipes", json={"name": "X"})).status_code == 401
+
+
+SECTIONED_RECIPE = {
+    "name": "Steak Fajitas",
+    "servings": 6,
+    "ingredients": [
+        {"name": "Lime juice", "quantity": 0.33, "unit": "cup", "section": "Steak Marinade"},
+        {"name": "Ground cumin", "quantity": 2, "unit": "tsp", "section": "Steak Marinade"},
+        {"name": "Skirt steak", "quantity": 1.5, "unit": "lb", "section": "Fajitas"},
+        {"name": "White onions", "quantity": 2, "section": "Fajitas"},
+    ],
+}
+
+
+async def test_ingredient_sections_round_trip(auth_client):
+    """A recipe keeps the groupings it was written with — that's what makes step 1 ("combine
+    the ingredients for the marinade") mean something."""
+    created = (await auth_client.post("/recipes", json=SECTIONED_RECIPE)).json()
+    sections = [i["section"] for i in created["ingredients"]]
+    assert sections == ["Steak Marinade", "Steak Marinade", "Fajitas", "Fajitas"]
+    # Order is the recipe's own; sections are contiguous runs in it, never a sort key.
+    assert [i["order"] for i in created["ingredients"]] == [0, 1, 2, 3]
+
+    fetched = (await auth_client.get(f"/recipes/{created['id']}")).json()
+    assert [i["section"] for i in fetched["ingredients"]] == sections
+
+
+async def test_ingredient_section_is_optional_and_normalized(auth_client):
+    resp = await auth_client.post(
+        "/recipes",
+        json={
+            "name": "Mixed",
+            "ingredients": [
+                {"name": "Flour"},  # omitted entirely
+                {"name": "Sugar", "section": ""},  # blank clears
+                {"name": "Butter", "section": "  For the crust:  "},  # trimmed, colon dropped
+                {"name": "Salt", "section": "x" * 200},  # capped, not rejected
+            ],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    ingredients = resp.json()["ingredients"]
+    assert ingredients[0]["section"] is None
+    assert ingredients[1]["section"] is None
+    assert ingredients[2]["section"] == "For the crust"
+    assert len(ingredients[3]["section"]) == 80
+
+
+async def test_update_can_clear_sections(auth_client):
+    created = (await auth_client.post("/recipes", json=SECTIONED_RECIPE)).json()
+    resp = await auth_client.patch(
+        f"/recipes/{created['id']}",
+        json={"ingredients": [{"name": "Skirt steak", "quantity": 2, "unit": "lb"}]},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ingredients"][0]["section"] is None

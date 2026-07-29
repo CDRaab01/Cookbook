@@ -59,4 +59,16 @@ class RecipeShareDtoTest {
         assertFalse(legacyOut.shared)
         assertTrue(legacyOut.isOwner)
     }
+
+    @Test
+    fun `ingredient section round-trips and is optional`() {
+        val payload = """
+            {"id":"i1","order":0,"name":"Lime juice","section":"Steak Marinade"}
+        """.trimIndent()
+        assertEquals("Steak Marinade", json.decodeFromString(IngredientOut.serializer(), payload).section)
+
+        // Older servers omit the field entirely; that must read as "ungrouped", not fail.
+        val legacy = """{"id":"i1","order":0,"name":"Lime juice"}"""
+        assertEquals(null, json.decodeFromString(IngredientOut.serializer(), legacy).section)
+    }
 }

@@ -1,6 +1,7 @@
 package com.cookbook.ui.recipe
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,10 +19,12 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,7 +48,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cookbook.ui.theme.CookbookTheme
+import com.cookbook.util.DEFAULT_AISLE_ORDER
 import com.cookbook.util.UiState
+import com.cookbook.util.categoryLabel
 import design.pulse.ui.components.PulseButton
 import design.pulse.ui.components.SectionHeader
 
@@ -177,24 +183,55 @@ fun RecipeEditScreen(
             }
 
             item { SectionHeader("Ingredients", channel = colors.heat.base) }
-            itemsIndexed(draft.ingredients) { index, ingredient ->
-                IngredientEditor(
-                    ingredient = ingredient,
-                    canRemove = draft.ingredients.size > 1,
-                    onChange = { transform -> viewModel.updateIngredient(index, transform) },
-                    onRemove = { viewModel.removeIngredient(index) },
-                )
+            itemsIndexed(draft.ingredients, key = { _, it -> it.id }) { index, ingredient ->
+                Column {
+                    // A section heading belongs to the row that starts it; everything below
+                    // sits under it until the next one.
+                    ingredient.sectionHeader?.let { header ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = header,
+                                onValueChange = { viewModel.setSectionHeader(index, it) },
+                                label = { Text("Section") },
+                                placeholder = { Text("e.g. Steak Marinade") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                            )
+                            IconButton(onClick = { viewModel.setSectionHeader(index, null) }) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Remove section")
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    IngredientEditor(
+                        ingredient = ingredient,
+                        canRemove = draft.ingredients.size > 1,
+                        canMoveUp = index > 0,
+                        canMoveDown = index < draft.ingredients.lastIndex,
+                        onChange = { transform -> viewModel.updateIngredient(index, transform) },
+                        onRemove = { viewModel.removeIngredient(index) },
+                        onMove = { delta -> viewModel.moveIngredient(index, delta) },
+                    )
+                }
             }
             item {
-                PulseButton(
-                    text = "Add ingredient",
-                    onClick = viewModel::addIngredient,
-                    tonal = true,
-                    compact = true,
-                    leadingIcon = {
-                        Icon(Icons.Outlined.Add, contentDescription = null, Modifier.width(18.dp))
-                    },
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PulseButton(
+                        text = "Add ingredient",
+                        onClick = viewModel::addIngredient,
+                        tonal = true,
+                        compact = true,
+                        leadingIcon = {
+                            Icon(Icons.Outlined.Add, contentDescription = null, Modifier.width(18.dp))
+                        },
+                    )
+                    PulseButton(
+                        text = "Add section",
+                        onClick = viewModel::addSection,
+                        tonal = true,
+                        compact = true,
+                    )
+                }
             }
 
             item { SectionHeader("Steps", channel = colors.plum.base) }
@@ -323,10 +360,12 @@ private fun TagEditor(
 private fun IngredientEditor(
     ingredient: IngredientDraft,
     canRemove: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
     onChange: ((IngredientDraft) -> IngredientDraft) -> Unit,
     onRemove: () -> Unit,
+    onMove: (Int) -> Unit,
 ) {
-    val colors = CookbookTheme.colors
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -359,26 +398,64 @@ private fun IngredientEditor(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        androidx.compose.foundation.lazy.LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            itemsIndexed(CATEGORY_ORDER) { _, category ->
-                FilterChip(
-                    selected = ingredient.category == category,
-                    onClick = {
-                        onChange {
-                            it.copy(category = if (it.category == category) null else category)
-                        }
-                    },
-                    label = { Text(categoryLabel(category)) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = colors.fresh.dim,
-                        selectedLabelColor = colors.fresh.base,
-                    ),
-                )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AislePicker(
+                category = ingredient.category,
+                onPick = { picked -> onChange { it.copy(category = picked) } },
+            )
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { onMove(-1) }, enabled = canMoveUp) {
+                Icon(Icons.Outlined.KeyboardArrowUp, contentDescription = "Move ingredient up")
+            }
+            IconButton(onClick = { onMove(1) }, enabled = canMoveDown) {
+                Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Move ingredient down")
             }
         }
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/**
+ * Which aisle this ingredient is bought in — a shopping-list detail, so it gets one small chip
+ * here rather than the row of all thirteen it used to have under every ingredient. Left unset,
+ * the server picks the aisle (your own history first, then a keyword guess), which is right
+ * almost always; this is the override.
+ */
+@Composable
+private fun AislePicker(category: String?, onPick: (String?) -> Unit) {
+    val colors = CookbookTheme.colors
+    var open by remember { mutableStateOf(false) }
+    Box {
+        AssistChip(
+            onClick = { open = true },
+            label = {
+                Text(if (category == null) "Aisle: auto" else "Aisle: ${categoryLabel(category)}")
+            },
+            colors = AssistChipDefaults.assistChipColors(
+                labelColor = if (category == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    colors.fresh.base
+                },
+            ),
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Auto") },
+                onClick = {
+                    onPick(null)
+                    open = false
+                },
+            )
+            DEFAULT_AISLE_ORDER.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(categoryLabel(option)) },
+                    onClick = {
+                        onPick(option)
+                        open = false
+                    },
+                )
+            }
+        }
     }
 }

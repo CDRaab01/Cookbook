@@ -11,6 +11,7 @@ import re
 
 import httpx
 
+from app.lists.categorize import guess_category
 from app.recipes_ext.base import (
     IngredientSearchHit,
     NormalizedIngredient,
@@ -100,7 +101,13 @@ def _steps(data: dict) -> list[str]:
 
 
 def normalize_information(data: dict) -> NormalizedRecipe:
-    """Map a Spoonacular recipe-information payload to a NormalizedRecipe."""
+    """Map a Spoonacular recipe-information payload to a NormalizedRecipe.
+
+    No ingredient `section` is set: ``extendedIngredients`` is flat and carries no grouping —
+    the grouped view only exists behind a separate ``ingredientWidget.json`` call (more quota,
+    another failure mode). ``analyzedInstructions[].name`` groups *steps*, not ingredients, so
+    it isn't a substitute. Spoonacular imports simply arrive ungrouped rather than invented.
+    """
     ingredients: list[NormalizedIngredient] = []
     for ing in data.get("extendedIngredients", []) or []:
         name = (ing.get("name") or "").strip()
@@ -113,7 +120,9 @@ def normalize_information(data: dict) -> NormalizedRecipe:
                 name=name,
                 quantity=float(amount) if isinstance(amount, (int, float)) and amount > 0 else None,
                 unit=unit,
-                category=map_aisle(ing.get("aisle")),
+                # An aisle outside _AISLE_MAP ("Ethnic Foods", "Gourmet") or a missing one used
+                # to yield NULL even when the keyword guesser knew the answer — free recall.
+                category=map_aisle(ing.get("aisle")) or guess_category(name),
                 original_text=(ing.get("original") or _amount_text(amount, unit) or "").strip()
                 or None,
             )

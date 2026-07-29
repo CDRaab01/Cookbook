@@ -109,7 +109,13 @@ class RecipeIngredient(Base):
     quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Normalized lowercase ("cup", "g", "tbsp"); NULL for count-less items ("salt, to taste").
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The store aisle this ingredient is BOUGHT in — shopping-list routing only. It is never
+    # recipe structure: a recipe reads in its own order, under its own headings (see `section`).
     category: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # The recipe's own grouping heading ("Steak Marinade", "For the sauce"), NULL when the recipe
+    # isn't grouped. Presentation only — merging, categorizing and shopping never consult it.
+    # Sections are contiguous runs in `order`; this is not a sort key.
+    section: Mapped[str | None] = mapped_column(String(80), nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Set by the Plate integration phase (ingredient → Plate food match); NULL until then.
     plate_food_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)

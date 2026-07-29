@@ -44,9 +44,13 @@ class NormalizedIngredient:
     quantity: float | None = None
     unit: str | None = None
     # One of app.models.recipe.STORE_CATEGORIES, mapped from the provider's aisle when possible.
+    # Where it's BOUGHT — shopping-list routing, never how the recipe is laid out.
     category: str | None = None
     # The amount as written in the recipe ("2 breasts"), kept as the ingredient note.
     original_text: str | None = None
+    # The source recipe's own heading for this ingredient ("Steak Marinade"), when the page
+    # groups them; None otherwise. Display structure only.
+    section: str | None = None
 
 
 @dataclass(frozen=True)
