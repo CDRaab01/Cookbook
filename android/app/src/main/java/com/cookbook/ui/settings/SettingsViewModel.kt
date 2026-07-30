@@ -94,6 +94,43 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // One-shot confirmation after a bulk share ("Shared 10 recipes"), cleared when dismissed.
+    private val _shareAllResult = MutableStateFlow<String?>(null)
+    val shareAllResult: StateFlow<String?> = _shareAllResult
+
+    private val _sharingAll = MutableStateFlow(false)
+    val sharingAll: StateFlow<Boolean> = _sharingAll
+
+    /**
+     * Bulk opt-in: make every private recipe this user created a family recipe. Only their own —
+     * the server ignores co-members' recipes, so this can't share a partner's cookbook for them.
+     * Refreshes the household afterwards so the unshared count (and the nudge) settles to zero.
+     */
+    fun shareAllRecipes() {
+        if (_sharingAll.value) return
+        viewModelScope.launch {
+            _sharingAll.value = true
+            _householdError.value = null
+            try {
+                val count = api.shareAllRecipes().sharedCount
+                _shareAllResult.value = when (count) {
+                    0 -> "All your recipes were already shared with your family."
+                    1 -> "Shared 1 recipe with your family."
+                    else -> "Shared $count recipes with your family."
+                }
+                _household.value = runCatching { api.getHousehold() }.getOrNull() ?: _household.value
+            } catch (e: Exception) {
+                _householdError.value = e.message ?: "Couldn't share your recipes"
+            } finally {
+                _sharingAll.value = false
+            }
+        }
+    }
+
+    fun dismissShareAllResult() {
+        _shareAllResult.value = null
+    }
+
     /** Share the cookbook + lists with another Cookbook user by email (owner only, enforced server-side). */
     fun addHouseholdMember(email: String) {
         val trimmed = email.trim()

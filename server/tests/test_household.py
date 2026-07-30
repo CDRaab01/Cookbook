@@ -174,3 +174,69 @@ async def test_add_unknown_email_is_404(client):
         "/household/members", json={"email": "never_here@cookbook.com"}, headers=_h(owner)
     )
     assert r.status_code == 404
+
+
+async def test_share_all_shares_only_your_own_recipes(client):
+    """The bulk opt-in is the per-recipe toggle applied to *your* cookbook — a co-member's private
+    recipes must survive it, or "share all" would share someone else's book on their behalf."""
+    uid = uuid.uuid4().hex[:8]
+    wife_email = f"saw_{uid}@cookbook.com"
+    owner = await _register(client, f"sao_{uid}@cookbook.com")
+    wife = await _register(client, wife_email)
+    await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
+    await client.post("/household/accept", headers=_h(wife))
+
+    mine_a = await _make_recipe(client, owner, "Chili", shared=False)
+    mine_b = await _make_recipe(client, owner, "Stew", shared=False)
+    already = await _make_recipe(client, owner, "Bread", shared=True)
+    hers = await _make_recipe(client, wife, "Her Secret", shared=False)
+
+    r = await client.post("/recipes/share-all", headers=_h(owner))
+    assert r.status_code == 200, r.text
+    # Only the two still-private ones counted; the already-shared one is not double-counted.
+    assert r.json()["shared_count"] == 2
+
+    # The wife now sees his three, but HER private recipe is untouched and still hers alone.
+    listing = {x["id"]: x for x in (await client.get("/recipes", headers=_h(wife))).json()}
+    assert all(listing[rid]["shared"] is True for rid in (mine_a, mine_b, already))
+    assert listing[hers]["shared"] is False
+    his_view = {x["id"] for x in (await client.get("/recipes", headers=_h(owner))).json()}
+    assert hers not in his_view
+
+
+async def test_share_all_is_idempotent_and_safe_when_solo(client):
+    uid = uuid.uuid4().hex[:8]
+    solo = await _register(client, f"solo_{uid}@cookbook.com")
+    await _make_recipe(client, solo, "Toast", shared=False)
+
+    first = await client.post("/recipes/share-all", headers=_h(solo))
+    assert first.status_code == 200 and first.json()["shared_count"] == 1
+    # Nothing left to share — a second call is a no-op, not an error.
+    second = await client.post("/recipes/share-all", headers=_h(solo))
+    assert second.status_code == 200 and second.json()["shared_count"] == 0
+
+
+async def test_unshared_recipe_count_drives_the_nudge(client):
+    """GET /household reports how many of YOUR recipes are still private, so the recipe list can
+    nudge without re-deriving it from a filtered list."""
+    uid = uuid.uuid4().hex[:8]
+    wife_email = f"nw_{uid}@cookbook.com"
+    owner = await _register(client, f"no_{uid}@cookbook.com")
+    wife = await _register(client, wife_email)
+    await _make_recipe(client, owner, "Curry", shared=False)
+    await _make_recipe(client, owner, "Rice", shared=False)
+
+    assert (await client.get("/household", headers=_h(owner))).json()["unshared_recipe_count"] == 2
+
+    await client.post("/household/members", json={"email": wife_email}, headers=_h(owner))
+    await client.post("/household/accept", headers=_h(wife))
+    # The count is per-caller: she has none of her own.
+    assert (await client.get("/household", headers=_h(wife))).json()["unshared_recipe_count"] == 0
+
+    await client.post("/recipes/share-all", headers=_h(owner))
+    after = (await client.get("/household", headers=_h(owner))).json()
+    assert after["unshared_recipe_count"] == 0 and after["shared"] is True
+
+
+async def test_share_all_requires_auth(client):
+    assert (await client.post("/recipes/share-all")).status_code in (401, 403)

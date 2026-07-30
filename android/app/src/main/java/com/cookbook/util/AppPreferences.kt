@@ -3,6 +3,7 @@ package com.cookbook.util
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -30,6 +31,7 @@ class AppPreferences @Inject constructor(
         private val SHOPPING_LIST_ID = stringPreferencesKey("pref_shopping_list_id")
         private val PINNED_LIST_ID = stringPreferencesKey("pref_pinned_list_id")
         private val AISLE_ORDER = stringPreferencesKey("pref_aisle_order")
+        private val SHARE_ALL_NUDGE_DISMISSED = booleanPreferencesKey("pref_share_all_nudge_dismissed")
     }
 
     // Flipped the first time we seed the active list from the pinned default this process, so a
@@ -76,6 +78,19 @@ class AppPreferences @Inject constructor(
 
     suspend fun setPinnedList(value: String) {
         context.prefsDataStore.edit { it[PINNED_LIST_ID] = value }
+    }
+
+    /**
+     * Whether the user dismissed the recipe-list "your recipes are still private" prompt. A plain
+     * one-way flag on purpose: dismissing means *don't ask again*, not "ask again next time I add
+     * a recipe". The action itself never disappears — it stays in Settings → Family.
+     */
+    val shareAllNudgeDismissed: Flow<Boolean> = context.prefsDataStore.data.map { prefs ->
+        prefs[SHARE_ALL_NUDGE_DISMISSED] ?: false
+    }
+
+    suspend fun dismissShareAllNudge() {
+        context.prefsDataStore.edit { it[SHARE_ALL_NUDGE_DISMISSED] = true }
     }
 
     /**

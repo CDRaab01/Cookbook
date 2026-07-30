@@ -27,6 +27,7 @@ from app.services.household_service import (
     pending_invite,
     remove_member,
 )
+from app.services.recipe_service import count_unshared_own_recipes
 
 router = APIRouter(prefix="/household", tags=["household"])
 
@@ -35,6 +36,7 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 async def _current_household(current_user, db: AsyncSession) -> HouseholdOut:
     household, members = await list_household(db, current_user.id)
+    unshared = await count_unshared_own_recipes(db, current_user.id)
     if household is None:
         return HouseholdOut(
             members=[
@@ -47,6 +49,7 @@ async def _current_household(current_user, db: AsyncSession) -> HouseholdOut:
             ],
             you_are_owner=True,
             shared=False,
+            unshared_recipe_count=unshared,
         )
     return HouseholdOut(
         members=[
@@ -61,6 +64,7 @@ async def _current_household(current_user, db: AsyncSession) -> HouseholdOut:
         ],
         you_are_owner=(household.owner_user_id == current_user.id),
         shared=sum(1 for _, st in members if st == "active") > 1,
+        unshared_recipe_count=unshared,
     )
 
 

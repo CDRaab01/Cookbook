@@ -1,11 +1,16 @@
 package com.cookbook.ui.recipe
 
+import com.cookbook.data.remote.ApiService
+import com.cookbook.data.remote.HouseholdOut
 import com.cookbook.data.remote.RecipeSummaryOut
+import com.cookbook.data.remote.ShareAllOut
 import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.data.repository.Stale
+import com.cookbook.util.AppPreferences
 import com.cookbook.util.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -24,6 +29,7 @@ class RecipeListViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
     private val repository: RecipeRepository = mock()
+    private val api: ApiService = mock()
     private lateinit var viewModel: RecipeListViewModel
 
     private fun summary(id: String, name: String, shared: Boolean = false) = RecipeSummaryOut(
@@ -33,7 +39,12 @@ class RecipeListViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
-        viewModel = RecipeListViewModel(repository)
+        viewModel = RecipeListViewModel(repository, api, prefs(dismissed = false))
+    }
+
+    /** Nudge prefs stub (ShoppingViewModelTest precedent — AppPreferences is mocked, not built). */
+    private fun prefs(dismissed: Boolean) = mock<AppPreferences> {
+        whenever(it.shareAllNudgeDismissed).thenReturn(flowOf(dismissed))
     }
 
     @After
@@ -114,5 +125,81 @@ class RecipeListViewModelTest {
 
         assertEquals(emptyList(), family)
         assertEquals(2, yours.size)
+    }
+
+    private fun household(shared: Boolean, unshared: Int) = HouseholdOut(
+        members = emptyList(),
+        youAreOwner = true,
+        shared = shared,
+        unsharedRecipeCount = unshared,
+    )
+
+    @Test
+    fun `nudge counts unshared recipes in a shared household`() = runTest(dispatcher) {
+        whenever(repository.listRecipes()).thenReturn(Stale(emptyList(), null))
+        whenever(api.getHousehold()).thenReturn(household(shared = true, unshared = 10))
+
+        viewModel.load()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(10, viewModel.unsharedCount.value)
+    }
+
+    @Test
+    fun `nudge stays hidden when the household is not actually shared`() = runTest(dispatcher) {
+        // Solo, or invited-but-not-accepted: sharing recipes would show them to nobody.
+        whenever(repository.listRecipes()).thenReturn(Stale(emptyList(), null))
+        whenever(api.getHousehold()).thenReturn(household(shared = false, unshared = 10))
+
+        viewModel.load()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, viewModel.unsharedCount.value)
+    }
+
+    @Test
+    fun `nudge stays hidden once dismissed`() = runTest(dispatcher) {
+        viewModel = RecipeListViewModel(repository, api, prefs(dismissed = true))
+        whenever(repository.listRecipes()).thenReturn(Stale(emptyList(), null))
+        whenever(api.getHousehold()).thenReturn(household(shared = true, unshared = 10))
+
+        viewModel.load()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, viewModel.unsharedCount.value)
+    }
+
+    @Test
+    fun `a failed household read just means no nudge`() = runTest(dispatcher) {
+        whenever(repository.listRecipes()).thenReturn(Stale(emptyList(), null))
+        whenever(api.getHousehold()).doThrow(RuntimeException("offline"))
+
+        viewModel.load()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, viewModel.unsharedCount.value)
+        // The book itself still loaded — the nudge is strictly additive.
+        assertIs<UiState.Success<List<RecipeSummaryOut>>>(viewModel.recipes.value)
+    }
+
+    @Test
+    fun `sharing all clears the nudge and reloads the book`() = runTest(dispatcher) {
+        whenever(repository.listRecipes()).thenReturn(Stale(emptyList(), null))
+        whenever(api.getHousehold()).thenReturn(household(shared = true, unshared = 2))
+        viewModel.load()
+        testScheduler.advanceUntilIdle()
+        assertEquals(2, viewModel.unsharedCount.value)
+
+        whenever(api.shareAllRecipes()).thenReturn(ShareAllOut(sharedCount = 2))
+        whenever(repository.listRecipes()).thenReturn(
+            Stale(listOf(summary("1", "Chili", shared = true)), null),
+        )
+        viewModel.shareAllRecipes()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, viewModel.unsharedCount.value)
+        val state = viewModel.recipes.value
+        assertIs<UiState.Success<List<RecipeSummaryOut>>>(state)
+        assertEquals(listOf(true), state.data.map { it.shared })
     }
 }
