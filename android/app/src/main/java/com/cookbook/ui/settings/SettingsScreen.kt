@@ -50,6 +50,7 @@ fun SettingsScreen(
     onLoggedOut: () -> Unit,
     onOpenStaples: () -> Unit,
     onOpenAisleOrder: () -> Unit,
+    onOpenStores: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val colors = CookbookTheme.colors
@@ -214,7 +215,28 @@ fun SettingsScreen(
             PanelCard(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Text(
-                        "Aisle order — arrange store categories to match how you walk your store; " +
+                        "Stores — each store's real aisles in the order you walk them. Pick one on " +
+                            "the shopping list and it regroups into that store's aisles.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    PulseButton(
+                        text = "Manage stores",
+                        onClick = onOpenStores,
+                        tonal = true,
+                        compact = true,
+                        channel = colors.heat.base,
+                        onChannel = colors.heat.on,
+                        dimChannel = colors.heat.dim,
+                    )
+                }
+            }
+
+            PanelCard(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Text(
+                        "Aisle order — the category order used when no store is selected; " +
                             "the shopping list groups items in that order.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

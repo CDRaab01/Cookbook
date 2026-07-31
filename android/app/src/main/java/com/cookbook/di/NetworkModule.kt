@@ -15,6 +15,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -43,6 +44,14 @@ object NetworkModule {
             }
         }
         return OkHttpClient.Builder()
+            // OkHttp's 10s default read timeout is far too short for the LM Studio-backed
+            // endpoints: a store-layout suggestion takes ~10s warm and the model reasons for
+            // hundreds of tokens before replying, while a cold load costs more still. The read
+            // budget is deliberately above the server's own 60s LM_STUDIO_TIMEOUT so the server's
+            // honest 502/503/504 reaches the user instead of a generic client timeout.
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             // Host selection runs first so the rewritten URL is what the auth header + logging see.
             .addInterceptor(hostSelectionInterceptor)
             .addInterceptor(authInterceptor)

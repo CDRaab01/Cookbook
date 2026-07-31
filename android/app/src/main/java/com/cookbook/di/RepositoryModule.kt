@@ -10,6 +10,8 @@ import com.cookbook.data.repository.RecipeRepository
 import com.cookbook.data.repository.RecipeRepositoryImpl
 import com.cookbook.data.repository.ShoppingRepository
 import com.cookbook.data.repository.ShoppingRepositoryImpl
+import com.cookbook.data.repository.StoreRepository
+import com.cookbook.data.repository.StoreRepositoryImpl
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -39,4 +41,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindPantryRepository(impl: PantryRepositoryImpl): PantryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindStoreRepository(impl: StoreRepositoryImpl): StoreRepository
 }

@@ -2,7 +2,7 @@ import datetime
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -14,6 +14,10 @@ from app.schemas.plan import (
     PlanToListResult,
 )
 from app.security import CurrentUser
+from app.services.classification_service import (
+    classify_unfiled_items,
+    unfiled_item_ids_for_list,
+)
 from app.services.plan_service import add_entry, delete_entry, get_plan, plan_to_list, set_eaten
 
 router = APIRouter(prefix="/plan", tags=["plan"])
@@ -61,7 +65,18 @@ async def remove_entry(entry_id: uuid.UUID, current_user: CurrentUser, db: DbSes
 
 
 @router.post("/to-list", response_model=PlanToListResult)
-async def send_to_list(req: PlanToListRequest, current_user: CurrentUser, db: DbSession):
+async def send_to_list(
+    req: PlanToListRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+):
     """The planner's payoff: every planned recipe in the range lands on a shopping list
     through the normal merge math — a week of dinners becomes one aggregated list."""
-    return await plan_to_list(db, current_user.id, req)
+    result = await plan_to_list(db, current_user.id, req)
+    # A week of dinners is the biggest single influx of unfiled rows there is; file them after
+    # the response, same contract as the add paths (never blocks, never fails the request).
+    unfiled = await unfiled_item_ids_for_list(db, result.list_id)
+    if unfiled:
+        background_tasks.add_task(classify_unfiled_items, unfiled)
+    return result

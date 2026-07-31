@@ -28,6 +28,10 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
    reorders the store categories (move up/down + reset); the order persists in DataStore
    (`AppPreferences.aisleOrder`, reconciled against the canonical set) and the shopping list
    groups items in that walk order. Client-only; 5 unit tests on the reconcile logic.
+   **Superseded by store profiles (v0.11, 2026-07-31):** a *store* now owns its real aisles
+   ("Aisle 12 — Baking") and which categories each collects, so the list can be routed for the
+   store you're standing in. This screen survives as the **no-store fallback** — the category
+   order used when nothing is selected.
 3. **Designed empty states** across screens (the Phase-8 leftover) — partially DONE 2026-07-16:
    a designed empty state now shows when a recipe search/filter matches nothing. Remaining:
    sweep the other screens + celebration on list-complete/cook-complete via the Pulse
@@ -115,6 +119,9 @@ Cookbook's 1.0 slate (all already named in this file; the pivot promotes them):
 
 ## Explicitly not worth it
 
-- Price tracking / store APIs — rejected in v1, still right: fragile scrapers, low value.
+- Price tracking / store APIs — rejected in v1, still right: fragile scrapers, low value. **Note
+  what v0.11 did instead:** store *layouts* are user-maintained, seeded by the local model's world
+  knowledge of a chain and corrected by the user as they shop. No scraper, no API, no dependency on
+  a retailer's goodwill — and the data improves precisely because it's the household's own.
 - Full pantry inventory with quantities — see above; thin staples model or nothing.
 - Public recipe sharing/community — this is a household tool.

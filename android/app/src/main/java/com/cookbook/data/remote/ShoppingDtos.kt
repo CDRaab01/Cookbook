@@ -20,6 +20,11 @@ data class ShoppingItemOut(
     // The full aggregate across merges — what the row displays ("2 tbsp + 2 tsp").
     val measures: List<MeasureOut> = emptyList(),
     val category: String? = null,
+    // Server-computed normalize_name(name) — the identity this item merges on, and the key a store
+    // placement is filed under (v0.11). Computed there so this client never re-implements the
+    // normalizer and drifts from the merge module. Defaults to "" against an older server, which
+    // simply means no placement ever matches and routing falls back to the category.
+    val key: String = "",
     // Product-page URL for a pasted-link item; the name is a clean human title.
     @SerialName("link_url") val linkUrl: String? = null,
     // Product thumbnail (v0.6); the client fetches it directly. Null when the page had none.

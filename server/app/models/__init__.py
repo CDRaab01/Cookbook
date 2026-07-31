@@ -5,6 +5,7 @@ from app.models.meal_plan import MealPlanEntry
 from app.models.pantry import PantryItem, PantryStaple
 from app.models.recipe import Recipe, RecipeIngredient, RecipeStep
 from app.models.shopping_list import ShoppingList, ShoppingListItem
+from app.models.store import Store, StoreAisle, StorePlacement
 from app.models.user import User
 
 __all__ = [
@@ -19,5 +20,8 @@ __all__ = [
     "RecipeStep",
     "ShoppingList",
     "ShoppingListItem",
+    "Store",
+    "StoreAisle",
+    "StorePlacement",
     "User",
 ]

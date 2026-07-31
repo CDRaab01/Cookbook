@@ -295,6 +295,7 @@ fun CookbookNavHost(
                     },
                     onOpenStaples = { navController.navigate(Screen.StaplesEditor.route) },
                     onOpenAisleOrder = { navController.navigate(Screen.AisleOrder.route) },
+                    onOpenStores = { navController.navigate(Screen.Stores.route) },
                 )
             }
             composable(Screen.Pantry.route) {
@@ -325,12 +326,48 @@ fun CookbookNavHost(
             composable(Screen.AisleOrder.route) {
                 com.cookbook.ui.settings.AisleOrderScreen(onBack = { navController.popBackStack() })
             }
+            composable(Screen.Stores.route) {
+                com.cookbook.ui.stores.StoresScreen(
+                    onBack = { navController.popBackStack() },
+                    onEditStore = { navController.navigate(Screen.StoreEdit.forStore(it)) },
+                    onEditDraft = { navController.navigate(Screen.StoreEdit.forDraft()) },
+                )
+            }
+            composable(
+                Screen.StoreEdit.routeWithArg,
+                arguments = listOf(
+                    navArgument(Screen.StoreEdit.ARG) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                com.cookbook.ui.stores.StoreEditScreen(
+                    storeId = entry.arguments?.getString(Screen.StoreEdit.ARG),
+                    onBack = { navController.popBackStack() },
+                    onSaved = { navController.popBackStack() },
+                )
+            }
             composable(Screen.Shopping.route) {
                 ShoppingScreen(
                     openAddItem = openAddItem,
                     onAddItemConsumed = { openAddItem = false },
                     sharedAddText = pendingShoppingAdd,
                     onSharedAddConsumed = { pendingShoppingAdd = null },
+                    onReviewOrganize = { navController.navigate(Screen.OrganizeReview.forList(it)) },
+                )
+            }
+            composable(
+                Screen.OrganizeReview.routeWithArg,
+                arguments = listOf(
+                    navArgument(Screen.OrganizeReview.ARG) { type = NavType.StringType },
+                ),
+            ) { entry ->
+                com.cookbook.ui.shopping.OrganizeReviewScreen(
+                    listId = entry.arguments?.getString(Screen.OrganizeReview.ARG).orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onApplied = { navController.popBackStack() },
                 )
             }
             composable(Screen.Discover.route) {

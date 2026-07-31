@@ -5,13 +5,11 @@ to strict JSON, then salvage aggressively — vision models wrap output in prose
 often enough that a naive ``json.loads`` would reject usable responses.
 """
 
-import json
-import re
-
 from app.lists.categorize import guess_category
 from app.lists.merge import normalize_name
 from app.models.recipe import STORE_CATEGORIES
 from app.schemas.pantry import PantryScanDraftOut, PantryScanItem
+from app.services.ai.jsonish import parse_object
 
 MAX_ITEMS = 40
 
@@ -51,38 +49,11 @@ def build_scan_messages(image_data_url: str) -> list[dict]:
     ]
 
 
-_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
-
-
-def _strip_fences(text: str) -> str:
-    return _FENCE_RE.sub("", text).strip()
-
-
-def _widest_object_span(text: str) -> str | None:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        return None
-    return text[start : end + 1]
-
-
 def parse_scan(raw_text: str) -> PantryScanDraftOut | None:
     """Best-effort parse of the model's response. Returns None (never raises) when nothing
     usable can be salvaged — the caller turns that into a low-confidence empty draft."""
-    stripped = _strip_fences(raw_text)
-    candidates = [stripped, _widest_object_span(stripped)]
-    data = None
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            data = json.loads(candidate)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if isinstance(data, dict):
-            break
-        data = None
-    if not isinstance(data, dict) or not data:
+    data = parse_object(raw_text)
+    if data is None:
         return None
 
     items: list[PantryScanItem] = []

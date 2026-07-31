@@ -820,3 +820,232 @@ weakening who is allowed to make it.
   **Worth keeping:** the prod image has no `pytest` and its entrypoint ignores a passed command —
   run the suite with `--entrypoint sh` and `pip install pytest`, or you get a booted API and an
   empty log instead of a test run.
+
+---
+
+## v0.11 (2026-07-31) — store routing + the local model on the shopping list
+
+The round the user asked for: bring the LM Studio Gemma (`google/gemma-4-e4b`, the same sidecar
+photo import and pantry scan already use) to bear on the **shopping list**, and move toward routing
+a real store — Meijer on Maysville Rd first, other stores selectable later. Built in phases on
+`claude/store-routing`.
+
+**Design decision that shapes everything else: two layers, so the 13-category vocabulary never
+moves.** Items keep their canonical `category` (recipes, `item_history`, the keyword guesser and
+migrations 0019/0022 all depend on it). A *store* is where that vocabulary meets a floor plan —
+its own ordered aisles, each claiming some categories, plus per-item exceptions. Full rationale in
+ARCHITECTURE.md "Store routing".
+
+### Phase 1 — stores, aisles, placements (server, no AI)
+
+- **Migration `0023`** + `models/store.py`: `stores` (creator + `name`/`label` — "Meijer" /
+  "Maysville Rd", split so the AI layout prompt gets a clean chain name), `store_aisles` (ordered,
+  `name` = whatever the sign says, `categories` = JSON list of canonical keys), `store_placements`
+  (unique on `(store_id, key)`, key = `normalize_name`).
+- **`/stores` router + `store_service`:** CRUD, `PUT /{id}/aisles`, placement upsert/delete.
+  Access mirrors shopping lists exactly (`household_member_ids`) — two people shopping the same
+  store want the same floor plan — while **delete stays creator-only** (the `is_owner` rule).
+- **A new store seeds the canonical walk order** (one aisle per category), so selecting a
+  brand-new store reproduces the grouping the user already had. A store can never make the list
+  worse before it's been edited.
+- **The aisle PUT preserves rows the payload identifies by id.** That is the whole point: a
+  reorder or rename must not discard the placements someone learned by walking the store. Only an
+  aisle genuinely removed loses them (DB cascade). An *unknown* id inserts rather than 404ing the
+  save — a stale id means another device edited the layout, and losing the user's reordering over
+  it would be worse.
+- **A placement never rewrites the item's `category`,** and never touches `item_history`: where a
+  thing sits in *this* store says nothing about the next one. Placements are household-shared (a
+  fact about the store); `item_history` stays per-user (a preference).
+- **`ItemOut.key`** (= `normalize_name(name)`, a pydantic `computed_field`) so the client looks up
+  "which aisle is this here" with a map get instead of re-implementing the normalizer in Kotlin.
+- **Gotcha, cost me four red tests:** the session is `expire_on_commit=False`, and these writes go
+  through `db.add`/`db.delete` + a DB-level cascade rather than through the ORM collections the way
+  `shopping_service` does — so the identity map handed back pre-write `aisles`/`placements` and the
+  response claimed a deleted aisle still existed. `store_service._reload` uses
+  `execution_options(populate_existing=True)`.
+- **Verified: server 548 passed, 0 failed** (15 new in `tests/test_stores.py`), ruff 0.4.4
+  `check` + `format --check` clean at CI scope (`app`).
+- **Doc fix made along the way:** the local-test recipe in this file and ARCHITECTURE.md said
+  `DATABASE_URL` on `127.0.0.1:5434`. **`cookbook-db-1` publishes no host port** — that recipe
+  fails with `InvalidPasswordError` against whatever else is on 5434. The working recipe (throwaway
+  container on `cookbook_default`, password read out of the container, `--entrypoint sh`) is now in
+  ARCHITECTURE.md § Migrations & tests. Running from a git worktree also sidesteps the ~8
+  env-dependent failures, since there is no live `server/.env` to mount. **Recreate the scratch DB
+  per run** — `test_suite_auth` registers fixed emails and asserts a starting count of 0, so a
+  reused scratch DB fails two tests for reasons unrelated to your change.
+
+### Phase 2 — the local model reaches the shopping list (background aisle filing)
+
+- **`services/ai/text.py::chat_text`** — the text sibling of `_chat_vision`: same host, same
+  `client=` MockTransport seam, same 503/504/502 taxonomy, but `temperature=0` and a **mandatory
+  `max_tokens`** (an unbounded local completion turns a 200 ms classification into a 30 s one).
+  New `lm_studio_model` setting, pinned in compose `environment:` next to the vision one.
+- **`services/ai/jsonish.py`** — the fence-stripping / widest-`{...}`-span salvage both vision
+  prompt modules had privately, extracted once. `recipe_photo_prompts` and `pantry_scan_prompts`
+  now import it; their existing tests cover the move.
+- **`services/classification_service.py`** — for items the deterministic chain (history → keyword
+  guesser) left NULL, ask Gemma which of the 13 aisles it belongs in. Runs as a `BackgroundTasks`
+  job **after** the response on its own session, wired into `POST /lists/{id}/items`,
+  `POST /lists/{id}/add-recipe` and `POST /plan/to-list`. The invariant is structural, not a
+  promise: the add path's latency and result are unchanged, and every failure mode (model down,
+  timeout, junk reply, item deleted mid-flight) leaves the row exactly as it was.
+- **This is the suite's documented exception to drafts-only** — a category is metadata, the failure
+  mode is "unfiled" not "wrong data committed" (Remnant's note classifier established it). The
+  guardrails that make it safe: writes only `category` and only where still NULL; **never writes
+  `item_history`** (a machine guess must not become "remembered" and outrank the guesser forever);
+  re-checks the name under the write so a rename mid-call isn't clobbered; and the parser returns
+  `None` rather than falling back to `other`, so an unplaced item stays eligible for a retry.
+- **Self-healing without a polling loop:** every add re-queues *everything* unfiled on the list
+  (capped at 15, idempotent), so a row stranded while LM Studio was down gets picked up by the next
+  add. Cookbook has no `/sync` to piggyback on the way Remnant does.
+- **Verified: 581 passed** (33 new in `tests/test_aisle_classification.py` — parser table, the
+  transport taxonomy, and the DB-backed guards incl. rename-during-call and history-untouched);
+  ruff 0.4.4 clean. **Live smoke against the loaded `google/gemma-4-e4b`:** 12/12 names the keyword
+  guesser misses filed sensibly (cotton swabs→personal, kombucha→beverages, dryer sheets→household,
+  za'atar→pantry, teething rings→baby, frozen edamame→frozen), ~0.3 s each once warm, 3.9 s on the
+  first cold call.
+
+### Phase 3 — "Organize list" (the same capability, as a draft)
+
+Background classification only touches items *nobody has filed*. Reviewing the whole list means
+proposing to move things the user placed by hand, so it can't be silent — it drafts and waits.
+
+- **`POST /lists/{id}/organize`** (10/min) — unchecked items only (a checked item is history for
+  this trip) → `services/ai/organize_prompts.py` → `OrganizeDraftOut`. **Saves nothing.**
+  **`POST /lists/{id}/organize/apply`** takes back only the accepted moves, makes **no model call**
+  (works with LM Studio down — the review screen may have been open a while), and skips rows that
+  vanished rather than 404ing the batch.
+- **Apply writes `item_history`** via the same `_remember_category` the edit dialog uses. That is
+  the deliberate asymmetry with Phase 2: accepting a suggestion is a decision about where *you*
+  file that item, so the next recipe mentioning it lands there too.
+- **`parse_organize` treats the names that were sent as a whitelist** — a name the model invented
+  or garbled is dropped, never fuzzy-matched, because guessing which row was meant is how the wrong
+  item moves. It also drops invalid aisles and no-op "moves" (padding the review with noise trains
+  the user to tap Apply without reading). `None` = unreadable reply; `[]` = read it, nothing to do
+  — different messages in the UI.
+- **Verified: 609 passed** (28 new in `tests/test_organize.py`). **Live smoke on a deliberately
+  mis-filed 10-item list:** all 6 real mistakes caught (ground cumin meat→pantry, iced coffee
+  pantry→beverages, paper towels produce→household, frozen peas pantry→frozen, diapers
+  household→baby, dish soap personal→household), the 3 correctly-filed items left alone, no
+  hallucinated moves. **It missed "milk collector" (a baby product filed under dairy)** — that
+  obscure name is exactly the kind the user just moves themselves. **15.7 s for 10 items**, which
+  is why the Android client needs a read timeout well above OkHttp's 10 s default (Phase 5).
+- **Test-writing gotcha:** patching `chat_text` to raise `httpx.ConnectError` does *not* test the
+  503/504 mapping — that mapping lives *inside* `chat_text`, so patching it out bypasses the thing
+  under test (the exception escaped the ASGI app instead). Transport mapping is tested directly
+  with `MockTransport` in `test_aisle_classification`; the endpoint test asserts only that Organize
+  passes an `HTTPException` through rather than swallowing it into a cheerful 200.
+
+### Phase 4 — "Suggest layout", and the reasoning-token trap that nearly hid it
+
+- **`POST /stores/suggest-layout`** (5/min) — chain name → a draft aisle walk order. Saves nothing;
+  the client opens it in the editor and commits via the normal `POST /stores` / `PUT .../aisles`.
+  `parse_layout` guarantees the draft is *usable* rather than correct: names clamped, invented
+  categories dropped, a twice-claimed category kept by the first aisle, and **every category the
+  model forgot swept into a trailing "Everything else" aisle** (otherwise its items land in the
+  client's "Unsorted" bucket and read as a bug in the layout you just saved). An unreachable or
+  unreadable model returns the canonical walk order flagged `low_confidence` — adding a store must
+  not depend on AI either.
+
+- **⚠️ THE FINDING OF THIS ROUND — `google/gemma-4-e4b` is a *reasoning* model.** It spends hidden
+  `reasoning_content` tokens that count against the **same `max_tokens` budget**, and emits **no
+  content at all** until it has finished thinking. Sized for the visible answer, the call returns
+  `finish_reason: "length"` and an **empty string** — which every forgiving parser in
+  `services/ai/` correctly reports as "unreadable", so the feature falls back silently and looks
+  like a model that just doesn't know the answer. Suggest-layout shipped at `max_tokens=900` and
+  fell back to the default order **100% of the time**; only a live smoke test caught it, because
+  every unit test passed and the endpoint returned a clean 200.
+
+  Measured on this host: | prompt | reasoning | answer |
+  |---|---|---|
+  | single-item classification | **0** | 3 |
+  | Organize, 10 items | 597 | 296 |
+  | store layout | 932 | 169 |
+
+  Budgets are now 64 / 3000 / 2500 and **`chat_text` logs a loud warning** on the empty-content +
+  `finish_reason: length` signature, so this can't hide again. Classification is the one prompt
+  simple enough that the model doesn't reason at all, which is why 64 is still fine there.
+  **Anything added to `services/ai/text.py` must budget reasoning + answer, and must be smoke-
+  tested against the live model — unit tests with a mocked transport cannot see this.** Worth
+  checking whether Spotter and Remnant's text calls have the same latent problem.
+
+- **Verified: 635 passed** (26 new in `tests/test_store_layout.py`, incl. the leftovers sweep and
+  the draft→`POST /stores` round trip; 2 new truncation-warning tests). **Live smoke after the fix:**
+  Meijer → 11 aisles, Aldi → 13, both plausible walk orders covering all 13 categories and
+  genuinely differing per chain (Aldi puts pantry/snacks right after produce), ~10 s each. Organize
+  also got faster with the bigger budget (15.7 s → 5.9 s), same 6 correct moves.
+
+### Phase 5 — Android: the list actually routes by store
+
+- **`util/StoreRouting.kt::groupForStore`** is the whole feature, pure and table-tested. No store →
+  the v0.7 category grouping, unchanged. Store selected → **placement → first aisle claiming the
+  item's category → trailing "Unsorted"**, empty aisles omitted (a walk order is only useful if it
+  shows what's left). `ShoppingListBody` now renders `List<AisleSection>`; the checked/"In the cart"
+  partition, the counts row and every row composable are untouched.
+- **Two properties are pinned by tests**, because they're what make the feature safe to turn on:
+  nothing is ever dropped (an item with no home is still an item you have to buy — including one
+  whose placement points at an aisle deleted on another device), and **a default-seeded store
+  renders identically to the category grouping**, so selecting a store can never make the list
+  worse before you've edited anything.
+- **Selected store = client DataStore** (`pref_selected_store_id`), per-device like the pinned list.
+  Two household members can be standing in different stores at once even though the profiles are
+  shared. Picker is a top-bar action that only appears once a store exists.
+- **Room v7** caches stores/aisles/placements: aisle routing is only useful *inside* the store,
+  which is exactly where signal is worst, so a network-only floor plan would defeat the feature.
+  Store mutations are otherwise online-only; `pending_placements` is the one queued write, drained
+  poison-row-safely (rejected row dropped, never wedges the backlog — the v0.5 lesson).
+- **OkHttp timeouts finally set** (`di/NetworkModule.kt`): there were **none**, i.e. the 10 s read
+  default, which the ~10 s layout suggestion would have raced and the cold-model path lost outright.
+  Now connect 30 / read 120 / write 30, deliberately above the server's own 60 s `LM_STUDIO_TIMEOUT`
+  so the server's honest 502/503/504 reaches the user instead of a generic client timeout (Spotter's
+  precedent).
+- `ItemOut.key` reaches the client as `ShoppingItemOut.key`, defaulting to `""` against an older
+  server — which just means no placement matches and routing falls back to the category.
+- **Verified: Android 134 unit tests, 0 failures** (16 new in `StoreRoutingTest`) +
+  `:app:assembleDebug` green, run locally against the sibling Pulse checkout.
+
+### Phase 6 — Android: managing stores, and the suggested-layout flow
+
+- **Settings → Manage stores** → `ui/stores/StoresScreen` (list/add/delete) and
+  `ui/stores/StoreEditScreen` (reorder / rename / assign categories / add / remove). Adding a store
+  offers two routes to a floor plan: **"Start from defaults"** (server seeds the canonical walk
+  order) or **"Suggest layout"** (the local model proposes the chain's aisles). The suggestion takes
+  ~10 s, so the dialog says what it's waiting for rather than just spinning.
+- **The draft goes through `util/StoreLayoutDraftStore`** (the `PantryDraftStore`/`RecipeDraftStore`
+  idiom) and **the store does not exist until Save** — the house drafts-only rule, and the reason
+  the editor can also create. A draft with no aisles (model unreachable/unreadable) seeds the
+  standard order rather than showing a blank page with an error: the user asked to set up a store,
+  and a list to drag around is a better answer.
+- **Category assignment is exclusive** — assigning a category to an aisle takes it off whichever
+  aisle had it. The server routes a twice-claimed category to the first aisle in walk order, so
+  letting the editor show it in two places would display a rule the list doesn't follow. Anything
+  left unassigned is named under the list ("Items in these land under Unsorted"), so the Unsorted
+  pile is never a mystery discovered mid-shop.
+- **Reset-to-standard keeps the existing aisle ids**, so a reset is a reorder rather than a wipe of
+  every learned placement — the same reason the save carries ids through.
+- Aisle-order editor copy now says it's the *no-store* fallback, and it renders `categoryLabel`
+  instead of a capitalized key (it said "Meat" while the list it controls said "Meat & Seafood").
+- **Verified: Android 149 unit tests, 0 failures** (15 new: draft prefill/consumption, id-carrying
+  save, exclusive assignment, reset-keeps-ids, save guards) + `:app:assembleDebug` green.
+
+### Phase 7 — Android: the Organize review + learning where things live
+
+- **"Organize list…"** in the list-switcher menu → `POST /lists/{id}/organize` →
+  `util/OrganizeDraftStore` → `ui/shopping/OrganizeReviewScreen` (the PantryConfirm idiom): one row
+  per proposed move reading *Current → Suggested*, **all ticked by default** (every suggestion
+  already survived the server parser, which drops anything it can't verify, so ticking each one
+  would be busywork) with All/None and an "Apply N changes" button. An already-tidy list gets a
+  snackbar, not a screen it has to dismiss. Error copy speaks the house taxonomy in shopper terms:
+  503 → "Is LM Studio running?", 504 → "it may still be warming up".
+- **"Move to a different aisle here…"** in the item edit dialog, offered only with a store selected.
+  Optimistic against the Room cache so the list regroups under the finger, queued in
+  `pending_placements` when offline, drained by `NetworkSyncObserver` alongside the shopping and
+  recipe backlogs. The dialog states the scope out loud — *only changes where it sits at this store*
+  — because the one thing a user could reasonably fear here is that it silently re-categorizes the
+  item everywhere. It doesn't, deliberately.
+- **Verified: Android 156 unit tests, 0 failures** (7 new: default-accept, draft consumption,
+  only-ticked-moves-applied, none-selected-skips-the-server, offline apply keeps the screen open) +
+  `:app:assembleDebug` green.
+- **Test gotcha:** `whenever(...).thenThrow(IOException(...))` fails on a suspend repository method
+  — Mockito rejects a checked exception the signature doesn't declare, and Kotlin declares none.
+  Use `thenAnswer { throw ... }`.

@@ -33,6 +33,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cookbook.util.AppPreferences
 import com.cookbook.util.DEFAULT_AISLE_ORDER
+import com.cookbook.util.categoryLabel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import design.pulse.ui.components.PanelCard
 import design.pulse.ui.components.PulseButton
@@ -99,7 +100,9 @@ fun AisleOrderScreen(onBack: () -> Unit, viewModel: AisleOrderViewModel = hiltVi
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(
-                                category.replaceFirstChar { it.uppercase() },
+                                // categoryLabel, not a capitalized key — otherwise this editor
+                                // says "Meat" while the list it controls says "Meat & Seafood".
+                                categoryLabel(category),
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.weight(1f),
                             )

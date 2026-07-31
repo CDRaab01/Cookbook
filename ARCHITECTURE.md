@@ -92,6 +92,62 @@ category is nearly always a machine guess from import time, so one correction in
 (written back by `update_item`) sticks for every future recipe mentioning that item. This is
 inverted from `add_item`, where the client's `category` is a choice being made right now.
 
+### Store routing (v0.11) — two layers, so the category vocabulary stays portable
+
+The 13 `STORE_CATEGORIES` are a **portable** vocabulary: recipes, `item_history` and the keyword
+guesser all speak it, and an item keeps its category no matter which store you're standing in.
+A real store has real aisles ("Aisle 12 — Baking") and two Meijers don't agree with each other, so
+a store profile is layered *on top of* the categories rather than replacing them:
+
+- **`store_aisles`** — the store's own ordered walk. Each aisle claims zero or more canonical
+  categories; a category claimed twice resolves to the first aisle in walk order, and one no aisle
+  claims falls to a client-rendered "Unsorted" section at the end. Nothing is ever dropped.
+- **`store_placements`** — the per-item exception ("peanut butter is aisle 5 at *this* Meijer"),
+  keyed on `normalize_name` and therefore sharing a key space with `item_history`. Overrides the
+  category mapping.
+
+The split of ownership matters: a **placement is a fact about the store**, so it is
+household-shared like the store itself; `item_history` remains one user's preference. A placement
+deliberately never rewrites the item's canonical `category` — where a thing sits in one store says
+nothing about the next.
+
+`POST /stores` with no `aisles` seeds one aisle per category in canonical order, so selecting a
+brand-new store reproduces exactly the grouping the user already had — a store can never make the
+list worse before it's been edited. `PUT /stores/{id}/aisles` is a **full replace preserving rows
+the payload identifies by id**, which is what lets a reorder/rename keep the placements learned by
+walking the store; only an aisle actually removed loses them (DB cascade). Because those writes go
+through `db.add`/`db.delete` plus that cascade rather than through the ORM collections,
+`store_service._reload` must use `populate_existing=True` — the session is `expire_on_commit=False`,
+so the identity map would otherwise return pre-write collections.
+
+`ItemOut.key` (= `normalize_name(name)`, computed server-side) is how the client looks up "which
+aisle is this item in at this store" with a plain map get. It exists so Kotlin never re-implements
+the normalizer and drifts from the merge module — the "clients display, never compute" rule.
+
+Client-side, all of the routing lives in the pure `util/StoreRouting.kt::groupForStore`, which the
+shopping screen renders straight into sections. No store selected reproduces the v0.7 category
+grouping exactly; a store selected resolves each item by **placement → first aisle claiming its
+category → trailing "Unsorted"**, and empty aisles are omitted. Two properties are table-tested and
+worth keeping: nothing is ever dropped (an item with no home is still an item you have to buy), and
+a **default-seeded store renders identically to the category grouping** — so selecting a store can
+never make the list worse before it's been edited. Which store is selected is a **client DataStore**
+preference (`pref_selected_store_id`), per-device like the pinned list: two household members can be
+standing in different stores at once even though the store *profiles* are shared.
+
+Client surfaces for the two AI features follow the established draft idiom: "Organize list…" →
+`OrganizeDraftStore` → `ui/shopping/OrganizeReviewScreen` (all moves ticked by default, since the
+server parser already dropped everything it couldn't verify), and "Move to a different aisle here…"
+in the item edit dialog, which states its scope out loud because the reasonable fear is that it
+silently re-categorizes the item everywhere — it doesn't.
+
+Stores are cached in Room (schema **v7**) because aisle routing is only useful inside the store,
+which is exactly where the signal is worst. Store mutations are otherwise online-only; the single
+exception is `pending_placements`, since moving an item to the aisle you actually found it in is an
+in-store action. That queue is drained poison-row-safely (a rejected row is dropped, never allowed
+to wedge the backlog — the v0.5 lesson). `StoreRepositoryImpl` carries a small, deliberately private
+`normalizeKeyForCacheOnly` used *only* so an optimistic placement matches before the server's real
+row arrives; the server owns the key space.
+
 ### Domain map
 
 | Domain | Router | Service | Models |
@@ -100,6 +156,7 @@ inverted from `add_item`, where the client's `category` is a choice being made r
 | Recipes (CRUD, notes, tags, favorites, cook events) | `recipes.py` | `recipe_service` | `Recipe` (+steps/ingredients), `CookEvent`, tags |
 | Discovery/import | `recipes.py` | `recipe_discovery_service` | — (`recipes_ext/`: `spoonacular.py` + `jsonld.py` URL parser w/ SSRF guard) |
 | Shopping lists | `lists.py` | `shopping_service` | `ShoppingList`, `ShoppingListItem`, `ItemHistory` |
+| Stores / aisle routing (v0.11) | `stores.py` | `store_service` | `Store`, `StoreAisle`, `StorePlacement` |
 | Meal planner | `plan.py` | `plan_service` | `MealPlanEntry` |
 | Pantry (v0.4 AI round) | `pantry.py` | `pantry_service` (+ `services/ai/`) | `PantryItem`, `PantryStaple` |
 | Household / family sharing | `household.py` (+ `POST /recipes/share-all`) | `household_service`, `recipe_service.{share_all_own_recipes,count_unshared_own_recipes}` | `Household`, `HouseholdMember` (+ `recipes.shared`) |
@@ -116,9 +173,65 @@ error. Two surfaces, same contract:
 - **Pantry scan** (`POST /pantry/scan`) — fridge photo → candidate list → `PantryConfirmScreen`
   → `POST /pantry/confirm`. Nothing persists from the scan itself.
 
+Since v0.11 there is also a **text** seam, `services/ai/text.py::chat_text` — same host, same model
+(`lm_studio_model`, `google/gemma-4-e4b`), same error taxonomy as `_chat_vision`, but no image,
+`temperature=0` and a mandatory `max_tokens` (an unbounded completion from a local model turns a
+200 ms classification into a 30 s one).
+
+> **Size `max_tokens` for reasoning + answer.** gemma-4 is a reasoning model: it spends hidden
+> `reasoning_content` tokens that count against the *same* budget and emits **no content at all**
+> until it's finished thinking. Measured on this host — Organize (10 items): 597 reasoning then 296
+> of answer; store layout: 932 reasoning then 169. A budget sized for the visible answer returns
+> `finish_reason: "length"` with an **empty string**, which every parser here correctly reports as
+> "unreadable" — so the feature degrades silently and reads as a dumb model rather than a small
+> number. Store layout shipped briefly at 900 and fell back to the default order 100% of the time.
+> `chat_text` now logs a loud warning on that exact signature. Single-word classification is the
+> one prompt simple enough that the model doesn't reason at all (3 tokens, 0 reasoning). The fence-stripping / widest-`{...}`-span salvage both
+vision prompt modules had privately is now `services/ai/jsonish.py::parse_object`, shared.
+
+**Background aisle classification** (`services/classification_service.py`) is the one surface here
+that writes without a user confirming, and it is the suite's documented exception to the
+drafts-only rule — a category is *metadata*, not user-visible AI content, and the failure mode is
+"unfiled", never "wrong data committed" (Remnant's note classifier established it). It runs as a
+FastAPI `BackgroundTasks` job **after** the response on its own `AsyncSessionLocal`, only for items
+the deterministic chain (history → keyword guesser) left NULL. Guardrails:
+
+- Writes only `shopping_list_items.category`, only where it is still NULL.
+- **Never writes `item_history`** — history is where *you* file things and outranks the guesser for
+  every future recipe; a machine guess must not become "remembered".
+- Re-checks the name under the write, so a rename landing during the model call can't be
+  overwritten by a label computed for the old text.
+- The parser returns `None` rather than falling back to `other`: unfiled is honest and stays
+  eligible for a retry, whereas `other` looks like a decision and stops reconsideration.
+- Every add re-queues *everything* unfiled (capped at 15), so a row stranded while LM Studio was
+  down heals on the next add — no polling loop, no migration.
+
+**"Organize list"** (`services/organize_service.py`, `POST /lists/{id}/organize` 10/min +
+`/organize/apply`) is the same capability as a *draft*, and the split is the point. The draft asks
+the model which unchecked items are mis-filed and **saves nothing**; apply writes only the moves
+the user accepted, makes no model call at all (so it works with the sidecar down, which matters
+when a review screen has been sitting open), and **does** write `item_history` — accepting a
+suggestion is a decision about where *you* file that item, which is exactly what distinguishes it
+from background classification. `parse_organize` treats the names that were sent as a whitelist: a
+name the model invented or garbled is dropped, never fuzzy-matched, because guessing which row was
+meant is how the wrong item moves. `None` (unreadable) and `[]` (nothing to do) are different
+outcomes and the client says different things about them.
+
+**"Suggest layout"** (`POST /stores/suggest-layout`, 5/min) drafts a store's aisles from the chain
+name so setting one up isn't a dozen-plus rows of typing before it's worth anything. It saves
+nothing; the client opens the draft in the aisle editor. `parse_layout` guarantees the draft is
+*usable*, not correct: names clamped, invented categories dropped, a category claimed twice kept by
+the first aisle to claim it, and **every category the model forgot swept into a trailing aisle** —
+otherwise it would have no aisle to route to and its items would land in "Unsorted", reading as a
+bug in the layout the user just saved. An unreachable or unreadable model returns the canonical
+walk order flagged `low_confidence` rather than an error: adding a store must not depend on AI
+either. Expect generic output — the model knows "Meijer" as world knowledge, not the floor plan of
+the Maysville Rd one, so edit-before-save is the intended workflow.
+
 House rules (ROADMAP "ground rules"): extend this module, don't grow a second AI stack; the
 Spotter guardrail model is the contract; **the shopping list must never depend on AI** — AI
-degrades to absence, never blocks add/check/sync.
+degrades to absence, never blocks add/check/sync. That invariant is why classification is
+post-response: the add path's latency and result are exactly what they were before it existed.
 
 ### Migrations & tests
 
@@ -127,10 +240,32 @@ Alembic 0001–0017, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 p
 0015 household-member-status, 0016 item-history-trigram, 0017 item-link-url —
 `shopping_list_items.link_url`, Text, first-link-wins on merge; item names are capped at 255
 with a clean 422, never a DB 500; 0018 link-preview-and-recall — `shopping_list_items.image_url`
-+ `item_history.link_url`/`image_url` for thumbnails and "buy again"). ~347 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
-`DATABASE_URL` on **127.0.0.1:5434**, `DB_NULLPOOL=true` (conftest sets NullPool; bcrypt dropped
-to 4 rounds tests-only). One env-dependent local-only failure when the live `.env` has
-`SUITE_JWKS_URL` set; green in CI.
++ `item_history.link_url`/`image_url` for thumbnails and "buy again"; 0019/0020/0022 category and
+cooking-measure re-sorts; 0021 ingredient sections; **0023 stores/aisles/placements**). ~548 pytest
+tests; CI runs ruff **and** `ruff format --check`, pinned to **0.4.4**, scoped to `app` only.
+
+**Local recipe (2026-07-31 — the older "`127.0.0.1:5434`" instruction is wrong and will fail with
+`InvalidPasswordError`):** `cookbook-db-1` publishes **no host port**, so nothing on the host can
+reach it. Run the suite in a throwaway container on the compose network instead — the prod image
+has no pytest and its entrypoint ignores a passed command, hence `--entrypoint sh`:
+
+```bash
+PW=$(docker exec cookbook-db-1 sh -c 'echo "$POSTGRES_PASSWORD"')   # root .env rotated it
+docker exec cookbook-db-1 createdb -U cookbook cookbook_scratch
+docker run --rm --network cookbook_default -v "C:/Code/Cookbook/server:/w" -w /w \
+  -e DATABASE_URL="postgresql+asyncpg://cookbook:${PW}@db:5432/cookbook_scratch" \
+  -e DB_NULLPOOL=true -e SECRET_KEY=x --entrypoint sh cookbook-server \
+  -c "pip install -q pytest pytest-asyncio; python -m pytest -q"
+```
+
+conftest sets NullPool and drops bcrypt to 4 rounds (tests only). Running from a **git worktree**
+also sidesteps the ~8 env-dependent failures (`test_suite_auth`, `test_plate_*`, `test_pantry`) —
+those only appear when the live `server/.env` is present and supplies `SUITE_JWKS_URL` /
+`PLATE_BASE_URL`; they are green in CI either way.
+
+**Use a fresh scratch DB per run.** `test_suite_auth.py` registers fixed emails
+(`brandnew@example.com`) and asserts a starting count of zero, so re-running against a scratch DB
+that already has them fails two tests for reasons that have nothing to do with your change.
 
 ## Android (`android/`, package `com.cookbook`)
 

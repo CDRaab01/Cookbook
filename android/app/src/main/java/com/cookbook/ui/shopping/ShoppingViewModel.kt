@@ -6,8 +6,11 @@ import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingListOut
+import com.cookbook.data.remote.StoreDetailOut
+import com.cookbook.data.remote.StoreOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.data.repository.ShoppingRepository
+import com.cookbook.data.repository.StoreRepository
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -16,6 +19,7 @@ import com.cookbook.util.DEFAULT_AISLE_ORDER
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -23,8 +27,10 @@ import javax.inject.Inject
 @HiltViewModel
 class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
+    private val storeRepository: StoreRepository,
+    private val organizeDraftStore: com.cookbook.util.OrganizeDraftStore,
     private val widgetRefresher: com.cookbook.widget.WidgetRefresher,
-    appPreferences: com.cookbook.util.AppPreferences,
+    private val appPreferences: com.cookbook.util.AppPreferences,
 ) : ViewModel() {
 
     private val _list = MutableStateFlow<UiState<ShoppingListOut>>(UiState.Loading)
@@ -43,6 +49,21 @@ class ShoppingViewModel @Inject constructor(
      *  the "· Default" marker in the list switcher. */
     val pinnedListId: StateFlow<String?> = appPreferences.pinnedListId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Every store the household shops, for the picker. Empty until [load] and when offline with a
+     *  cold cache — an empty list simply means the picker offers only "No store". */
+    private val _stores = MutableStateFlow<List<StoreOut>>(emptyList())
+    val stores: StateFlow<List<StoreOut>> = _stores
+
+    /**
+     * The store the list is currently routed for; null = the plain category grouping.
+     *
+     * Selection lives in DataStore (per-device presentation state — two household members can be
+     * standing in different stores), and the floor plan behind it is cache-backed, so routing keeps
+     * working in the dead-signal aisle it exists for.
+     */
+    private val _selectedStore = MutableStateFlow<StoreDetailOut?>(null)
+    val selectedStore: StateFlow<StoreDetailOut?> = _selectedStore
 
     init {
         // Any successful list state (load or mutation) redraws the home-screen widget, so it
@@ -78,7 +99,102 @@ class ShoppingViewModel @Inject constructor(
             }
             // Best-effort; the repo already swallows failures to null (tile hides).
             _grocerySpend.value = shoppingRepository.grocerySpend()
+            refreshStores()
         }
+    }
+
+    /**
+     * Reload the store picker and the selected store's floor plan.
+     *
+     * Entirely best-effort: routing is a nicety layered over a list that has to work regardless, so
+     * every failure here degrades to "no store selected" — the category grouping the app has always
+     * had — rather than surfacing an error over a list the user can already read.
+     */
+    private suspend fun refreshStores() {
+        _stores.value = try {
+            storeRepository.stores()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val selectedId = appPreferences.selectedStoreId.firstOrNull()
+        _selectedStore.value = when {
+            selectedId == null -> null
+            // Selected on another device, or deleted here: fall back rather than route by a
+            // phantom floor plan.
+            _stores.value.none { it.id == selectedId } && _stores.value.isNotEmpty() -> null
+            else -> try {
+                storeRepository.store(selectedId)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    /** Route the list for a store (or null for plain category grouping). Per-device. */
+    fun selectStore(storeId: String?) {
+        viewModelScope.launch {
+            appPreferences.setSelectedStoreId(storeId)
+            refreshStores()
+        }
+    }
+
+    /** True while the local model is drafting an organize pass — it takes a few seconds. */
+    private val _organizing = MutableStateFlow(false)
+    val organizing: StateFlow<Boolean> = _organizing
+
+    /**
+     * Ask the local model which items look mis-filed, and hand the draft to the review screen.
+     * Saves nothing — [onDraft] fires only when there is something to review, so an already-tidy
+     * list doesn't push a screen that says "nothing to do".
+     */
+    fun organize(onDraft: () -> Unit, onNothingToDo: (String) -> Unit) {
+        val listId = (_list.value as? UiState.Success)?.data?.id ?: return
+        if (_organizing.value) return
+        viewModelScope.launch {
+            _organizing.value = true
+            try {
+                val draft = shoppingRepository.organize(listId)
+                if (draft.suggestions.isEmpty()) {
+                    onNothingToDo(draft.note ?: "Nothing worth moving on this list.")
+                } else {
+                    organizeDraftStore.offer(draft)
+                    onDraft()
+                }
+            } catch (e: Exception) {
+                _error.value = organizeError(e)
+            } finally {
+                _organizing.value = false
+            }
+        }
+    }
+
+    /**
+     * Remember that an item lives in a particular aisle *at this store*.
+     *
+     * Deliberately does not touch the item's canonical category: where a thing sits in this store
+     * says nothing about the next one. Offline-capable, because moving an item to the aisle you
+     * actually found it in is an in-store action.
+     */
+    fun placeItemInAisle(item: ShoppingItemOut, aisleId: String) {
+        val storeId = _selectedStore.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                storeRepository.placeItem(storeId, item.name, aisleId)
+                _selectedStore.value = storeRepository.store(storeId)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't remember that aisle"
+            }
+        }
+    }
+
+    /** The house 503/504 taxonomy, said in words a shopper can act on. */
+    private fun organizeError(e: Exception): String = when {
+        e is java.io.IOException -> "You're offline — organizing needs a connection."
+        e is retrofit2.HttpException && e.code() == 503 ->
+            "The local AI isn't reachable. Is LM Studio running?"
+        e is retrofit2.HttpException && e.code() == 504 ->
+            "The local AI took too long — it may still be warming up. Try again in a moment."
+        else -> e.message ?: "Couldn't organize the list"
     }
 
     fun switchList(listId: String) {

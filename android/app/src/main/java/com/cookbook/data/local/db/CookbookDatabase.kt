@@ -11,19 +11,28 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RecipeSummaryCacheEntity::class,
         RecipeDetailCacheEntity::class,
         PendingRecipeOpEntity::class,
+        StoreEntity::class,
+        StoreAisleEntity::class,
+        StorePlacementEntity::class,
+        PendingPlacementEntity::class,
     ],
     // v4: cachedAtMs on the recipe caches + the pending_recipe_ops queue. NOTE the old
     // "destructive rebuild — it's a mirror" stance is retired: shopping_items carries offline
     // queue rows (dirty/tombstoned/serverless) and pending_recipe_ops is a queue outright —
     // migrate, don't drop. The destructive fallback in DatabaseModule is a last resort only.
     // v5: shopping_items.linkUrl (pasted product links). v6: shopping_items.imageUrl (thumbnails).
-    version = 6,
+    // v7: store profiles + their aisles/placements (a read cache — aisle routing is only useful
+    // inside the store, which is where the signal is worst), plus pending_placements, the one
+    // store mutation that must survive no signal because moving an item to the aisle you actually
+    // found it in is an in-store action.
+    version = 7,
     exportSchema = false,
 )
 abstract class CookbookDatabase : RoomDatabase() {
     abstract fun shoppingDao(): ShoppingDao
     abstract fun recipeCacheDao(): RecipeCacheDao
     abstract fun pendingRecipeOpDao(): PendingRecipeOpDao
+    abstract fun storeDao(): StoreDao
 
     companion object {
         /** v3 → v4: stamp columns on the recipe caches + the recipe offline-op queue. */
@@ -57,6 +66,44 @@ abstract class CookbookDatabase : RoomDatabase() {
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE shopping_items ADD COLUMN imageUrl TEXT")
+            }
+        }
+
+        /** v6 → v7: the store cache + the offline "move to aisle" queue. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS stores (" +
+                        "id TEXT PRIMARY KEY NOT NULL, " +
+                        "name TEXT NOT NULL, " +
+                        "label TEXT, " +
+                        "isOwner INTEGER NOT NULL DEFAULT 1, " +
+                        "`order` INTEGER NOT NULL DEFAULT 0)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS store_aisles (" +
+                        "id TEXT PRIMARY KEY NOT NULL, " +
+                        "storeId TEXT NOT NULL, " +
+                        "`order` INTEGER NOT NULL, " +
+                        "name TEXT NOT NULL, " +
+                        "categories TEXT NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS store_placements (" +
+                        "id TEXT PRIMARY KEY NOT NULL, " +
+                        "storeId TEXT NOT NULL, " +
+                        "aisleId TEXT NOT NULL, " +
+                        "key TEXT NOT NULL, " +
+                        "name TEXT NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS pending_placements (" +
+                        "localId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "storeId TEXT NOT NULL, " +
+                        "aisleId TEXT NOT NULL, " +
+                        "itemName TEXT NOT NULL, " +
+                        "createdAtMs INTEGER NOT NULL)",
+                )
             }
         }
     }

@@ -31,7 +31,26 @@ class AppPreferences @Inject constructor(
         private val SHOPPING_LIST_ID = stringPreferencesKey("pref_shopping_list_id")
         private val PINNED_LIST_ID = stringPreferencesKey("pref_pinned_list_id")
         private val AISLE_ORDER = stringPreferencesKey("pref_aisle_order")
+        private val SELECTED_STORE_ID = stringPreferencesKey("pref_selected_store_id")
         private val SHARE_ALL_NUDGE_DISMISSED = booleanPreferencesKey("pref_share_all_nudge_dismissed")
+    }
+
+    /**
+     * Which store the list is currently being routed for; null = plain category grouping (v0.11).
+     *
+     * Per-device on purpose, like [pinnedListId]: this is presentation state about where *you* are
+     * standing right now. Two household members shopping different stores at the same time each
+     * need their own selection, so it must not be server state even though the stores themselves
+     * are shared.
+     */
+    val selectedStoreId: Flow<String?> = context.prefsDataStore.data.map { prefs ->
+        prefs[SELECTED_STORE_ID]?.takeIf { it.isNotBlank() }
+    }
+
+    suspend fun setSelectedStoreId(value: String?) {
+        context.prefsDataStore.edit { prefs ->
+            if (value.isNullOrBlank()) prefs.remove(SELECTED_STORE_ID) else prefs[SELECTED_STORE_ID] = value
+        }
     }
 
     // Flipped the first time we seed the active list from the pinned default this process, so a
