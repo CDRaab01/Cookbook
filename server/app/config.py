@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # silent feature flag, so the client can tell "not configured" from "briefly down".
     lm_studio_base_url: str = "http://localhost:1234/v1"
     lm_studio_vision_model: str = "google/gemma-3-12b"
+    # Text completions (aisle classification, list organize, store-layout suggestion). Same
+    # weights the vision path uses on this host; separate setting so the two can diverge without
+    # a code change. Both are pinned in docker-compose's `environment:` — an env_file-only value
+    # silently vanishes when Compose recreates the container.
+    lm_studio_model: str = "google/gemma-4-e4b"
     lm_studio_timeout: float = 60.0
     photo_max_bytes: int = 8 * 1024 * 1024
 

@@ -5,14 +5,12 @@ parse defensively — vision models wrap output in prose or code fences often en
 naive json.loads() would fail on a large fraction of otherwise-usable responses.
 """
 
-import json
-import re
-
 from app.limits import MAX_SECTION_LENGTH
 from app.lists.categorize import guess_category
 from app.lists.merge import canonical_unit
 from app.models.recipe import STORE_CATEGORIES
 from app.schemas.photo import RecipePhotoDraft
+from app.services.ai.jsonish import parse_object
 
 MAX_INGREDIENTS = 60
 MAX_STEPS = 40
@@ -60,21 +58,6 @@ def build_vision_messages(image_data_url: str) -> list[dict]:
     ]
 
 
-_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
-
-
-def _strip_fences(text: str) -> str:
-    return _FENCE_RE.sub("", text).strip()
-
-
-def _widest_object_span(text: str) -> str | None:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end < start:
-        return None
-    return text[start : end + 1]
-
-
 def _coerce_number(v) -> float | None:
     if v is None:
         return None
@@ -96,20 +79,8 @@ def _coerce_int(v) -> int | None:
 def parse_draft(raw_text: str) -> RecipePhotoDraft | None:
     """Best-effort parse of the model's response. Returns None (never raises) when nothing
     usable can be salvaged — the caller turns that into a low-confidence empty draft."""
-    stripped = _strip_fences(raw_text)
-    candidates = [stripped, _widest_object_span(stripped)]
-    data = None
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            data = json.loads(candidate)
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if isinstance(data, dict):
-            break
-        data = None
-    if not isinstance(data, dict) or not data:
+    data = parse_object(raw_text)
+    if data is None:
         return None
 
     ingredients = []

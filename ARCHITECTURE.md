@@ -149,9 +149,33 @@ error. Two surfaces, same contract:
 - **Pantry scan** (`POST /pantry/scan`) — fridge photo → candidate list → `PantryConfirmScreen`
   → `POST /pantry/confirm`. Nothing persists from the scan itself.
 
+Since v0.11 there is also a **text** seam, `services/ai/text.py::chat_text` — same host, same model
+(`lm_studio_model`, `google/gemma-4-e4b`), same error taxonomy as `_chat_vision`, but no image,
+`temperature=0` and a mandatory `max_tokens` (an unbounded completion from a local model turns a
+200 ms classification into a 30 s one). The fence-stripping / widest-`{...}`-span salvage both
+vision prompt modules had privately is now `services/ai/jsonish.py::parse_object`, shared.
+
+**Background aisle classification** (`services/classification_service.py`) is the one surface here
+that writes without a user confirming, and it is the suite's documented exception to the
+drafts-only rule — a category is *metadata*, not user-visible AI content, and the failure mode is
+"unfiled", never "wrong data committed" (Remnant's note classifier established it). It runs as a
+FastAPI `BackgroundTasks` job **after** the response on its own `AsyncSessionLocal`, only for items
+the deterministic chain (history → keyword guesser) left NULL. Guardrails:
+
+- Writes only `shopping_list_items.category`, only where it is still NULL.
+- **Never writes `item_history`** — history is where *you* file things and outranks the guesser for
+  every future recipe; a machine guess must not become "remembered".
+- Re-checks the name under the write, so a rename landing during the model call can't be
+  overwritten by a label computed for the old text.
+- The parser returns `None` rather than falling back to `other`: unfiled is honest and stays
+  eligible for a retry, whereas `other` looks like a decision and stops reconsideration.
+- Every add re-queues *everything* unfiled (capped at 15), so a row stranded while LM Studio was
+  down heals on the next add — no polling loop, no migration.
+
 House rules (ROADMAP "ground rules"): extend this module, don't grow a second AI stack; the
 Spotter guardrail model is the contract; **the shopping list must never depend on AI** — AI
-degrades to absence, never blocks add/check/sync.
+degrades to absence, never blocks add/check/sync. That invariant is why classification is
+post-response: the add path's latency and result are exactly what they were before it existed.
 
 ### Migrations & tests
 
@@ -182,6 +206,10 @@ conftest sets NullPool and drops bcrypt to 4 rounds (tests only). Running from a
 also sidesteps the ~8 env-dependent failures (`test_suite_auth`, `test_plate_*`, `test_pantry`) —
 those only appear when the live `server/.env` is present and supplies `SUITE_JWKS_URL` /
 `PLATE_BASE_URL`; they are green in CI either way.
+
+**Use a fresh scratch DB per run.** `test_suite_auth.py` registers fixed emails
+(`brandnew@example.com`) and asserts a starting count of zero, so re-running against a scratch DB
+that already has them fails two tests for reasons that have nothing to do with your change.
 
 ## Android (`android/`, package `com.cookbook`)
 

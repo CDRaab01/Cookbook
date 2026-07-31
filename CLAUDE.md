@@ -870,4 +870,37 @@ ARCHITECTURE.md "Store routing".
   fails with `InvalidPasswordError` against whatever else is on 5434. The working recipe (throwaway
   container on `cookbook_default`, password read out of the container, `--entrypoint sh`) is now in
   ARCHITECTURE.md § Migrations & tests. Running from a git worktree also sidesteps the ~8
-  env-dependent failures, since there is no live `server/.env` to mount.
+  env-dependent failures, since there is no live `server/.env` to mount. **Recreate the scratch DB
+  per run** — `test_suite_auth` registers fixed emails and asserts a starting count of 0, so a
+  reused scratch DB fails two tests for reasons unrelated to your change.
+
+### Phase 2 — the local model reaches the shopping list (background aisle filing)
+
+- **`services/ai/text.py::chat_text`** — the text sibling of `_chat_vision`: same host, same
+  `client=` MockTransport seam, same 503/504/502 taxonomy, but `temperature=0` and a **mandatory
+  `max_tokens`** (an unbounded local completion turns a 200 ms classification into a 30 s one).
+  New `lm_studio_model` setting, pinned in compose `environment:` next to the vision one.
+- **`services/ai/jsonish.py`** — the fence-stripping / widest-`{...}`-span salvage both vision
+  prompt modules had privately, extracted once. `recipe_photo_prompts` and `pantry_scan_prompts`
+  now import it; their existing tests cover the move.
+- **`services/classification_service.py`** — for items the deterministic chain (history → keyword
+  guesser) left NULL, ask Gemma which of the 13 aisles it belongs in. Runs as a `BackgroundTasks`
+  job **after** the response on its own session, wired into `POST /lists/{id}/items`,
+  `POST /lists/{id}/add-recipe` and `POST /plan/to-list`. The invariant is structural, not a
+  promise: the add path's latency and result are unchanged, and every failure mode (model down,
+  timeout, junk reply, item deleted mid-flight) leaves the row exactly as it was.
+- **This is the suite's documented exception to drafts-only** — a category is metadata, the failure
+  mode is "unfiled" not "wrong data committed" (Remnant's note classifier established it). The
+  guardrails that make it safe: writes only `category` and only where still NULL; **never writes
+  `item_history`** (a machine guess must not become "remembered" and outrank the guesser forever);
+  re-checks the name under the write so a rename mid-call isn't clobbered; and the parser returns
+  `None` rather than falling back to `other`, so an unplaced item stays eligible for a retry.
+- **Self-healing without a polling loop:** every add re-queues *everything* unfiled on the list
+  (capped at 15, idempotent), so a row stranded while LM Studio was down gets picked up by the next
+  add. Cookbook has no `/sync` to piggyback on the way Remnant does.
+- **Verified: 581 passed** (33 new in `tests/test_aisle_classification.py` — parser table, the
+  transport taxonomy, and the DB-backed guards incl. rename-during-call and history-untouched);
+  ruff 0.4.4 clean. **Live smoke against the loaded `google/gemma-4-e4b`:** 12/12 names the keyword
+  guesser misses filed sensibly (cotton swabs→personal, kombucha→beverages, dryer sheets→household,
+  za'atar→pantry, teething rings→baby, frozen edamame→frozen), ~0.3 s each once warm, 3.9 s on the
+  first cold call.

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -19,6 +19,7 @@ from app.schemas.shopping import (
     SuggestionOut,
 )
 from app.security import CurrentUser
+from app.services.classification_service import classify_unfiled_items, unfiled_item_ids
 from app.services.grocery_spend_service import fetch_month_grocery_spend
 from app.services.shopping_service import (
     add_item,
@@ -102,20 +103,45 @@ async def remove_list(list_id: uuid.UUID, current_user: CurrentUser, db: DbSessi
     await delete_list(db, current_user.id, list_id)
 
 
+def _queue_classification(background_tasks: BackgroundTasks, out: ListOut) -> None:
+    """Hand any still-unfiled items to the local model *after* the response is sent.
+
+    Deliberately post-response: the shopping list must never depend on AI, so the add path's
+    latency and result are exactly what they were before this existed. Everything unfiled is
+    re-queued (not just what this request added), which is what makes it self-heal — a row
+    stranded while LM Studio was down gets another chance on the next add, with no polling loop.
+    """
+    unfiled = unfiled_item_ids(out.items)
+    if unfiled:
+        background_tasks.add_task(classify_unfiled_items, unfiled)
+
+
 @router.post("/{list_id}/items", response_model=ListOut, status_code=status.HTTP_201_CREATED)
 async def create_item(
-    list_id: uuid.UUID, req: ItemCreate, current_user: CurrentUser, db: DbSession
+    list_id: uuid.UUID,
+    req: ItemCreate,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
 ):
-    return await add_item(db, current_user.id, list_id, req)
+    out = await add_item(db, current_user.id, list_id, req)
+    _queue_classification(background_tasks, out)
+    return out
 
 
 @router.post("/{list_id}/add-recipe", response_model=ListOut)
 async def add_recipe_to_list(
-    list_id: uuid.UUID, req: AddRecipeRequest, current_user: CurrentUser, db: DbSession
+    list_id: uuid.UUID,
+    req: AddRecipeRequest,
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
 ):
     """Autofill from a recipe (scaled), merging duplicates. 409 when its unchecked items are
     already on the list and ``force`` is false — the client's re-add/skip prompt."""
-    return await add_recipe(db, current_user.id, list_id, req)
+    out = await add_recipe(db, current_user.id, list_id, req)
+    _queue_classification(background_tasks, out)
+    return out
 
 
 @router.patch("/{list_id}/items/{item_id}", response_model=ListOut)
