@@ -92,6 +92,38 @@ category is nearly always a machine guess from import time, so one correction in
 (written back by `update_item`) sticks for every future recipe mentioning that item. This is
 inverted from `add_item`, where the client's `category` is a choice being made right now.
 
+### Store routing (v0.11) — two layers, so the category vocabulary stays portable
+
+The 13 `STORE_CATEGORIES` are a **portable** vocabulary: recipes, `item_history` and the keyword
+guesser all speak it, and an item keeps its category no matter which store you're standing in.
+A real store has real aisles ("Aisle 12 — Baking") and two Meijers don't agree with each other, so
+a store profile is layered *on top of* the categories rather than replacing them:
+
+- **`store_aisles`** — the store's own ordered walk. Each aisle claims zero or more canonical
+  categories; a category claimed twice resolves to the first aisle in walk order, and one no aisle
+  claims falls to a client-rendered "Unsorted" section at the end. Nothing is ever dropped.
+- **`store_placements`** — the per-item exception ("peanut butter is aisle 5 at *this* Meijer"),
+  keyed on `normalize_name` and therefore sharing a key space with `item_history`. Overrides the
+  category mapping.
+
+The split of ownership matters: a **placement is a fact about the store**, so it is
+household-shared like the store itself; `item_history` remains one user's preference. A placement
+deliberately never rewrites the item's canonical `category` — where a thing sits in one store says
+nothing about the next.
+
+`POST /stores` with no `aisles` seeds one aisle per category in canonical order, so selecting a
+brand-new store reproduces exactly the grouping the user already had — a store can never make the
+list worse before it's been edited. `PUT /stores/{id}/aisles` is a **full replace preserving rows
+the payload identifies by id**, which is what lets a reorder/rename keep the placements learned by
+walking the store; only an aisle actually removed loses them (DB cascade). Because those writes go
+through `db.add`/`db.delete` plus that cascade rather than through the ORM collections,
+`store_service._reload` must use `populate_existing=True` — the session is `expire_on_commit=False`,
+so the identity map would otherwise return pre-write collections.
+
+`ItemOut.key` (= `normalize_name(name)`, computed server-side) is how the client looks up "which
+aisle is this item in at this store" with a plain map get. It exists so Kotlin never re-implements
+the normalizer and drifts from the merge module — the "clients display, never compute" rule.
+
 ### Domain map
 
 | Domain | Router | Service | Models |
@@ -100,6 +132,7 @@ inverted from `add_item`, where the client's `category` is a choice being made r
 | Recipes (CRUD, notes, tags, favorites, cook events) | `recipes.py` | `recipe_service` | `Recipe` (+steps/ingredients), `CookEvent`, tags |
 | Discovery/import | `recipes.py` | `recipe_discovery_service` | — (`recipes_ext/`: `spoonacular.py` + `jsonld.py` URL parser w/ SSRF guard) |
 | Shopping lists | `lists.py` | `shopping_service` | `ShoppingList`, `ShoppingListItem`, `ItemHistory` |
+| Stores / aisle routing (v0.11) | `stores.py` | `store_service` | `Store`, `StoreAisle`, `StorePlacement` |
 | Meal planner | `plan.py` | `plan_service` | `MealPlanEntry` |
 | Pantry (v0.4 AI round) | `pantry.py` | `pantry_service` (+ `services/ai/`) | `PantryItem`, `PantryStaple` |
 | Household / family sharing | `household.py` (+ `POST /recipes/share-all`) | `household_service`, `recipe_service.{share_all_own_recipes,count_unshared_own_recipes}` | `Household`, `HouseholdMember` (+ `recipes.shared`) |
@@ -127,10 +160,28 @@ Alembic 0001–0017, migrate-on-boot (0008 plan-eaten, 0009 list-members, 0010 p
 0015 household-member-status, 0016 item-history-trigram, 0017 item-link-url —
 `shopping_list_items.link_url`, Text, first-link-wins on merge; item names are capped at 255
 with a clean 422, never a DB 500; 0018 link-preview-and-recall — `shopping_list_items.image_url`
-+ `item_history.link_url`/`image_url` for thumbnails and "buy again"). ~347 pytest tests; CI runs ruff **and** `ruff format --check`. Local recipe (CLAUDE.md): scratch DB inside the live cookbook-db container,
-`DATABASE_URL` on **127.0.0.1:5434**, `DB_NULLPOOL=true` (conftest sets NullPool; bcrypt dropped
-to 4 rounds tests-only). One env-dependent local-only failure when the live `.env` has
-`SUITE_JWKS_URL` set; green in CI.
++ `item_history.link_url`/`image_url` for thumbnails and "buy again"; 0019/0020/0022 category and
+cooking-measure re-sorts; 0021 ingredient sections; **0023 stores/aisles/placements**). ~548 pytest
+tests; CI runs ruff **and** `ruff format --check`, pinned to **0.4.4**, scoped to `app` only.
+
+**Local recipe (2026-07-31 — the older "`127.0.0.1:5434`" instruction is wrong and will fail with
+`InvalidPasswordError`):** `cookbook-db-1` publishes **no host port**, so nothing on the host can
+reach it. Run the suite in a throwaway container on the compose network instead — the prod image
+has no pytest and its entrypoint ignores a passed command, hence `--entrypoint sh`:
+
+```bash
+PW=$(docker exec cookbook-db-1 sh -c 'echo "$POSTGRES_PASSWORD"')   # root .env rotated it
+docker exec cookbook-db-1 createdb -U cookbook cookbook_scratch
+docker run --rm --network cookbook_default -v "C:/Code/Cookbook/server:/w" -w /w \
+  -e DATABASE_URL="postgresql+asyncpg://cookbook:${PW}@db:5432/cookbook_scratch" \
+  -e DB_NULLPOOL=true -e SECRET_KEY=x --entrypoint sh cookbook-server \
+  -c "pip install -q pytest pytest-asyncio; python -m pytest -q"
+```
+
+conftest sets NullPool and drops bcrypt to 4 rounds (tests only). Running from a **git worktree**
+also sidesteps the ~8 env-dependent failures (`test_suite_auth`, `test_plate_*`, `test_pantry`) —
+those only appear when the live `server/.env` is present and supplies `SUITE_JWKS_URL` /
+`PLATE_BASE_URL`; they are green in CI either way.
 
 ## Android (`android/`, package `com.cookbook`)
 

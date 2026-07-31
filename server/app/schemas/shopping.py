@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from app.limits import (
     MAX_ITEM_NAME_LENGTH,
@@ -10,7 +10,7 @@ from app.limits import (
     QUANTITY_BOUNDS,
     SCALE_BOUNDS,
 )
-from app.lists.merge import canonical_unit
+from app.lists.merge import canonical_unit, normalize_name
 from app.schemas.recipe import _validate_category
 
 
@@ -202,6 +202,15 @@ class ItemOut(BaseModel):
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def key(self) -> str:
+        """``normalize_name(name)`` — the identity this item merges on, and the key a store
+        placement is filed under. Computed here so the client can look up "which aisle is this at
+        this store" with a plain map get; a Kotlin re-implementation of the normalizer would drift
+        from the merge module the moment either changed (clients display, never compute)."""
+        return normalize_name(self.name)
 
     @field_validator("measures", mode="before")
     @classmethod

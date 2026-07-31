@@ -820,3 +820,54 @@ weakening who is allowed to make it.
   **Worth keeping:** the prod image has no `pytest` and its entrypoint ignores a passed command —
   run the suite with `--entrypoint sh` and `pip install pytest`, or you get a booted API and an
   empty log instead of a test run.
+
+---
+
+## v0.11 (2026-07-31) — store routing + the local model on the shopping list
+
+The round the user asked for: bring the LM Studio Gemma (`google/gemma-4-e4b`, the same sidecar
+photo import and pantry scan already use) to bear on the **shopping list**, and move toward routing
+a real store — Meijer on Maysville Rd first, other stores selectable later. Built in phases on
+`claude/store-routing`.
+
+**Design decision that shapes everything else: two layers, so the 13-category vocabulary never
+moves.** Items keep their canonical `category` (recipes, `item_history`, the keyword guesser and
+migrations 0019/0022 all depend on it). A *store* is where that vocabulary meets a floor plan —
+its own ordered aisles, each claiming some categories, plus per-item exceptions. Full rationale in
+ARCHITECTURE.md "Store routing".
+
+### Phase 1 — stores, aisles, placements (server, no AI)
+
+- **Migration `0023`** + `models/store.py`: `stores` (creator + `name`/`label` — "Meijer" /
+  "Maysville Rd", split so the AI layout prompt gets a clean chain name), `store_aisles` (ordered,
+  `name` = whatever the sign says, `categories` = JSON list of canonical keys), `store_placements`
+  (unique on `(store_id, key)`, key = `normalize_name`).
+- **`/stores` router + `store_service`:** CRUD, `PUT /{id}/aisles`, placement upsert/delete.
+  Access mirrors shopping lists exactly (`household_member_ids`) — two people shopping the same
+  store want the same floor plan — while **delete stays creator-only** (the `is_owner` rule).
+- **A new store seeds the canonical walk order** (one aisle per category), so selecting a
+  brand-new store reproduces the grouping the user already had. A store can never make the list
+  worse before it's been edited.
+- **The aisle PUT preserves rows the payload identifies by id.** That is the whole point: a
+  reorder or rename must not discard the placements someone learned by walking the store. Only an
+  aisle genuinely removed loses them (DB cascade). An *unknown* id inserts rather than 404ing the
+  save — a stale id means another device edited the layout, and losing the user's reordering over
+  it would be worse.
+- **A placement never rewrites the item's `category`,** and never touches `item_history`: where a
+  thing sits in *this* store says nothing about the next one. Placements are household-shared (a
+  fact about the store); `item_history` stays per-user (a preference).
+- **`ItemOut.key`** (= `normalize_name(name)`, a pydantic `computed_field`) so the client looks up
+  "which aisle is this here" with a map get instead of re-implementing the normalizer in Kotlin.
+- **Gotcha, cost me four red tests:** the session is `expire_on_commit=False`, and these writes go
+  through `db.add`/`db.delete` + a DB-level cascade rather than through the ORM collections the way
+  `shopping_service` does — so the identity map handed back pre-write `aisles`/`placements` and the
+  response claimed a deleted aisle still existed. `store_service._reload` uses
+  `execution_options(populate_existing=True)`.
+- **Verified: server 548 passed, 0 failed** (15 new in `tests/test_stores.py`), ruff 0.4.4
+  `check` + `format --check` clean at CI scope (`app`).
+- **Doc fix made along the way:** the local-test recipe in this file and ARCHITECTURE.md said
+  `DATABASE_URL` on `127.0.0.1:5434`. **`cookbook-db-1` publishes no host port** — that recipe
+  fails with `InvalidPasswordError` against whatever else is on 5434. The working recipe (throwaway
+  container on `cookbook_default`, password read out of the container, `--entrypoint sh`) is now in
+  ARCHITECTURE.md § Migrations & tests. Running from a git worktree also sidesteps the ~8
+  env-dependent failures, since there is no live `server/.env` to mount.

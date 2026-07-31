@@ -17,6 +17,7 @@ from app.routers import (
     pantry,
     plan,
     recipes,
+    stores,
     suite_auth,
     users,
 )
@@ -93,6 +94,7 @@ app.include_router(users.router)
 app.include_router(recipes.router)
 app.include_router(household.router)
 app.include_router(lists.router)
+app.include_router(stores.router)
 app.include_router(migrate.router)
 app.include_router(plan.router)
 app.include_router(pantry.router)

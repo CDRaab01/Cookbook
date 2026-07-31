@@ -23,3 +23,11 @@ MAX_LINK_URL_LENGTH = 2048
 
 # "Add recipe to list" servings multiplier.
 SCALE_BOUNDS = (0.1, 20.0)
+
+# Stores (v0.11). A household shops a handful of places; the aisle cap is generous enough for a
+# real supercenter walked aisle-by-aisle without letting a bad AI layout suggestion run away.
+MAX_STORES = 20
+MAX_STORE_AISLES = 60
+MAX_STORE_NAME_LENGTH = 120
+# Matches the store_aisles.name column — an aisle label ("Aisle 12 — Baking"), not prose.
+MAX_AISLE_NAME_LENGTH = 80
