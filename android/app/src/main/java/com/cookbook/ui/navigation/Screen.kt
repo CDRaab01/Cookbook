@@ -38,6 +38,13 @@ sealed class Screen(val route: String) {
     data object AisleOrder : Screen("aisle_order")
     data object Stores : Screen("stores")
 
+    /** Review of the local model's "these are in the wrong aisle" draft. Applies nothing itself. */
+    data object OrganizeReview : Screen("organize_review") {
+        const val ARG = "listId"
+        val routeWithArg = "$route/{$ARG}"
+        fun forList(id: String) = "$route/$id"
+    }
+
     /** The aisle editor. No id = compose the pending suggested layout (nothing saved yet). */
     data object StoreEdit : Screen("store_edit") {
         const val ARG = "storeId"

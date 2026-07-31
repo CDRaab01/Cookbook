@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.cookbook.data.repository.RecipeRepositoryImpl
 import com.cookbook.data.repository.ShoppingRepositoryImpl
+import com.cookbook.data.repository.StoreRepositoryImpl
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,15 +17,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Pushes the offline backlogs — shopping list first, then queued recipe ops — as soon as
- * connectivity returns (CLAUDE.md §7 Phase 4). Registered once from
- * [com.cookbook.CookbookApp]; mirrors Spotter/Plate's `NetworkSyncObserver`.
+ * Pushes the offline backlogs — shopping list first, then queued recipe ops, then any "move this
+ * item to that aisle" learned in the store — as soon as connectivity returns (CLAUDE.md §7 Phase 4).
+ * Registered once from [com.cookbook.CookbookApp]; mirrors Spotter/Plate's `NetworkSyncObserver`.
  */
 @Singleton
 class NetworkSyncObserver @Inject constructor(
     @ApplicationContext private val context: Context,
     private val shoppingRepository: ShoppingRepositoryImpl,
     private val recipeRepository: RecipeRepositoryImpl,
+    private val storeRepository: StoreRepositoryImpl,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -40,6 +42,7 @@ class NetworkSyncObserver @Inject constructor(
                     scope.launch {
                         runCatching { shoppingRepository.syncPending() }
                         runCatching { recipeRepository.syncPendingRecipeOps() }
+                        runCatching { storeRepository.syncPendingPlacements() }
                     }
                 }
             },

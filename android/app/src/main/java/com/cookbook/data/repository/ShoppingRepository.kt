@@ -2,6 +2,8 @@ package com.cookbook.data.repository
 
 import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
+import com.cookbook.data.remote.OrganizeDraftOut
+import com.cookbook.data.remote.OrganizeMove
 import com.cookbook.data.remote.ShoppingListOut
 import com.cookbook.data.remote.SuggestionOut
 import kotlinx.coroutines.flow.StateFlow
@@ -65,6 +67,15 @@ interface ShoppingRepository {
 
     /** This month's grocery spend from Magpie; null when the integration is off or unreachable. */
     suspend fun grocerySpend(): GrocerySpendOut?
+
+    /**
+     * Ask the local model which unchecked items look mis-filed. Online-only and **saves nothing** —
+     * the user reviews the suggestions and applies the ones they accept.
+     */
+    suspend fun organize(listId: String): OrganizeDraftOut
+
+    /** Apply the accepted moves. No model call, so this works even with LM Studio down. */
+    suspend fun applyOrganize(listId: String, moves: List<OrganizeMove>): ShoppingListOut
 }
 
 /** The server's "this recipe is already on the list" 409 — the UI turns it into re-add/skip. */

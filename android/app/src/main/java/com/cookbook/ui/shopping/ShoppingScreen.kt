@@ -100,6 +100,8 @@ fun ShoppingScreen(
     // Set when the share chooser routed a browser-shared URL here: added as a link item.
     sharedAddText: String? = null,
     onSharedAddConsumed: () -> Unit = {},
+    // Opens the review of the local model's "these are in the wrong aisle" draft (v0.11).
+    onReviewOrganize: (String) -> Unit = {},
 ) {
     val state by viewModel.list.collectAsState()
     val offline by viewModel.offline.collectAsState()
@@ -112,7 +114,12 @@ fun ShoppingScreen(
     val pinnedListId by viewModel.pinnedListId.collectAsState()
     val stores by viewModel.stores.collectAsState()
     val selectedStore by viewModel.selectedStore.collectAsState()
+    val organizing by viewModel.organizing.collectAsState()
     var storeMenuOpen by remember { mutableStateOf(false) }
+    // "The list already looks tidy" — a snackbar, not a screen you have to dismiss.
+    var organizeNote by remember { mutableStateOf<String?>(null) }
+    // The item whose aisle is being changed at the selected store.
+    var movingItem by remember { mutableStateOf<ShoppingItemOut?>(null) }
     val snackbar = remember { SnackbarHostState() }
     // The persistent add bar's text lives here (hoisted) so the + button and the "Add item"
     // launcher shortcut can focus it, and it survives while the list reloads underneath.
@@ -149,6 +156,12 @@ fun ShoppingScreen(
         error?.let {
             snackbar.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+    LaunchedEffect(organizeNote) {
+        organizeNote?.let {
+            snackbar.showSnackbar(it)
+            organizeNote = null
         }
     }
     LaunchedEffect(undoable) {
@@ -216,6 +229,24 @@ fun ShoppingScreen(
                                     },
                                 )
                             }
+                        }
+                        // Organize: the local model reviews the whole list and proposes moves the
+                        // user confirms. Distinct from the silent background filing, which only
+                        // ever touches items nobody has placed.
+                        (state as? UiState.Success)?.data?.let { current ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = {
+                                    Text(if (organizing) "Organizing…" else "Organize list…")
+                                },
+                                enabled = !organizing && current.items.any { !it.checked },
+                                onClick = {
+                                    listMenuOpen = false
+                                    viewModel.organize(
+                                        onDraft = { onReviewOrganize(current.id) },
+                                        onNothingToDo = { organizeNote = it },
+                                    )
+                                },
+                            )
                         }
                         androidx.compose.material3.DropdownMenuItem(
                             text = { Text("New list…") },
@@ -384,12 +415,62 @@ fun ShoppingScreen(
     editing?.let { item ->
         EditItemDialog(
             item = item,
+            // Only offered with a store selected — "which aisle" is meaningless without one.
+            onMoveToAisle = selectedStore?.let {
+                {
+                    editing = null
+                    movingItem = item
+                }
+            },
             onSave = { name, qty, unit, category, clearLink ->
                 viewModel.editItem(item.id, name, qty, unit, category, clearLink)
                 editing = null
             },
             onDismiss = { editing = null },
         )
+    }
+
+    // "I found it in aisle 5." A store-local fact: it does NOT change the item's category, because
+    // where a thing sits here says nothing about the next store.
+    movingItem?.let { item ->
+        val store = selectedStore
+        if (store == null) {
+            movingItem = null
+        } else {
+            AlertDialog(
+                onDismissRequest = { movingItem = null },
+                title = { Text("Where is ${item.name} here?") },
+                text = {
+                    Column {
+                        Text(
+                            "Only changes where it sits at ${store.displayName} — its category and " +
+                                "your other stores are untouched.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        androidx.compose.foundation.lazy.LazyColumn(
+                            modifier = Modifier.heightIn(max = 320.dp),
+                        ) {
+                            items(store.aisles.sortedBy { it.order }, key = { it.id }) { aisle ->
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        viewModel.placeItemInAisle(item, aisle.id)
+                                        movingItem = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(aisle.name, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { movingItem = null }) { Text("Cancel") }
+                },
+            )
+        }
     }
 
     namingList?.let { mode ->
@@ -917,6 +998,8 @@ private fun EditItemDialog(
     item: ShoppingItemOut,
     onSave: (name: String, quantity: Double?, unit: String?, category: String?, clearLink: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    // Null when no store is selected — "which aisle" only means something inside a store.
+    onMoveToAisle: (() -> Unit)? = null,
 ) {
     var name by remember { mutableStateOf(item.name) }
     var quantity by remember {
@@ -969,6 +1052,9 @@ private fun EditItemDialog(
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { removeLink = true }) { Text("Remove link") }
                     }
+                }
+                onMoveToAisle?.let { move ->
+                    TextButton(onClick = move) { Text("Move to a different aisle here…") }
                 }
             }
         },

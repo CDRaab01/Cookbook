@@ -355,6 +355,19 @@ fun CookbookNavHost(
                     onAddItemConsumed = { openAddItem = false },
                     sharedAddText = pendingShoppingAdd,
                     onSharedAddConsumed = { pendingShoppingAdd = null },
+                    onReviewOrganize = { navController.navigate(Screen.OrganizeReview.forList(it)) },
+                )
+            }
+            composable(
+                Screen.OrganizeReview.routeWithArg,
+                arguments = listOf(
+                    navArgument(Screen.OrganizeReview.ARG) { type = NavType.StringType },
+                ),
+            ) { entry ->
+                com.cookbook.ui.shopping.OrganizeReviewScreen(
+                    listId = entry.arguments?.getString(Screen.OrganizeReview.ARG).orEmpty(),
+                    onBack = { navController.popBackStack() },
+                    onApplied = { navController.popBackStack() },
                 )
             }
             composable(Screen.Discover.route) {

@@ -9,6 +9,9 @@ import com.cookbook.data.remote.ListCreateRequest
 import com.cookbook.data.remote.ListRenameRequest
 import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.MeasureOut
+import com.cookbook.data.remote.OrganizeApplyRequest
+import com.cookbook.data.remote.OrganizeDraftOut
+import com.cookbook.data.remote.OrganizeMove
 import com.cookbook.data.remote.ShoppingItemCreateRequest
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingItemUpdateRequest
@@ -244,6 +247,18 @@ class ShoppingRepositoryImpl @Inject constructor(
     } catch (_: Exception) {
         null // integration off / offline / server hiccup — the tile just doesn't show
     }
+
+    /**
+     * Online-only, and deliberately not absorbed the way a list mutation is: the user asked a
+     * question and is waiting for the answer, so "you're offline" has to reach them rather than
+     * being silently swallowed into an empty suggestion list that reads as "nothing to do".
+     */
+    override suspend fun organize(listId: String): OrganizeDraftOut = api.organizeList(listId)
+
+    override suspend fun applyOrganize(
+        listId: String,
+        moves: List<OrganizeMove>,
+    ): ShoppingListOut = api.applyOrganize(listId, OrganizeApplyRequest(moves)).also { reconcile(it) }
 
     override suspend fun deleteItem(listId: String, itemId: String): ShoppingListOut {
         val row = dao.byLocalId(itemId) ?: return localView()

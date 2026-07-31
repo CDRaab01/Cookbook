@@ -28,6 +28,7 @@ import javax.inject.Inject
 class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
     private val storeRepository: StoreRepository,
+    private val organizeDraftStore: com.cookbook.util.OrganizeDraftStore,
     private val widgetRefresher: com.cookbook.widget.WidgetRefresher,
     private val appPreferences: com.cookbook.util.AppPreferences,
 ) : ViewModel() {
@@ -135,6 +136,65 @@ class ShoppingViewModel @Inject constructor(
             appPreferences.setSelectedStoreId(storeId)
             refreshStores()
         }
+    }
+
+    /** True while the local model is drafting an organize pass — it takes a few seconds. */
+    private val _organizing = MutableStateFlow(false)
+    val organizing: StateFlow<Boolean> = _organizing
+
+    /**
+     * Ask the local model which items look mis-filed, and hand the draft to the review screen.
+     * Saves nothing — [onDraft] fires only when there is something to review, so an already-tidy
+     * list doesn't push a screen that says "nothing to do".
+     */
+    fun organize(onDraft: () -> Unit, onNothingToDo: (String) -> Unit) {
+        val listId = (_list.value as? UiState.Success)?.data?.id ?: return
+        if (_organizing.value) return
+        viewModelScope.launch {
+            _organizing.value = true
+            try {
+                val draft = shoppingRepository.organize(listId)
+                if (draft.suggestions.isEmpty()) {
+                    onNothingToDo(draft.note ?: "Nothing worth moving on this list.")
+                } else {
+                    organizeDraftStore.offer(draft)
+                    onDraft()
+                }
+            } catch (e: Exception) {
+                _error.value = organizeError(e)
+            } finally {
+                _organizing.value = false
+            }
+        }
+    }
+
+    /**
+     * Remember that an item lives in a particular aisle *at this store*.
+     *
+     * Deliberately does not touch the item's canonical category: where a thing sits in this store
+     * says nothing about the next one. Offline-capable, because moving an item to the aisle you
+     * actually found it in is an in-store action.
+     */
+    fun placeItemInAisle(item: ShoppingItemOut, aisleId: String) {
+        val storeId = _selectedStore.value?.id ?: return
+        viewModelScope.launch {
+            try {
+                storeRepository.placeItem(storeId, item.name, aisleId)
+                _selectedStore.value = storeRepository.store(storeId)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Couldn't remember that aisle"
+            }
+        }
+    }
+
+    /** The house 503/504 taxonomy, said in words a shopper can act on. */
+    private fun organizeError(e: Exception): String = when {
+        e is java.io.IOException -> "You're offline — organizing needs a connection."
+        e is retrofit2.HttpException && e.code() == 503 ->
+            "The local AI isn't reachable. Is LM Studio running?"
+        e is retrofit2.HttpException && e.code() == 504 ->
+            "The local AI took too long — it may still be warming up. Try again in a moment."
+        else -> e.message ?: "Couldn't organize the list"
     }
 
     fun switchList(listId: String) {

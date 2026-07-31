@@ -1027,3 +1027,25 @@ proposing to move things the user placed by hand, so it can't be silent — it d
   instead of a capitalized key (it said "Meat" while the list it controls said "Meat & Seafood").
 - **Verified: Android 149 unit tests, 0 failures** (15 new: draft prefill/consumption, id-carrying
   save, exclusive assignment, reset-keeps-ids, save guards) + `:app:assembleDebug` green.
+
+### Phase 7 — Android: the Organize review + learning where things live
+
+- **"Organize list…"** in the list-switcher menu → `POST /lists/{id}/organize` →
+  `util/OrganizeDraftStore` → `ui/shopping/OrganizeReviewScreen` (the PantryConfirm idiom): one row
+  per proposed move reading *Current → Suggested*, **all ticked by default** (every suggestion
+  already survived the server parser, which drops anything it can't verify, so ticking each one
+  would be busywork) with All/None and an "Apply N changes" button. An already-tidy list gets a
+  snackbar, not a screen it has to dismiss. Error copy speaks the house taxonomy in shopper terms:
+  503 → "Is LM Studio running?", 504 → "it may still be warming up".
+- **"Move to a different aisle here…"** in the item edit dialog, offered only with a store selected.
+  Optimistic against the Room cache so the list regroups under the finger, queued in
+  `pending_placements` when offline, drained by `NetworkSyncObserver` alongside the shopping and
+  recipe backlogs. The dialog states the scope out loud — *only changes where it sits at this store*
+  — because the one thing a user could reasonably fear here is that it silently re-categorizes the
+  item everywhere. It doesn't, deliberately.
+- **Verified: Android 156 unit tests, 0 failures** (7 new: default-accept, draft consumption,
+  only-ticked-moves-applied, none-selected-skips-the-server, offline apply keeps the screen open) +
+  `:app:assembleDebug` green.
+- **Test gotcha:** `whenever(...).thenThrow(IOException(...))` fails on a suspend repository method
+  — Mockito rejects a checked exception the signature doesn't declare, and Kotlin declares none.
+  Use `thenAnswer { throw ... }`.

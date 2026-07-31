@@ -134,6 +134,12 @@ never make the list worse before it's been edited. Which store is selected is a 
 preference (`pref_selected_store_id`), per-device like the pinned list: two household members can be
 standing in different stores at once even though the store *profiles* are shared.
 
+Client surfaces for the two AI features follow the established draft idiom: "Organize list…" →
+`OrganizeDraftStore` → `ui/shopping/OrganizeReviewScreen` (all moves ticked by default, since the
+server parser already dropped everything it couldn't verify), and "Move to a different aisle here…"
+in the item edit dialog, which states its scope out loud because the reasonable fear is that it
+silently re-categorizes the item everywhere — it doesn't.
+
 Stores are cached in Room (schema **v7**) because aisle routing is only useful inside the store,
 which is exactly where the signal is worst. Store mutations are otherwise online-only; the single
 exception is `pending_placements`, since moving an item to the aisle you actually found it in is an

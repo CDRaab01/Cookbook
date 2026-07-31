@@ -49,7 +49,7 @@ class ShoppingViewModelTest {
             org.mockito.kotlin.whenever(it.selectedStoreId)
                 .thenReturn(kotlinx.coroutines.flow.flowOf(null))
         }
-        viewModel = ShoppingViewModel(repository, mock(), mock(), prefs)
+        viewModel = ShoppingViewModel(repository, mock(), mock(), mock(), prefs)
     }
 
     @After
