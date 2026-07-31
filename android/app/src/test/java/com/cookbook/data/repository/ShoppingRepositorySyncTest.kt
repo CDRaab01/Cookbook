@@ -240,6 +240,34 @@ private class FakeApi : ApiService {
     override suspend fun logRecipeToPlate(id: String, req: LogToPlateRequest): LogToPlateResult =
         error("unused")
     override suspend fun getServerVersion(): VersionOut = error("unused")
+
+    // Stores + Organize (v0.11) — this fake covers offline shopping sync only.
+    override suspend fun organizeList(listId: String) = error("unused")
+    override suspend fun applyOrganize(
+        listId: String,
+        req: com.cookbook.data.remote.OrganizeApplyRequest,
+    ) = error("unused")
+    override suspend fun getStores() = error("unused")
+    override suspend fun createStore(req: com.cookbook.data.remote.StoreCreateRequest) =
+        error("unused")
+    override suspend fun suggestStoreLayout(req: com.cookbook.data.remote.SuggestLayoutRequest) =
+        error("unused")
+    override suspend fun getStore(storeId: String) = error("unused")
+    override suspend fun updateStore(
+        storeId: String,
+        req: com.cookbook.data.remote.StoreUpdateRequest,
+    ) = error("unused")
+    override suspend fun deleteStore(storeId: String) = error("unused")
+    override suspend fun putStoreAisles(
+        storeId: String,
+        req: com.cookbook.data.remote.AislesPutRequest,
+    ) = error("unused")
+    override suspend fun addStorePlacement(
+        storeId: String,
+        req: com.cookbook.data.remote.PlacementRequest,
+    ) = error("unused")
+    override suspend fun deleteStorePlacement(storeId: String, placementId: String) =
+        error("unused")
 }
 
 class ShoppingRepositorySyncTest {

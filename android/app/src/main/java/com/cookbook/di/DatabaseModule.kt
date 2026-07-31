@@ -6,6 +6,7 @@ import com.cookbook.data.local.db.CookbookDatabase
 import com.cookbook.data.local.db.PendingRecipeOpDao
 import com.cookbook.data.local.db.RecipeCacheDao
 import com.cookbook.data.local.db.ShoppingDao
+import com.cookbook.data.local.db.StoreDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -29,6 +30,7 @@ object DatabaseModule {
                 CookbookDatabase.MIGRATION_3_4,
                 CookbookDatabase.MIGRATION_4_5,
                 CookbookDatabase.MIGRATION_5_6,
+                CookbookDatabase.MIGRATION_6_7,
             )
             .fallbackToDestructiveMigration()
             .build()
@@ -42,4 +44,7 @@ object DatabaseModule {
     @Provides
     fun providePendingRecipeOpDao(db: CookbookDatabase): PendingRecipeOpDao =
         db.pendingRecipeOpDao()
+
+    @Provides
+    fun provideStoreDao(db: CookbookDatabase): StoreDao = db.storeDao()
 }

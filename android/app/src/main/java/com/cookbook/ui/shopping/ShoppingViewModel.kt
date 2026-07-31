@@ -6,8 +6,11 @@ import com.cookbook.data.remote.GrocerySpendOut
 import com.cookbook.data.remote.ListSummaryOut
 import com.cookbook.data.remote.ShoppingItemOut
 import com.cookbook.data.remote.ShoppingListOut
+import com.cookbook.data.remote.StoreDetailOut
+import com.cookbook.data.remote.StoreOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.data.repository.ShoppingRepository
+import com.cookbook.data.repository.StoreRepository
 import com.cookbook.util.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -16,6 +19,7 @@ import com.cookbook.util.DEFAULT_AISLE_ORDER
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -23,8 +27,9 @@ import javax.inject.Inject
 @HiltViewModel
 class ShoppingViewModel @Inject constructor(
     private val shoppingRepository: ShoppingRepository,
+    private val storeRepository: StoreRepository,
     private val widgetRefresher: com.cookbook.widget.WidgetRefresher,
-    appPreferences: com.cookbook.util.AppPreferences,
+    private val appPreferences: com.cookbook.util.AppPreferences,
 ) : ViewModel() {
 
     private val _list = MutableStateFlow<UiState<ShoppingListOut>>(UiState.Loading)
@@ -43,6 +48,21 @@ class ShoppingViewModel @Inject constructor(
      *  the "· Default" marker in the list switcher. */
     val pinnedListId: StateFlow<String?> = appPreferences.pinnedListId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Every store the household shops, for the picker. Empty until [load] and when offline with a
+     *  cold cache — an empty list simply means the picker offers only "No store". */
+    private val _stores = MutableStateFlow<List<StoreOut>>(emptyList())
+    val stores: StateFlow<List<StoreOut>> = _stores
+
+    /**
+     * The store the list is currently routed for; null = the plain category grouping.
+     *
+     * Selection lives in DataStore (per-device presentation state — two household members can be
+     * standing in different stores), and the floor plan behind it is cache-backed, so routing keeps
+     * working in the dead-signal aisle it exists for.
+     */
+    private val _selectedStore = MutableStateFlow<StoreDetailOut?>(null)
+    val selectedStore: StateFlow<StoreDetailOut?> = _selectedStore
 
     init {
         // Any successful list state (load or mutation) redraws the home-screen widget, so it
@@ -78,6 +98,42 @@ class ShoppingViewModel @Inject constructor(
             }
             // Best-effort; the repo already swallows failures to null (tile hides).
             _grocerySpend.value = shoppingRepository.grocerySpend()
+            refreshStores()
+        }
+    }
+
+    /**
+     * Reload the store picker and the selected store's floor plan.
+     *
+     * Entirely best-effort: routing is a nicety layered over a list that has to work regardless, so
+     * every failure here degrades to "no store selected" — the category grouping the app has always
+     * had — rather than surfacing an error over a list the user can already read.
+     */
+    private suspend fun refreshStores() {
+        _stores.value = try {
+            storeRepository.stores()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val selectedId = appPreferences.selectedStoreId.firstOrNull()
+        _selectedStore.value = when {
+            selectedId == null -> null
+            // Selected on another device, or deleted here: fall back rather than route by a
+            // phantom floor plan.
+            _stores.value.none { it.id == selectedId } && _stores.value.isNotEmpty() -> null
+            else -> try {
+                storeRepository.store(selectedId)
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    /** Route the list for a store (or null for plain category grouping). Per-device. */
+    fun selectStore(storeId: String?) {
+        viewModelScope.launch {
+            appPreferences.setSelectedStoreId(storeId)
+            refreshStores()
         }
     }
 

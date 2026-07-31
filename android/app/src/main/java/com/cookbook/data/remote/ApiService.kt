@@ -175,6 +175,57 @@ interface ApiService {
     @POST("lists/{listId}/clear-checked")
     suspend fun clearCheckedItems(@Path("listId") listId: String): ShoppingListOut
 
+    // --- Organize (v0.11): draft saves nothing; apply writes only what the user accepted ---
+    @POST("lists/{listId}/organize")
+    suspend fun organizeList(@Path("listId") listId: String): OrganizeDraftOut
+
+    @POST("lists/{listId}/organize/apply")
+    suspend fun applyOrganize(
+        @Path("listId") listId: String,
+        @Body req: OrganizeApplyRequest,
+    ): ShoppingListOut
+
+    // --- Stores / aisle routing (v0.11) ---
+    @GET("stores")
+    suspend fun getStores(): List<StoreOut>
+
+    @POST("stores")
+    suspend fun createStore(@Body req: StoreCreateRequest): StoreDetailOut
+
+    // Declared before the {storeId} routes for the same reason the server declares it first.
+    @POST("stores/suggest-layout")
+    suspend fun suggestStoreLayout(@Body req: SuggestLayoutRequest): StoreLayoutDraftOut
+
+    @GET("stores/{storeId}")
+    suspend fun getStore(@Path("storeId") storeId: String): StoreDetailOut
+
+    @PATCH("stores/{storeId}")
+    suspend fun updateStore(
+        @Path("storeId") storeId: String,
+        @Body req: StoreUpdateRequest,
+    ): StoreDetailOut
+
+    @DELETE("stores/{storeId}")
+    suspend fun deleteStore(@Path("storeId") storeId: String)
+
+    @PUT("stores/{storeId}/aisles")
+    suspend fun putStoreAisles(
+        @Path("storeId") storeId: String,
+        @Body req: AislesPutRequest,
+    ): StoreDetailOut
+
+    @POST("stores/{storeId}/placements")
+    suspend fun addStorePlacement(
+        @Path("storeId") storeId: String,
+        @Body req: PlacementRequest,
+    ): StoreDetailOut
+
+    @DELETE("stores/{storeId}/placements/{placementId}")
+    suspend fun deleteStorePlacement(
+        @Path("storeId") storeId: String,
+        @Path("placementId") placementId: String,
+    ): StoreDetailOut
+
     // --- Household (family mode) — the single sharing surface, Settings → Family ---
     @GET("household")
     suspend fun getHousehold(): HouseholdOut

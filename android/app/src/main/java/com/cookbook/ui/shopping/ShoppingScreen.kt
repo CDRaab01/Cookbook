@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,11 +75,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.cookbook.data.remote.ShoppingItemOut
+import com.cookbook.data.remote.StoreDetailOut
 import com.cookbook.data.remote.SuggestionOut
 import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.DEFAULT_AISLE_ORDER
 import com.cookbook.util.LinkText
 import com.cookbook.util.categoryLabel
+import com.cookbook.util.groupForStore
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.DataText
@@ -107,6 +110,9 @@ fun ShoppingScreen(
     val grocerySpend by viewModel.grocerySpend.collectAsState()
     val aisleOrder by viewModel.aisleOrder.collectAsState()
     val pinnedListId by viewModel.pinnedListId.collectAsState()
+    val stores by viewModel.stores.collectAsState()
+    val selectedStore by viewModel.selectedStore.collectAsState()
+    var storeMenuOpen by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     // The persistent add bar's text lives here (hoisted) so the + button and the "Add item"
     // launcher shortcut can focus it, and it survives while the list reloads underneath.
@@ -235,6 +241,55 @@ fun ShoppingScreen(
                     }
                 },
                 actions = {
+                    // Store picker — only worth showing once there's a store to pick. The list
+                    // regroups into that store's aisles; "No store" is the category grouping.
+                    if (stores.isNotEmpty()) {
+                        IconButton(onClick = { storeMenuOpen = true }) {
+                            Icon(
+                                Icons.Outlined.Storefront,
+                                contentDescription = selectedStore?.let { "Store: ${it.displayName}" }
+                                    ?: "Choose a store",
+                                tint = if (selectedStore != null) {
+                                    CookbookTheme.colors.heat.base
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = storeMenuOpen,
+                            onDismissRequest = { storeMenuOpen = false },
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (selectedStore == null) "No store ✓" else "No store",
+                                    )
+                                },
+                                onClick = {
+                                    storeMenuOpen = false
+                                    viewModel.selectStore(null)
+                                },
+                            )
+                            stores.forEach { store ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (store.id == selectedStore?.id) {
+                                                "${store.displayName} ✓"
+                                            } else {
+                                                store.displayName
+                                            },
+                                        )
+                                    },
+                                    onClick = {
+                                        storeMenuOpen = false
+                                        viewModel.selectStore(store.id)
+                                    },
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = viewModel::load) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
@@ -305,6 +360,7 @@ fun ShoppingScreen(
                             onQuantityChange = viewModel::setLinkItemQuantity,
                             onClearChecked = viewModel::clearChecked,
                             aisleOrder = aisleOrder,
+                            selectedStore = selectedStore,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -398,14 +454,15 @@ internal fun ShoppingListBody(
     onQuantityChange: (ShoppingItemOut, Int) -> Unit,
     onClearChecked: () -> Unit,
     aisleOrder: List<String> = DEFAULT_AISLE_ORDER,
+    selectedStore: StoreDetailOut? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
     val (checked, unchecked) = items.partition { it.checked }
-    // Null OR unknown categories both land in "Other" — an item must never be counted in
-    // "to buy" yet render under no section (reconcileAisleOrder guarantees "other" exists).
-    val knownCategories = aisleOrder.toSet()
-    val grouped = unchecked.groupBy { it.category?.takeIf { c -> c in knownCategories } ?: "other" }
+    // Sections are this store's real aisles in walk order when one is selected, and the usual
+    // categories in the user's saved order when not. All the routing rules (placements first,
+    // then category → aisle, then "Unsorted") live in the pure util so they can be table-tested.
+    val sections = groupForStore(unchecked, selectedStore, aisleOrder)
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -444,16 +501,16 @@ internal fun ShoppingListBody(
             Spacer(Modifier.height(8.dp))
         }
 
-        aisleOrder.filter { grouped.containsKey(it) }.forEach { category ->
-            item(key = "header_$category") {
+        sections.forEach { section ->
+            item(key = "header_${section.key}") {
                 SectionHeader(
-                    categoryLabel(category),
+                    section.title,
                     channel = colors.heat.base,
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
-                    trailing = { Caption("${grouped.getValue(category).size}") },
+                    trailing = { Caption("${section.items.size}") },
                 )
             }
-            items(grouped.getValue(category), key = { it.id }) { item ->
+            items(section.items, key = { it.id }) { item ->
                 ShoppingItemRow(
                     item = item,
                     onToggle = { onToggle(item.id, it) },

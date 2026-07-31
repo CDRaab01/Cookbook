@@ -124,6 +124,24 @@ so the identity map would otherwise return pre-write collections.
 aisle is this item in at this store" with a plain map get. It exists so Kotlin never re-implements
 the normalizer and drifts from the merge module — the "clients display, never compute" rule.
 
+Client-side, all of the routing lives in the pure `util/StoreRouting.kt::groupForStore`, which the
+shopping screen renders straight into sections. No store selected reproduces the v0.7 category
+grouping exactly; a store selected resolves each item by **placement → first aisle claiming its
+category → trailing "Unsorted"**, and empty aisles are omitted. Two properties are table-tested and
+worth keeping: nothing is ever dropped (an item with no home is still an item you have to buy), and
+a **default-seeded store renders identically to the category grouping** — so selecting a store can
+never make the list worse before it's been edited. Which store is selected is a **client DataStore**
+preference (`pref_selected_store_id`), per-device like the pinned list: two household members can be
+standing in different stores at once even though the store *profiles* are shared.
+
+Stores are cached in Room (schema **v7**) because aisle routing is only useful inside the store,
+which is exactly where the signal is worst. Store mutations are otherwise online-only; the single
+exception is `pending_placements`, since moving an item to the aisle you actually found it in is an
+in-store action. That queue is drained poison-row-safely (a rejected row is dropped, never allowed
+to wedge the backlog — the v0.5 lesson). `StoreRepositoryImpl` carries a small, deliberately private
+`normalizeKeyForCacheOnly` used *only* so an optimistic placement matches before the server's real
+row arrives; the server owns the key space.
+
 ### Domain map
 
 | Domain | Router | Service | Models |

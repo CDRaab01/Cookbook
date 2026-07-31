@@ -974,3 +974,32 @@ proposing to move things the user placed by hand, so it can't be silent — it d
   Meijer → 11 aisles, Aldi → 13, both plausible walk orders covering all 13 categories and
   genuinely differing per chain (Aldi puts pantry/snacks right after produce), ~10 s each. Organize
   also got faster with the bigger budget (15.7 s → 5.9 s), same 6 correct moves.
+
+### Phase 5 — Android: the list actually routes by store
+
+- **`util/StoreRouting.kt::groupForStore`** is the whole feature, pure and table-tested. No store →
+  the v0.7 category grouping, unchanged. Store selected → **placement → first aisle claiming the
+  item's category → trailing "Unsorted"**, empty aisles omitted (a walk order is only useful if it
+  shows what's left). `ShoppingListBody` now renders `List<AisleSection>`; the checked/"In the cart"
+  partition, the counts row and every row composable are untouched.
+- **Two properties are pinned by tests**, because they're what make the feature safe to turn on:
+  nothing is ever dropped (an item with no home is still an item you have to buy — including one
+  whose placement points at an aisle deleted on another device), and **a default-seeded store
+  renders identically to the category grouping**, so selecting a store can never make the list
+  worse before you've edited anything.
+- **Selected store = client DataStore** (`pref_selected_store_id`), per-device like the pinned list.
+  Two household members can be standing in different stores at once even though the profiles are
+  shared. Picker is a top-bar action that only appears once a store exists.
+- **Room v7** caches stores/aisles/placements: aisle routing is only useful *inside* the store,
+  which is exactly where signal is worst, so a network-only floor plan would defeat the feature.
+  Store mutations are otherwise online-only; `pending_placements` is the one queued write, drained
+  poison-row-safely (rejected row dropped, never wedges the backlog — the v0.5 lesson).
+- **OkHttp timeouts finally set** (`di/NetworkModule.kt`): there were **none**, i.e. the 10 s read
+  default, which the ~10 s layout suggestion would have raced and the cold-model path lost outright.
+  Now connect 30 / read 120 / write 30, deliberately above the server's own 60 s `LM_STUDIO_TIMEOUT`
+  so the server's honest 502/503/504 reaches the user instead of a generic client timeout (Spotter's
+  precedent).
+- `ItemOut.key` reaches the client as `ShoppingItemOut.key`, defaulting to `""` against an older
+  server — which just means no placement matches and routing falls back to the category.
+- **Verified: Android 134 unit tests, 0 failures** (16 new in `StoreRoutingTest`) +
+  `:app:assembleDebug` green, run locally against the sibling Pulse checkout.
