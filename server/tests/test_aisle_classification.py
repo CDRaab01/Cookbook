@@ -142,6 +142,37 @@ class TestChatText:
                 await chat_text([{"role": "user", "content": "x"}], max_tokens=8, client=client)
         assert exc.value.status_code == 502
 
+    async def test_reasoning_truncation_is_logged_loudly(self, caplog):
+        """gemma-4 thinks in hidden tokens that share the max_tokens budget and emits no content
+        until it's done, so a budget sized for the answer alone returns finish_reason=length and an
+        empty string. Every parser reads that as "unreadable", so without this warning the feature
+        degrades silently and reads as a dumb model rather than a too-small number."""
+        transport = httpx.MockTransport(
+            lambda r: httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": ""}, "finish_reason": "length"}]},
+            )
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            with caplog.at_level("WARNING"):
+                out = await chat_text(
+                    [{"role": "user", "content": "x"}], max_tokens=8, client=client
+                )
+        assert out == ""
+        assert "max_tokens is too small" in caplog.text
+
+    async def test_a_normal_short_answer_is_not_flagged(self, caplog):
+        transport = httpx.MockTransport(lambda r: _chat_response("dairy"))
+        async with httpx.AsyncClient(transport=transport) as client:
+            with caplog.at_level("WARNING"):
+                assert (
+                    await chat_text(
+                        [{"role": "user", "content": "x"}], max_tokens=64, client=client
+                    )
+                    == "dairy"
+                )
+        assert "max_tokens" not in caplog.text
+
     async def test_unreadable_body_is_502_not_500(self):
         from fastapi import HTTPException
 

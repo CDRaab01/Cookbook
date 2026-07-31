@@ -152,7 +152,17 @@ error. Two surfaces, same contract:
 Since v0.11 there is also a **text** seam, `services/ai/text.py::chat_text` — same host, same model
 (`lm_studio_model`, `google/gemma-4-e4b`), same error taxonomy as `_chat_vision`, but no image,
 `temperature=0` and a mandatory `max_tokens` (an unbounded completion from a local model turns a
-200 ms classification into a 30 s one). The fence-stripping / widest-`{...}`-span salvage both
+200 ms classification into a 30 s one).
+
+> **Size `max_tokens` for reasoning + answer.** gemma-4 is a reasoning model: it spends hidden
+> `reasoning_content` tokens that count against the *same* budget and emits **no content at all**
+> until it's finished thinking. Measured on this host — Organize (10 items): 597 reasoning then 296
+> of answer; store layout: 932 reasoning then 169. A budget sized for the visible answer returns
+> `finish_reason: "length"` with an **empty string**, which every parser here correctly reports as
+> "unreadable" — so the feature degrades silently and reads as a dumb model rather than a small
+> number. Store layout shipped briefly at 900 and fell back to the default order 100% of the time.
+> `chat_text` now logs a loud warning on that exact signature. Single-word classification is the
+> one prompt simple enough that the model doesn't reason at all (3 tokens, 0 reasoning). The fence-stripping / widest-`{...}`-span salvage both
 vision prompt modules had privately is now `services/ai/jsonish.py::parse_object`, shared.
 
 **Background aisle classification** (`services/classification_service.py`) is the one surface here
@@ -182,6 +192,17 @@ from background classification. `parse_organize` treats the names that were sent
 name the model invented or garbled is dropped, never fuzzy-matched, because guessing which row was
 meant is how the wrong item moves. `None` (unreadable) and `[]` (nothing to do) are different
 outcomes and the client says different things about them.
+
+**"Suggest layout"** (`POST /stores/suggest-layout`, 5/min) drafts a store's aisles from the chain
+name so setting one up isn't a dozen-plus rows of typing before it's worth anything. It saves
+nothing; the client opens the draft in the aisle editor. `parse_layout` guarantees the draft is
+*usable*, not correct: names clamped, invented categories dropped, a category claimed twice kept by
+the first aisle to claim it, and **every category the model forgot swept into a trailing aisle** —
+otherwise it would have no aisle to route to and its items would land in "Unsorted", reading as a
+bug in the layout the user just saved. An unreachable or unreadable model returns the canonical
+walk order flagged `low_confidence` rather than an error: adding a store must not depend on AI
+either. Expect generic output — the model knows "Meijer" as world knowledge, not the floor plan of
+the Maysville Rd one, so edit-before-save is the intended workflow.
 
 House rules (ROADMAP "ground rules"): extend this module, don't grow a second AI stack; the
 Spotter guardrail model is the contract; **the shopping list must never depend on AI** — AI

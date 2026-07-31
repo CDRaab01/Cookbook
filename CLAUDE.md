@@ -935,3 +935,42 @@ proposing to move things the user placed by hand, so it can't be silent — it d
   under test (the exception escaped the ASGI app instead). Transport mapping is tested directly
   with `MockTransport` in `test_aisle_classification`; the endpoint test asserts only that Organize
   passes an `HTTPException` through rather than swallowing it into a cheerful 200.
+
+### Phase 4 — "Suggest layout", and the reasoning-token trap that nearly hid it
+
+- **`POST /stores/suggest-layout`** (5/min) — chain name → a draft aisle walk order. Saves nothing;
+  the client opens it in the editor and commits via the normal `POST /stores` / `PUT .../aisles`.
+  `parse_layout` guarantees the draft is *usable* rather than correct: names clamped, invented
+  categories dropped, a twice-claimed category kept by the first aisle, and **every category the
+  model forgot swept into a trailing "Everything else" aisle** (otherwise its items land in the
+  client's "Unsorted" bucket and read as a bug in the layout you just saved). An unreachable or
+  unreadable model returns the canonical walk order flagged `low_confidence` — adding a store must
+  not depend on AI either.
+
+- **⚠️ THE FINDING OF THIS ROUND — `google/gemma-4-e4b` is a *reasoning* model.** It spends hidden
+  `reasoning_content` tokens that count against the **same `max_tokens` budget**, and emits **no
+  content at all** until it has finished thinking. Sized for the visible answer, the call returns
+  `finish_reason: "length"` and an **empty string** — which every forgiving parser in
+  `services/ai/` correctly reports as "unreadable", so the feature falls back silently and looks
+  like a model that just doesn't know the answer. Suggest-layout shipped at `max_tokens=900` and
+  fell back to the default order **100% of the time**; only a live smoke test caught it, because
+  every unit test passed and the endpoint returned a clean 200.
+
+  Measured on this host: | prompt | reasoning | answer |
+  |---|---|---|
+  | single-item classification | **0** | 3 |
+  | Organize, 10 items | 597 | 296 |
+  | store layout | 932 | 169 |
+
+  Budgets are now 64 / 3000 / 2500 and **`chat_text` logs a loud warning** on the empty-content +
+  `finish_reason: length` signature, so this can't hide again. Classification is the one prompt
+  simple enough that the model doesn't reason at all, which is why 64 is still fine there.
+  **Anything added to `services/ai/text.py` must budget reasoning + answer, and must be smoke-
+  tested against the live model — unit tests with a mocked transport cannot see this.** Worth
+  checking whether Spotter and Remnant's text calls have the same latent problem.
+
+- **Verified: 635 passed** (26 new in `tests/test_store_layout.py`, incl. the leftovers sweep and
+  the draft→`POST /stores` round trip; 2 new truncation-warning tests). **Live smoke after the fix:**
+  Meijer → 11 aisles, Aldi → 13, both plausible walk orders covering all 13 categories and
+  genuinely differing per chain (Aldi puts pantry/snacks right after produce), ~10 s each. Organize
+  also got faster with the bigger budget (15.7 s → 5.9 s), same 6 correct moves.

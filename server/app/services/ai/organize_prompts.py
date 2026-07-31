@@ -16,7 +16,11 @@ from app.services.ai.jsonish import parse_object
 # The list is a page of short names, and the reply is one line per move. 60 items is a full weekly
 # shop; beyond that the tail is unlikely to be worth a bigger context window on a local model.
 MAX_ITEMS = 60
-MAX_TOKENS = 900
+# Reasoning + answer, not answer (see services/ai/text.py). Measured: a 10-item list spent 597
+# hidden reasoning tokens before 296 of JSON. A full 60-item list that actually needs many moves is
+# the worst case — ~700 reasoning plus ~14 tokens per move — so this is sized for that, not for the
+# happy path. The old 900 fit a 10-item list with 215 tokens to spare, which is not a margin.
+MAX_TOKENS = 3000
 
 NOTHING_TO_DO_NOTE = "This list already looks well sorted — nothing worth moving."
 LOW_CONFIDENCE_NOTE = "Couldn't read a clear answer from the local model. Nothing was changed — try again in a moment."

@@ -1,17 +1,20 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.limiter import limiter
 from app.schemas.store import (
     AislesPut,
     PlacementIn,
     StoreCreate,
     StoreDetailOut,
+    StoreLayoutDraftOut,
     StoreOut,
     StoreUpdate,
+    SuggestLayoutRequest,
 )
 from app.security import CurrentUser
 from app.services.store_service import (
@@ -21,6 +24,7 @@ from app.services.store_service import (
     get_store,
     list_stores,
     replace_aisles,
+    suggest_layout,
     update_store,
     upsert_placement,
 )
@@ -41,6 +45,20 @@ async def create_new_store(req: StoreCreate, current_user: CurrentUser, db: DbSe
     """Omitting ``aisles`` seeds the canonical walk order, so a new store routes exactly like the
     plain category grouping until someone edits it."""
     return await create_store(db, current_user.id, req)
+
+
+# Fixed path, declared before /{store_id} so "suggest-layout" never parses as an id.
+@router.post("/suggest-layout", response_model=StoreLayoutDraftOut)
+@limiter.limit("5/minute")
+async def suggest_store_layout(
+    request: Request, req: SuggestLayoutRequest, current_user: CurrentUser
+):
+    """A starting-point layout for a named chain, from the local model. **Saves nothing** — the
+    client opens it in the aisle editor and the user commits it through the normal endpoints.
+
+    Never fails on the model: an unreachable or unreadable sidecar returns the canonical walk order
+    flagged ``low_confidence`` instead, because "add a store" shouldn't depend on AI either."""
+    return await suggest_layout(req.chain)
 
 
 @router.get("/{store_id}", response_model=StoreDetailOut)

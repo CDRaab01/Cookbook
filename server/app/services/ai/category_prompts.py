@@ -11,8 +11,11 @@ the status quo rather than to damage.
 
 from app.models.recipe import STORE_CATEGORIES
 
-# One word out. The model gets no room to narrate, which is also the cheapest possible completion.
-MAX_TOKENS = 8
+# One word out. Measured on gemma-4-e4b: 3 completion tokens, **0 reasoning tokens** — a
+# single-word classification is the one prompt here simple enough that the model doesn't think
+# first, which is why this can stay tiny while Organize and Layout need thousands. Some headroom
+# in case a future model does reason: a cap is a ceiling, not a spend.
+MAX_TOKENS = 64
 
 _CATEGORY_LIST = ", ".join(STORE_CATEGORIES)
 

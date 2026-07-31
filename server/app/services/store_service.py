@@ -20,9 +20,17 @@ from app.schemas.store import (
     PlacementIn,
     StoreCreate,
     StoreDetailOut,
+    StoreLayoutDraftOut,
     StoreOut,
     StoreUpdate,
 )
+from app.services.ai.store_layout_prompts import (
+    DRAFT_NOTE,
+    LOW_CONFIDENCE_NOTE,
+)
+from app.services.ai.store_layout_prompts import MAX_TOKENS as LAYOUT_MAX_TOKENS
+from app.services.ai.store_layout_prompts import build_messages, parse_layout
+from app.services.ai.text import chat_text
 from app.services.household_service import household_member_ids
 
 # Human labels for the canonical categories, used only to name the seeded default aisles. The
@@ -247,6 +255,27 @@ async def upsert_placement(
         row.name = req.name.strip()
     await db.commit()
     return _to_detail(await _reload(db, store.id), user_id=user_id)
+
+
+async def suggest_layout(chain: str, client=None) -> StoreLayoutDraftOut:
+    """A **draft** layout for a named chain. Saves nothing — the user reorders and renames it in
+    the normal editor, then commits through ``POST /stores`` / ``PUT .../aisles``.
+
+    An unreadable reply falls back to the canonical walk order rather than erroring: the user asked
+    to set up a store, and handing them the standard order to drag around is a better answer than a
+    503. The note tells them which one they got.
+    """
+    try:
+        raw = await chat_text(build_messages(chain), max_tokens=LAYOUT_MAX_TOKENS, client=client)
+        aisles = parse_layout(raw)
+    except HTTPException:
+        # The sidecar being down must not block adding a store. Degrade to absence, not failure.
+        aisles = None
+    if aisles is None:
+        return StoreLayoutDraftOut(
+            aisles=default_aisles(), low_confidence=True, note=LOW_CONFIDENCE_NOTE
+        )
+    return StoreLayoutDraftOut(aisles=aisles, note=DRAFT_NOTE)
 
 
 async def delete_placement(
