@@ -1003,3 +1003,27 @@ proposing to move things the user placed by hand, so it can't be silent — it d
   server — which just means no placement matches and routing falls back to the category.
 - **Verified: Android 134 unit tests, 0 failures** (16 new in `StoreRoutingTest`) +
   `:app:assembleDebug` green, run locally against the sibling Pulse checkout.
+
+### Phase 6 — Android: managing stores, and the suggested-layout flow
+
+- **Settings → Manage stores** → `ui/stores/StoresScreen` (list/add/delete) and
+  `ui/stores/StoreEditScreen` (reorder / rename / assign categories / add / remove). Adding a store
+  offers two routes to a floor plan: **"Start from defaults"** (server seeds the canonical walk
+  order) or **"Suggest layout"** (the local model proposes the chain's aisles). The suggestion takes
+  ~10 s, so the dialog says what it's waiting for rather than just spinning.
+- **The draft goes through `util/StoreLayoutDraftStore`** (the `PantryDraftStore`/`RecipeDraftStore`
+  idiom) and **the store does not exist until Save** — the house drafts-only rule, and the reason
+  the editor can also create. A draft with no aisles (model unreachable/unreadable) seeds the
+  standard order rather than showing a blank page with an error: the user asked to set up a store,
+  and a list to drag around is a better answer.
+- **Category assignment is exclusive** — assigning a category to an aisle takes it off whichever
+  aisle had it. The server routes a twice-claimed category to the first aisle in walk order, so
+  letting the editor show it in two places would display a rule the list doesn't follow. Anything
+  left unassigned is named under the list ("Items in these land under Unsorted"), so the Unsorted
+  pile is never a mystery discovered mid-shop.
+- **Reset-to-standard keeps the existing aisle ids**, so a reset is a reorder rather than a wipe of
+  every learned placement — the same reason the save carries ids through.
+- Aisle-order editor copy now says it's the *no-store* fallback, and it renders `categoryLabel`
+  instead of a capitalized key (it said "Meat" while the list it controls said "Meat & Seafood").
+- **Verified: Android 149 unit tests, 0 failures** (15 new: draft prefill/consumption, id-carrying
+  save, exclusive assignment, reset-keeps-ids, save guards) + `:app:assembleDebug` green.
