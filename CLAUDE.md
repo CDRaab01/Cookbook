@@ -904,3 +904,34 @@ ARCHITECTURE.md "Store routing".
   guesser misses filed sensibly (cotton swabs→personal, kombucha→beverages, dryer sheets→household,
   za'atar→pantry, teething rings→baby, frozen edamame→frozen), ~0.3 s each once warm, 3.9 s on the
   first cold call.
+
+### Phase 3 — "Organize list" (the same capability, as a draft)
+
+Background classification only touches items *nobody has filed*. Reviewing the whole list means
+proposing to move things the user placed by hand, so it can't be silent — it drafts and waits.
+
+- **`POST /lists/{id}/organize`** (10/min) — unchecked items only (a checked item is history for
+  this trip) → `services/ai/organize_prompts.py` → `OrganizeDraftOut`. **Saves nothing.**
+  **`POST /lists/{id}/organize/apply`** takes back only the accepted moves, makes **no model call**
+  (works with LM Studio down — the review screen may have been open a while), and skips rows that
+  vanished rather than 404ing the batch.
+- **Apply writes `item_history`** via the same `_remember_category` the edit dialog uses. That is
+  the deliberate asymmetry with Phase 2: accepting a suggestion is a decision about where *you*
+  file that item, so the next recipe mentioning it lands there too.
+- **`parse_organize` treats the names that were sent as a whitelist** — a name the model invented
+  or garbled is dropped, never fuzzy-matched, because guessing which row was meant is how the wrong
+  item moves. It also drops invalid aisles and no-op "moves" (padding the review with noise trains
+  the user to tap Apply without reading). `None` = unreadable reply; `[]` = read it, nothing to do
+  — different messages in the UI.
+- **Verified: 609 passed** (28 new in `tests/test_organize.py`). **Live smoke on a deliberately
+  mis-filed 10-item list:** all 6 real mistakes caught (ground cumin meat→pantry, iced coffee
+  pantry→beverages, paper towels produce→household, frozen peas pantry→frozen, diapers
+  household→baby, dish soap personal→household), the 3 correctly-filed items left alone, no
+  hallucinated moves. **It missed "milk collector" (a baby product filed under dairy)** — that
+  obscure name is exactly the kind the user just moves themselves. **15.7 s for 10 items**, which
+  is why the Android client needs a read timeout well above OkHttp's 10 s default (Phase 5).
+- **Test-writing gotcha:** patching `chat_text` to raise `httpx.ConnectError` does *not* test the
+  503/504 mapping — that mapping lives *inside* `chat_text`, so patching it out bypasses the thing
+  under test (the exception escaped the ASGI app instead). Transport mapping is tested directly
+  with `MockTransport` in `test_aisle_classification`; the endpoint test asserts only that Organize
+  passes an `HTTPException` through rather than swallowing it into a cheerful 200.

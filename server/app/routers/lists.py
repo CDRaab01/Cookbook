@@ -1,10 +1,11 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.limiter import limiter
 from app.schemas.shopping import (
     AddRecipeRequest,
     GrocerySpendOut,
@@ -15,12 +16,15 @@ from app.schemas.shopping import (
     ListRename,
     ListSummaryOut,
     MemberOut,
+    OrganizeApplyRequest,
+    OrganizeDraftOut,
     ShareRequest,
     SuggestionOut,
 )
 from app.security import CurrentUser
 from app.services.classification_service import classify_unfiled_items, unfiled_item_ids
 from app.services.grocery_spend_service import fetch_month_grocery_spend
+from app.services.organize_service import organize_apply, organize_draft
 from app.services.shopping_service import (
     add_item,
     add_member_by_email,
@@ -165,6 +169,29 @@ async def remove_item(
 @router.post("/{list_id}/clear-checked", response_model=ListOut)
 async def clear_checked_items(list_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
     return await clear_checked(db, current_user.id, list_id)
+
+
+# --- Organize (v0.11): whole-list aisle review, drafted by the local model ---
+@router.post("/{list_id}/organize", response_model=OrganizeDraftOut)
+@limiter.limit("10/minute")
+async def organize(request: Request, list_id: uuid.UUID, current_user: CurrentUser, db: DbSession):
+    """Ask the local model which unchecked items are filed in the wrong aisle.
+
+    **Saves nothing** — unlike background classification this may propose moving items the user
+    placed by hand, so it is a draft they review. The reviewed subset lands via /organize/apply.
+    """
+    return await organize_draft(db, current_user.id, list_id)
+
+
+@router.post("/{list_id}/organize/apply", response_model=ListOut)
+async def organize_accept(
+    list_id: uuid.UUID, req: OrganizeApplyRequest, current_user: CurrentUser, db: DbSession
+):
+    """Apply the moves the user accepted. No model call, so this still works with LM Studio down.
+
+    Accepted moves feed ``item_history`` exactly like an edit-dialog re-file: accepting is a
+    decision about where *you* file that item, so the next recipe mentioning it lands there too."""
+    return await organize_apply(db, current_user.id, list_id, req)
 
 
 # --- Household sharing ---

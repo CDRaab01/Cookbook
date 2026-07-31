@@ -7,6 +7,7 @@ from app.limits import (
     MAX_ITEM_NAME_LENGTH,
     MAX_ITEM_RAW_INPUT_LENGTH,
     MAX_LINK_URL_LENGTH,
+    MAX_LIST_ITEMS,
     QUANTITY_BOUNDS,
     SCALE_BOUNDS,
 )
@@ -224,3 +225,41 @@ class ListOut(BaseModel):
     items: list[ItemOut]
 
     model_config = {"from_attributes": True}
+
+
+class OrganizeSuggestion(BaseModel):
+    """One proposed move in the "Organize list" review (v0.11). ``item_id`` is resolved
+    server-side so the client applies by id — a duplicate name can't send the wrong row."""
+
+    item_id: uuid.UUID
+    name: str
+    current_category: str | None = None
+    suggested_category: str
+
+
+class OrganizeDraftOut(BaseModel):
+    """A **draft**: nothing has been saved. Empty suggestions with ``low_confidence`` means the
+    model's reply was unreadable; empty without it means the list already looks right."""
+
+    suggestions: list[OrganizeSuggestion] = []
+    low_confidence: bool = False
+    note: str | None = None
+
+
+class OrganizeMove(BaseModel):
+    item_id: uuid.UUID
+    category: str
+
+    @field_validator("category")
+    @classmethod
+    def category_valid(cls, v: str) -> str:
+        validated = _validate_category(v)
+        if validated is None:
+            raise ValueError("category must not be empty")
+        return validated
+
+
+class OrganizeApplyRequest(BaseModel):
+    """Only the moves the user actually accepted."""
+
+    moves: list[OrganizeMove] = Field(default_factory=list, max_length=MAX_LIST_ITEMS)

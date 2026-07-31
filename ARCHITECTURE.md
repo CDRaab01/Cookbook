@@ -172,6 +172,17 @@ the deterministic chain (history → keyword guesser) left NULL. Guardrails:
 - Every add re-queues *everything* unfiled (capped at 15), so a row stranded while LM Studio was
   down heals on the next add — no polling loop, no migration.
 
+**"Organize list"** (`services/organize_service.py`, `POST /lists/{id}/organize` 10/min +
+`/organize/apply`) is the same capability as a *draft*, and the split is the point. The draft asks
+the model which unchecked items are mis-filed and **saves nothing**; apply writes only the moves
+the user accepted, makes no model call at all (so it works with the sidecar down, which matters
+when a review screen has been sitting open), and **does** write `item_history` — accepting a
+suggestion is a decision about where *you* file that item, which is exactly what distinguishes it
+from background classification. `parse_organize` treats the names that were sent as a whitelist: a
+name the model invented or garbled is dropped, never fuzzy-matched, because guessing which row was
+meant is how the wrong item moves. `None` (unreadable) and `[]` (nothing to do) are different
+outcomes and the client says different things about them.
+
 House rules (ROADMAP "ground rules"): extend this module, don't grow a second AI stack; the
 Spotter guardrail model is the contract; **the shopping list must never depend on AI** — AI
 degrades to absence, never blocks add/check/sync. That invariant is why classification is
