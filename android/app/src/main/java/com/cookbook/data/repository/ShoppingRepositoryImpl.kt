@@ -430,6 +430,8 @@ private fun ShoppingItemOut.toEntity(json: Json, listId: String) = ShoppingItemE
         )
     },
     category = category,
+    key = key,
+    createdAt = createdAt,
     linkUrl = linkUrl,
     imageUrl = imageUrl,
     checked = checked,
@@ -451,6 +453,8 @@ private fun ShoppingItemEntity.toDto(json: Json) = ShoppingItemOut(
         }.getOrDefault(emptyList())
     } ?: emptyList(),
     category = category,
+    key = key,
+    createdAt = createdAt,
     linkUrl = linkUrl,
     imageUrl = imageUrl,
     checked = checked,

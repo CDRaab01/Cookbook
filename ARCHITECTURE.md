@@ -195,6 +195,52 @@ with; sorting a walk order by name is never right. Note also that B|16 (peanut b
 (milk) are adjacent codes for departments nowhere near each other on a real floor — these are
 **planogram codes, not a survey of the store**, so the derived order is a plausible starting point
 the user drags into shape once. That is safe precisely because the aisle PUT preserves ids.
+### List sort modes (v0.13) — four ways to read the same list
+
+The shopping screen no longer infers its organising principle from whether a store is selected;
+the user picks one, and it persists per-device in `AppPreferences.listSortMode` (DataStore, the
+`selectedStoreId`/`pinnedListId` precedent — how *you* want to read the list is not a fact about
+the list, and two household members must not fight over it).
+
+`util/ListSort.kt::groupForDisplay` is the whole feature, pure and table-tested like
+`groupForStore`, which it delegates to:
+
+| Mode | Sections | Answers |
+|---|---|---|
+| `STORE_LAYOUT` (default) | the store's aisles in walk order | "where do I walk next" |
+| `CATEGORIES` | the 13 canonical categories in your saved order | "where do I walk next" |
+| `ALPHABETICAL` | one flat A–Z run | "is it already on here" |
+| `LAST_ADDED` | one flat run, newest first | "is it already on here" |
+
+Two of them group and two deliberately don't. That split is the point: a grouped list is useless
+for *"did I already add bread"*, because answering it means knowing which aisle to look under.
+
+Three decisions worth keeping:
+
+- **`CATEGORIES` is implemented as "route with no store"**, not as a second code path, so the two
+  can never disagree about how a category maps to a section. It ignores a selected store on
+  purpose — that is the only reason to offer it separately from `STORE_LAYOUT`.
+- **`STORE_LAYOUT` is the default** because with no store selected it *is* the category grouping.
+  Upgrading therefore changes nobody's list, for either case, and a test pins that. In the menu it
+  is disabled (not hidden) with "Pick a store first" when no store is selected — hiding it would
+  make the feature undiscoverable to someone who hasn't added a store yet, and showing it enabled
+  would be two menu entries that do the same thing.
+- **The flat modes return one section with `showHeader = false`.** A lone "All items" heading above
+  the whole list is chrome that says nothing the counts row above it doesn't already say.
+
+Every mode is asserted never to drop or duplicate a row, and to yield the same *set* of rows as
+every other mode — switching only re-arranges. `LAST_ADDED` sorts on the server's ISO-8601
+`created_at`, so a descending string compare is a chronological one (no date parsing, no locale
+hazard); when **no** row carries a stamp it falls back to `order`, the list's own insertion
+sequence, which is exactly right for a Room mirror written before schema v8.
+
+**Room v8** (v0.13) adds `shopping_items.key` and `createdAt` to the mirror. This closes a real v0.11 gap
+as well as enabling `LAST_ADDED`: the offline mapper defaulted `key` to `""`, so an offline list
+matched no placement and silently fell back to category grouping — inside the store, which is the
+one place store routing exists for. Both columns declare `@ColumnInfo(defaultValue = "''")` so a
+fresh install and a migrated one produce byte-identical schemas; the migration must supply a
+default anyway (the columns are `NOT NULL` and existing rows need a value), and Room validates the
+declared default at open time.
 
 ### Domain map
 

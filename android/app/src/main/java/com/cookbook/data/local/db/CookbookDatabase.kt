@@ -25,7 +25,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     // inside the store, which is where the signal is worst), plus pending_placements, the one
     // store mutation that must survive no signal because moving an item to the aisle you actually
     // found it in is an in-store action.
-    version = 7,
+    // v8: shopping_items.key + createdAt — the server-computed placement key and creation stamp.
+    // Mirrored so store routing and the "Last added" sort keep working with no signal; without
+    // them an offline list silently fell back to category grouping in the one place (the store)
+    // the routing exists for.
+    version = 8,
     exportSchema = false,
 )
 abstract class CookbookDatabase : RoomDatabase() {
@@ -104,6 +108,22 @@ abstract class CookbookDatabase : RoomDatabase() {
                         "itemName TEXT NOT NULL, " +
                         "createdAtMs INTEGER NOT NULL)",
                 )
+            }
+        }
+
+        /**
+         * v7 → v8: mirror the server's placement `key` and creation stamp on the shopping rows.
+         *
+         * Both default to "" for existing rows, which is the honest value — the mirror genuinely
+         * never stored them — and both are self-healing: the next successful list load overwrites
+         * every clean row from the server. Until then an offline list routes by category and
+         * "Last added" falls back to insertion order, which is what those columns' consumers are
+         * written to expect.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE shopping_items ADD COLUMN `key` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE shopping_items ADD COLUMN createdAt TEXT NOT NULL DEFAULT ''")
             }
         }
     }

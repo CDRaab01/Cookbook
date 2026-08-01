@@ -11,6 +11,12 @@ data class AisleSection(
     val key: String,
     val title: String,
     val items: List<ShoppingItemOut>,
+    /**
+     * Whether the section deserves a heading. False only for the single flat section the
+     * ungrouped sort modes produce (see [groupForDisplay]) — a lone "All items" header above the
+     * whole list is chrome that says nothing the counts row above it doesn't already say.
+     */
+    val showHeader: Boolean = true,
 )
 
 /** Where items land when no aisle claims them. Rendered last, never persisted. */

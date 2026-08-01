@@ -1118,3 +1118,54 @@ sloppy product match**, which is the failure mode a free-text list guarantees.
   worktree, so none of the ~8 env-dependent failures appear (no live `server/.env` to mount).
 - **Not done, deliberately:** no Android surface yet (the import is server-side; the existing store
   editor and `groupForStore` already render the result unchanged), and nothing deployed.
+## v0.13 (2026-08-01) — four ways to read the shopping list (`claude/list-sort-modes`)
+
+User request: *"I want options to sort by store layout, categories, alphabetical, or last added."*
+Android-only; the server is untouched.
+
+Until now the screen **inferred** its organising principle — store selected meant aisles, no store
+meant categories — and offered no other. Now the user picks, and the choice persists per-device in
+`AppPreferences.listSortMode` (DataStore, the `selectedStoreId`/`pinnedListId` precedent: how *you*
+want to read the list is not a fact about the list, and two household members must not fight over
+it).
+
+- **`util/ListSort.kt::groupForDisplay`** is the feature — pure and table-tested, delegating to the
+  existing `groupForStore` for the two grouped modes. `STORE_LAYOUT` → the store's aisles;
+  `CATEGORIES` → the 13 canonical categories in the saved aisle order; `ALPHABETICAL` and
+  `LAST_ADDED` → one flat run.
+- **Two modes group and two deliberately don't.** That split is the point: a grouped list can't
+  answer *"did I already add bread"*, because answering it means already knowing which aisle to
+  look under. The flat modes return a single section with `showHeader = false` — a lone "All items"
+  heading says nothing the counts row above it doesn't.
+- **`CATEGORIES` is "route with no store"**, not a second code path, so the two can never disagree
+  about how a category maps to a section. It ignores a selected store on purpose — that is the only
+  reason to offer it separately.
+- **`STORE_LAYOUT` is the default because with no store selected it *is* the category grouping**, so
+  upgrading changes nobody's list in either case (pinned by a test). In the menu it is **disabled,
+  not hidden**, with "Pick a store first" when no store is selected: hiding it makes the feature
+  undiscoverable to someone who hasn't added a store, and enabling it would be two entries doing
+  the same thing.
+- **Room v8 (`MIGRATION_7_8`) — and it fixes a v0.11 bug.** The mirror gains `shopping_items.key`
+  and `createdAt`. `createdAt` is what `LAST_ADDED` sorts on, but `key` closes a real gap: the
+  offline mapper defaulted it to `""`, so **an offline list matched no placement and silently fell
+  back to category grouping — inside the store, the one place store routing exists for.** Nothing
+  surfaced it because `groupForStore`'s tests are pure and the online path carries the field.
+- **Both columns declare `@ColumnInfo(defaultValue = "''")`.** Without it a fresh install creates
+  them with no DEFAULT while the migration creates them with `DEFAULT ''` (it must — they are
+  `NOT NULL` and existing rows need a value). Room tolerates that divergence because it only
+  compares defaults the entity declares, but two installs of one version having different schemas
+  is a trap for later. Verified against the generated `CookbookDatabase_Impl`: the `CREATE TABLE`
+  and the migration now agree exactly, and Room validates it at open time.
+- **`LAST_ADDED` sorting detail:** `created_at` is the server's ISO-8601 UTC stamp, so a descending
+  *string* compare is a chronological one — no date parsing, no locale hazard. When **no** row
+  carries a stamp (a mirror written by a pre-v8 build) it falls back to `order`, the list's own
+  insertion sequence, which is exactly right for that cache. A partial refresh sinks the unstamped
+  rows to the bottom; they stop existing on the next successful sync.
+- An unrecognised persisted mode falls back to the default instead of throwing — a preference
+  written by a different build must never stop the list from rendering.
+- **Verified: Android 173 unit tests, 0 failures** (17 new in `ListSortTest` — the never-drops and
+  same-row-set invariants asserted across *all four* modes, plus per-mode behaviour, the
+  upgrade-changes-nothing property, and the stored-value round trip) + `:app:assembleDebug` green,
+  run locally against the sibling Pulse checkout.
+- **Not done:** no Roborazzi baseline for the new menu (the screenshots job is still
+  `workflow_dispatch`-only), and no on-device pass — both human-gated as usual.

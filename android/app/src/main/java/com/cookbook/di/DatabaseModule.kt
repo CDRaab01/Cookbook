@@ -31,6 +31,7 @@ object DatabaseModule {
                 CookbookDatabase.MIGRATION_4_5,
                 CookbookDatabase.MIGRATION_5_6,
                 CookbookDatabase.MIGRATION_6_7,
+                CookbookDatabase.MIGRATION_7_8,
             )
             .fallbackToDestructiveMigration()
             .build()
