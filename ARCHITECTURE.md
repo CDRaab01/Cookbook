@@ -148,6 +148,54 @@ to wedge the backlog — the v0.5 lesson). `StoreRepositoryImpl` carries a small
 `normalizeKeyForCacheOnly` used *only* so an optimistic placement matches before the server's real
 row arrives; the server owns the key space.
 
+### Retailer aisle imports (v0.12) — real shelf coordinates, and why there is no scraper
+
+Meijer publishes a per-store shelf location on every product page — for Maysville Rd (their store
+id **138**): bananas `Aisle A | 11 / Section 10`, peanut butter `B | 16 / 39`, milk `B | 17 / 35`,
+paper towels `B | 14 / 31`. That is exactly the data `store_placements` was designed to hold, so
+importing it needs no new routing: `groupForStore` already prefers a placement over the category
+mapping, and the Android client is unchanged.
+
+**The server does not and will not fetch those pages.** meijer.com is a client-rendered SPA behind
+Akamai Bot Manager: the product HTML is an ~11 KB shell with no aisle in it, and an automated
+browser is refused outright — a headless Chromium on this host got `403 Access Denied` on
+`/shopping/product/…`, on `/shopping/search.html` **and** on `/robots.txt`, measured 2026-08-01
+from the same IP and user agent as a browser session that had just read those pages successfully.
+Only the automation is being blocked. Getting past it would mean defeating a bot-detection control,
+which is out of scope by choice; a Playwright sidecar was built, measured, and **deleted**.
+
+So an import is a **human-initiated batch**: observations are collected in a real browser session
+and posted to `POST /stores/{id}/placements/import`. `GET /stores/{id}/unplaced?list_id=…` is the
+worklist that drives it — unchecked items with no placement at that store, deduped by key — and the
+same endpoint measures progress afterwards. `stores.retailer` / `stores.retailer_store_id`
+(migration `0024`, both nullable) record which chain and location the placements describe, so a
+later run doesn't have to be told again. This is affordable precisely because an aisle is close to
+static: the cost is paid once per item and cached forever.
+
+Four properties make the import safe to run against a store someone has already curated, and each
+is a test in `tests/test_placement_import.py`:
+
+- **Idempotent** — a re-import reports `placed=0`. The counts describe *changes*, not input rows.
+- **Never destructive** — it cannot delete an aisle, drop a placement, or overwrite one with "no
+  aisle". An observation with no aisle lands in `skipped`, because a person who walked the store
+  outranks a scrape.
+- **Never touches `item_history` or the item's `category`** — the same rule as `upsert_placement`.
+  A retailer's shelf map is not a statement about how *this user* files things.
+- **Discovered aisles claim no categories.** They are placement targets only. Giving "Aisle B | 16"
+  the `pantry` category because one pantry item was found there would silently re-route every
+  unlooked-up pantry item on the strength of one observation; the 13 seeded aisles stay the
+  fallback.
+
+Ordering is `app/retailers/meijer.py::walk_sort_key` — discovered aisles by zone letter then number
+(numerically: `A | 11` follows `A | 2`), everything else after them. **Every unparseable name
+returns the same key on purpose**, and `_reorder_walk` breaks the tie on the aisle's existing
+`order`. An earlier version tiebroke on the name, which alphabetized the seeded block into
+Baby/Bakery/Beverages and destroyed the canonical produce→meat→dairy order the store was seeded
+with; sorting a walk order by name is never right. Note also that B|16 (peanut butter) and B|17
+(milk) are adjacent codes for departments nowhere near each other on a real floor — these are
+**planogram codes, not a survey of the store**, so the derived order is a plausible starting point
+the user drags into shape once. That is safe precisely because the aisle PUT preserves ids.
+
 ### Domain map
 
 | Domain | Router | Service | Models |

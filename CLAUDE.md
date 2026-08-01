@@ -1049,3 +1049,72 @@ proposing to move things the user placed by hand, so it can't be silent — it d
 - **Test gotcha:** `whenever(...).thenThrow(IOException(...))` fails on a suspend repository method
   — Mockito rejects a checked exception the signature doesn't declare, and Kotlin declares none.
   Use `thenAnswer { throw ... }`.
+
+---
+
+## v0.12 (2026-08-01) — real Meijer aisle numbers, and the scraper that got deleted
+
+The follow-on the user asked for: *"point at a store — Maysville Meijer — and pull the actual
+location of the products from the website"*, replacing the AI-guessed layout with real shelf data.
+Feasibility was confirmed first, and it changed the plan twice.
+
+**Meijer does publish it.** Every product page carries a per-store location. For Maysville Rd
+(Meijer store id **138**, set by a one-value `meijer-store` cookie): bananas `Aisle A | 11 /
+Section 10`, peanut butter `B | 16 / 39`, milk `B | 17 / 35`, paper towels `B | 14 / 31`. Search
+results expose UPCs, and `/shopping/product/x/<UPC>.html` resolves from a UPC alone — the slug is
+decorative — so name → search → UPC → aisle is a complete pipeline. Useful de-risking detail: both
+peanut butters sit in `B | 16` and differ only by section, so **aisle-level accuracy survives a
+sloppy product match**, which is the failure mode a free-text list guarantees.
+
+- **⚠️ THE FINDING OF THIS ROUND — automated browsers are blocked outright, so there is no scraper
+  in this repo.** The product HTML is an ~11 KB SPA shell (`hasAisle: false`); the location arrives
+  by XHR after hydration, so an `httpx.get` gets nothing. A Playwright sidecar was therefore built,
+  containerised, and smoke-tested — and Akamai Bot Manager returned **`403 Access Denied` on
+  `/shopping/product/…`, on `/shopping/search.html`, and even on `/robots.txt`**, from the same IP
+  and user agent as a session that had just read those pages fine. Only the automation is refused.
+  Beating that means defeating a bot-detection control, which was declined; **the sidecar,
+  Dockerfile and compose service were deleted rather than escalated to fingerprint spoofing or
+  replaying the real browser's Akamai cookies.** What survived is the part that doesn't care who
+  fetched the page: the pure parser.
+  - Incidental but reusable: `python:3.12-slim` now resolves to Debian **trixie**, where
+    `playwright install --with-deps` fails outright — its dep list still names bookworm-era font
+    packages (`ttf-unifont`, `ttf-ubuntu-font-family`) and treats the missing candidates as fatal.
+    `python:3.12-slim-bookworm` works.
+- **So an import is a human-initiated batch, not a background job.** Observations are collected in
+  a real browser session and posted to **`POST /stores/{id}/placements/import`**;
+  **`GET /stores/{id}/unplaced?list_id=…`** is the worklist that drives it (unchecked items with no
+  placement here, deduped by key) and measures progress afterwards. Affordable because an aisle is
+  close to static — paid once per item, cached in `store_placements` forever. This **supersedes the
+  original plan of a background per-add lookup**, which the 403 made impossible.
+- **Migration `0024`:** `stores.retailer` + `stores.retailer_store_id`, both nullable, no backfill.
+  A hand-built store keeps both NULL and behaves identically; routing never reads them. They record
+  *which* Meijer an imported layout describes so a later run isn't told again.
+- **`app/retailers/meijer.py`** is pure string parsing — `parse_location`, `normalize_aisle_label`,
+  `walk_sort_key`, `clean_card_text`. Two distinctions it exists to preserve: the site's
+  "Finding Aisle Sections" placeholder returns `None` (**retryable**) while a fully-rendered page
+  with no aisle returns an empty `Location` (**permanent** — a deli counter really has no aisle),
+  and `"Aisle B | 16"` / `"B|16"` / `"b | 016"` all normalize to one label, or a store grows three
+  aisles for one physical location.
+- **Four properties make an import safe against an already-curated store**, all tested: idempotent
+  (`placed=0` on re-import — counts report *changes*); never destructive (can't delete an aisle,
+  drop a placement, or overwrite one with "no aisle" — those land in `skipped`, because someone who
+  walked the store outranks a scrape); never touches `item_history` or the item's `category`; and
+  discovered aisles claim **no categories**, so one observation can't re-route every unlooked-up
+  item in a category. The 13 seeded aisles stay the fallback, as a tail that shrinks with coverage.
+- **Bug caught by its own test, worth keeping:** `walk_sort_key` originally tiebroke unparseable
+  names on the *name*, which **alphabetized the seeded block** into Baby/Bakery/Beverages and
+  destroyed the canonical produce→meat→dairy order the store was seeded with. Every unparseable
+  name now returns the same key and `_reorder_walk` breaks the tie on the existing `order` — which
+  also preserves any manual reordering the import didn't touch. Sorting a walk order by name is
+  never right.
+- **Honest limitation:** `B | 16` (peanut butter) and `B | 17` (milk) are adjacent codes for
+  departments nowhere near each other on a real Meijer floor. These are **planogram codes, not a
+  survey of the store** — the derived order is a plausible starting point to drag into shape once,
+  which is safe only because the aisle PUT preserves ids. `MAX_STORE_AISLES` 60 → **150**: a real
+  floor plan is far bigger than a hand-built layout and 60 would have truncated it.
+- **Verified: server 672 passed, 0 failed** (37 new: 22 in `tests/test_meijer_parse.py`, 15 in
+  `tests/test_placement_import.py`), ruff 0.4.4 `check` + `format --check` clean at CI scope.
+  Alembic chain applies to a **fresh** DB to `0024` and `0024` down/up round-trips. Run from the
+  worktree, so none of the ~8 env-dependent failures appear (no live `server/.env` to mount).
+- **Not done, deliberately:** no Android surface yet (the import is server-side; the existing store
+  editor and `groupForStore` already render the result unchanged), and nothing deployed.

@@ -11,18 +11,24 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.limits import MAX_STORES
+from app.limits import MAX_STORE_AISLES, MAX_STORES
 from app.lists.merge import normalize_name
 from app.models.recipe import STORE_CATEGORIES
+from app.models.shopping_list import ShoppingListItem
 from app.models.store import Store, StoreAisle, StorePlacement
+from app.retailers.meijer import aisle_display_name, normalize_aisle_label, walk_sort_key
 from app.schemas.store import (
     AisleIn,
+    PlacementImportIn,
+    PlacementImportOut,
     PlacementIn,
     StoreCreate,
     StoreDetailOut,
     StoreLayoutDraftOut,
     StoreOut,
     StoreUpdate,
+    UnplacedItemOut,
+    UnplacedOut,
 )
 from app.services.ai.store_layout_prompts import (
     DRAFT_NOTE,
@@ -32,6 +38,7 @@ from app.services.ai.store_layout_prompts import MAX_TOKENS as LAYOUT_MAX_TOKENS
 from app.services.ai.store_layout_prompts import build_messages, parse_layout
 from app.services.ai.text import chat_text
 from app.services.household_service import household_member_ids
+from app.services.shopping_service import load_accessible_list
 
 # Human labels for the canonical categories, used only to name the seeded default aisles. The
 # Android client has its own copy for display; these exist so a freshly created store reads like a
@@ -108,6 +115,8 @@ def _to_detail(store: Store, *, user_id: uuid.UUID) -> StoreDetailOut:
         id=store.id,
         name=store.name,
         label=store.label,
+        retailer=store.retailer,
+        retailer_store_id=store.retailer_store_id,
         is_owner=store.user_id == user_id,
         created_at=store.created_at,
         aisles=sorted(store.aisles, key=lambda a: a.order),
@@ -132,6 +141,8 @@ async def list_stores(db: AsyncSession, user_id: uuid.UUID) -> list[StoreOut]:
             id=s.id,
             name=s.name,
             label=s.label,
+            retailer=s.retailer,
+            retailer_store_id=s.retailer_store_id,
             is_owner=s.user_id == user_id,
             created_at=s.created_at,
         )
@@ -170,6 +181,10 @@ async def update_store(
         store.name = req.name
     if req.label is not None:
         store.label = req.label or None  # "" clears
+    if req.retailer is not None:
+        store.retailer = req.retailer or None
+    if req.retailer_store_id is not None:
+        store.retailer_store_id = req.retailer_store_id or None
     await db.commit()
     return _to_detail(await _reload(db, store.id), user_id=user_id)
 
@@ -276,6 +291,167 @@ async def suggest_layout(chain: str, client=None) -> StoreLayoutDraftOut:
             aisles=default_aisles(), low_confidence=True, note=LOW_CONFIDENCE_NOTE
         )
     return StoreLayoutDraftOut(aisles=aisles, note=DRAFT_NOTE)
+
+
+async def unplaced_items(
+    db: AsyncSession, user_id: uuid.UUID, store_id: uuid.UUID, list_id: uuid.UUID
+) -> UnplacedOut:
+    """The items on ``list_id`` this store has no placement for — the worklist for an import.
+
+    Unchecked items only: a checked item is history for this trip, and looking up where to find
+    something already in the cart is wasted effort. Deduplicated by placement key, because two
+    rows that normalize to the same key would be one lookup and one placement anyway.
+    """
+    store = await load_accessible_store(db, user_id, store_id)
+    shopping_list = await load_accessible_list(db, user_id, list_id)
+    placed_keys = set(
+        (await db.execute(select(StorePlacement.key).where(StorePlacement.store_id == store.id)))
+        .scalars()
+        .all()
+    )
+    rows = (
+        (
+            await db.execute(
+                select(ShoppingListItem)
+                .where(
+                    ShoppingListItem.list_id == shopping_list.id,
+                    ShoppingListItem.checked.is_(False),
+                )
+                .order_by(ShoppingListItem.order)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    seen: set[str] = set()
+    items: list[UnplacedItemOut] = []
+    for row in rows:
+        key = normalize_name(row.name)
+        if not key or key in placed_keys or key in seen:
+            continue
+        seen.add(key)
+        items.append(UnplacedItemOut(name=row.name, key=key, category=row.category))
+    return UnplacedOut(
+        store_id=store.id,
+        retailer=store.retailer,
+        retailer_store_id=store.retailer_store_id,
+        items=items,
+    )
+
+
+async def import_placements(
+    db: AsyncSession, user_id: uuid.UUID, store_id: uuid.UUID, req: PlacementImportIn
+) -> PlacementImportOut:
+    """Apply a batch of harvested "this item is in aisle X here" observations.
+
+    The aisles it creates carry **no categories**. That is deliberate and the model docstring
+    allows for it explicitly: a discovered aisle is a *placement target*, not a claim about where a
+    whole category lives. Giving "Aisle B | 16" the ``pantry`` category because one pantry item was
+    found there would silently re-route every unlooked-up pantry item into it on the strength of a
+    single observation. The 13 seeded aisles keep their categories and keep being the fallback.
+
+    Three properties this guarantees, each of which is a test:
+
+    - **Idempotent.** Re-importing the same batch creates nothing and reports ``placed=0``.
+    - **Never destructive.** No aisle is deleted, no placement is dropped, and an observation with
+      no aisle is reported in ``skipped`` rather than clearing a placement the user already had.
+      A harvest is evidence, not a source of truth that outranks the person who walked the store.
+    - **Never touches ``item_history`` or the item's ``category``.** Same rule as
+      :func:`upsert_placement` — where a thing sits in *this* store says nothing about the next
+      one, and a retailer's shelf map is not a statement about how the user files things.
+    """
+    store = await load_accessible_store(db, user_id, store_id)
+    if req.retailer is not None:
+        store.retailer = req.retailer or None
+    if req.retailer_store_id is not None:
+        store.retailer_store_id = req.retailer_store_id or None
+
+    aisles_by_name = {
+        a.name: a
+        for a in (
+            (await db.execute(select(StoreAisle).where(StoreAisle.store_id == store.id)))
+            .scalars()
+            .all()
+        )
+    }
+    existing_placements = {
+        p.key: p
+        for p in (
+            (await db.execute(select(StorePlacement).where(StorePlacement.store_id == store.id)))
+            .scalars()
+            .all()
+        )
+    }
+
+    placed = 0
+    aisles_created = 0
+    skipped: list[str] = []
+
+    for obs in req.observations:
+        label = normalize_aisle_label(obs.aisle) if obs.aisle else None
+        if label is None:
+            # No aisle on the page: a service counter, or something this store doesn't carry.
+            # Recorded so the user can finish these by hand rather than wondering what happened.
+            skipped.append(obs.name)
+            continue
+        key = normalize_name(obs.name)
+        if not key:
+            skipped.append(obs.name)
+            continue
+
+        aisle_name = aisle_display_name(label)
+        aisle = aisles_by_name.get(aisle_name)
+        if aisle is None:
+            if len(aisles_by_name) >= MAX_STORE_AISLES:
+                # Refuse to grow past the cap rather than partially applying: a store that hits
+                # this is telling us the labels aren't what we think they are.
+                skipped.append(obs.name)
+                continue
+            aisle = StoreAisle(store_id=store.id, order=0, name=aisle_name, categories=[])
+            db.add(aisle)
+            await db.flush()  # need the id to point a placement at it
+            aisles_by_name[aisle_name] = aisle
+            aisles_created += 1
+
+        existing = existing_placements.get(key)
+        if existing is None:
+            row = StorePlacement(
+                store_id=store.id, aisle_id=aisle.id, key=key, name=obs.name.strip()
+            )
+            db.add(row)
+            existing_placements[key] = row
+            placed += 1
+        elif existing.aisle_id != aisle.id:
+            existing.aisle_id = aisle.id
+            existing.name = obs.name.strip()
+            placed += 1
+        # else: identical to what's already stored — the idempotence case, counted as no change.
+
+    _reorder_walk(list(aisles_by_name.values()))
+    await db.commit()
+    return PlacementImportOut(
+        placed=placed,
+        aisles_created=aisles_created,
+        skipped=skipped,
+        store=_to_detail(await _reload(db, store.id), user_id=user_id),
+    )
+
+
+def _reorder_walk(aisles: list[StoreAisle]) -> None:
+    """Rewrite every aisle's ``order`` so discovered aisles sort by zone/number and every other
+    aisle keeps its existing relative order in a block at the end.
+
+    Applied to *all* aisles, not just new ones, because ``order`` is a dense sequence: inserting
+    "Aisle B | 15" between two existing rows is only expressible by renumbering.
+
+    **The existing ``order`` is the final tiebreak, and that is load-bearing.** It preserves two
+    things a name-based tiebreak would destroy: the canonical produce→meat→dairy walk order of the
+    seeded category block (sorting those by name alphabetizes them into nonsense), and any manual
+    reordering the user has already done to aisles this import doesn't touch. It also makes the
+    sort total — ``order`` is unique within a store — so a no-op import doesn't churn the ordering.
+    """
+    for index, aisle in enumerate(sorted(aisles, key=lambda a: (*walk_sort_key(a.name), a.order))):
+        aisle.order = index
 
 
 async def delete_placement(

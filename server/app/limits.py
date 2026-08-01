@@ -27,7 +27,15 @@ SCALE_BOUNDS = (0.1, 20.0)
 # Stores (v0.11). A household shops a handful of places; the aisle cap is generous enough for a
 # real supercenter walked aisle-by-aisle without letting a bad AI layout suggestion run away.
 MAX_STORES = 20
-MAX_STORE_AISLES = 60
+# Raised from 60 in v0.12: a hand-built layout is a dozen aisles, but an *imported* one is the
+# store's real floor plan (a supercenter runs to two zones of ~30 runs each) on top of the 13
+# seeded category aisles that remain as the fallback. 60 would have truncated a real Meijer.
+MAX_STORE_AISLES = 150
 MAX_STORE_NAME_LENGTH = 120
 # Matches the store_aisles.name column — an aisle label ("Aisle 12 — Baking"), not prose.
 MAX_AISLE_NAME_LENGTH = 80
+# The retailer's own store id ("138"), matching the stores.retailer_store_id column.
+MAX_RETAILER_STORE_ID_LENGTH = 16
+# One import batch. Sized well above a weekly list so a harvest is never split, but bounded so a
+# runaway client can't drive an unbounded transaction.
+MAX_PLACEMENT_IMPORT_ROWS = 300
