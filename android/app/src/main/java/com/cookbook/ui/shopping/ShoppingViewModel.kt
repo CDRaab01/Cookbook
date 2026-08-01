@@ -16,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import com.cookbook.util.DEFAULT_AISLE_ORDER
+import com.cookbook.util.ListSortMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +50,15 @@ class ShoppingViewModel @Inject constructor(
      *  the "· Default" marker in the list switcher. */
     val pinnedListId: StateFlow<String?> = appPreferences.pinnedListId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** How the list is organised on screen (v0.13) — store aisles, categories, A–Z or newest
+     *  first. Presentation only: changing it writes nothing but the preference. */
+    val sortMode: StateFlow<ListSortMode> = appPreferences.listSortMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ListSortMode.DEFAULT)
+
+    fun setSortMode(mode: ListSortMode) {
+        viewModelScope.launch { appPreferences.setListSortMode(mode) }
+    }
 
     /** Every store the household shops, for the picker. Empty until [load] and when offline with a
      *  cold cache — an empty list simply means the picker offers only "No store". */

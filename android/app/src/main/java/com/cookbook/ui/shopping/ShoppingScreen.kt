@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDropDown
@@ -81,7 +82,8 @@ import com.cookbook.ui.theme.CookbookTheme
 import com.cookbook.util.DEFAULT_AISLE_ORDER
 import com.cookbook.util.LinkText
 import com.cookbook.util.categoryLabel
-import com.cookbook.util.groupForStore
+import com.cookbook.util.ListSortMode
+import com.cookbook.util.groupForDisplay
 import com.cookbook.util.UiState
 import design.pulse.ui.components.Caption
 import design.pulse.ui.components.DataText
@@ -114,8 +116,10 @@ fun ShoppingScreen(
     val pinnedListId by viewModel.pinnedListId.collectAsState()
     val stores by viewModel.stores.collectAsState()
     val selectedStore by viewModel.selectedStore.collectAsState()
+    val sortMode by viewModel.sortMode.collectAsState()
     val organizing by viewModel.organizing.collectAsState()
     var storeMenuOpen by remember { mutableStateOf(false) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
     // "The list already looks tidy" — a snackbar, not a screen you have to dismiss.
     var organizeNote by remember { mutableStateOf<String?>(null) }
     // The item whose aisle is being changed at the selected store.
@@ -321,6 +325,45 @@ fun ShoppingScreen(
                             }
                         }
                     }
+                    // Sort mode — how the list is organised. Always available (unlike the store
+                    // picker), because "A–Z" and "Last added" are useful with no store at all.
+                    IconButton(onClick = { sortMenuOpen = true }) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Sort,
+                            contentDescription = "Sort: ${sortMode.label}",
+                            tint = if (sortMode != ListSortMode.DEFAULT) {
+                                CookbookTheme.colors.heat.base
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = sortMenuOpen,
+                        onDismissRequest = { sortMenuOpen = false },
+                    ) {
+                        ListSortMode.entries.forEach { mode ->
+                            // "Store layout" with no store selected is literally the category
+                            // grouping, so offering both would be two menu items that do the same
+                            // thing. Disable it and say why rather than hiding it — a hidden item
+                            // makes the feature undiscoverable for someone who hasn't added a
+                            // store yet.
+                            val needsStore = mode == ListSortMode.STORE_LAYOUT && selectedStore == null
+                            androidx.compose.material3.DropdownMenuItem(
+                                enabled = !needsStore,
+                                text = {
+                                    Text(if (mode == sortMode) "${mode.label} ✓" else mode.label)
+                                },
+                                trailingIcon = {
+                                    Caption(if (needsStore) "Pick a store first" else mode.description)
+                                },
+                                onClick = {
+                                    sortMenuOpen = false
+                                    viewModel.setSortMode(mode)
+                                },
+                            )
+                        }
+                    }
                     IconButton(onClick = viewModel::load) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
                     }
@@ -392,6 +435,7 @@ fun ShoppingScreen(
                             onClearChecked = viewModel::clearChecked,
                             aisleOrder = aisleOrder,
                             selectedStore = selectedStore,
+                            sortMode = sortMode,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -536,14 +580,15 @@ internal fun ShoppingListBody(
     onClearChecked: () -> Unit,
     aisleOrder: List<String> = DEFAULT_AISLE_ORDER,
     selectedStore: StoreDetailOut? = null,
+    sortMode: ListSortMode = ListSortMode.DEFAULT,
     modifier: Modifier = Modifier,
 ) {
     val colors = CookbookTheme.colors
     val (checked, unchecked) = items.partition { it.checked }
-    // Sections are this store's real aisles in walk order when one is selected, and the usual
-    // categories in the user's saved order when not. All the routing rules (placements first,
-    // then category → aisle, then "Unsorted") live in the pure util so they can be table-tested.
-    val sections = groupForStore(unchecked, selectedStore, aisleOrder)
+    // Sections come from the chosen sort mode: this store's real aisles in walk order, the usual
+    // categories, or a single flat run for the A-Z / newest-first modes. Every rule lives in the
+    // pure util so it can be table-tested.
+    val sections = groupForDisplay(unchecked, sortMode, selectedStore, aisleOrder)
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -583,7 +628,7 @@ internal fun ShoppingListBody(
         }
 
         sections.forEach { section ->
-            item(key = "header_${section.key}") {
+            if (section.showHeader) item(key = "header_${section.key}") {
                 SectionHeader(
                     section.title,
                     channel = colors.heat.base,

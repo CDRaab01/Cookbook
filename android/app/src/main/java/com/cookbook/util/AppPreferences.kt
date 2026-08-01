@@ -33,6 +33,26 @@ class AppPreferences @Inject constructor(
         private val AISLE_ORDER = stringPreferencesKey("pref_aisle_order")
         private val SELECTED_STORE_ID = stringPreferencesKey("pref_selected_store_id")
         private val SHARE_ALL_NUDGE_DISMISSED = booleanPreferencesKey("pref_share_all_nudge_dismissed")
+        private val LIST_SORT_MODE = stringPreferencesKey("pref_list_sort_mode")
+    }
+
+    /**
+     * How the shopping list is organised on screen (v0.13).
+     *
+     * Per-device like [selectedStoreId] and [pinnedListId], for the same reason: it is a statement
+     * about how *you* want to read the list right now, not a fact about the list. One household
+     * member walking the store by aisle and another scanning A–Z at home must not fight over it.
+     *
+     * Stored as the enum name and parsed leniently — an unrecognised value falls back to the
+     * default rather than throwing, so a preference written by a different build can't stop the
+     * list from rendering.
+     */
+    val listSortMode: Flow<ListSortMode> = context.prefsDataStore.data.map { prefs ->
+        ListSortMode.fromKey(prefs[LIST_SORT_MODE])
+    }
+
+    suspend fun setListSortMode(mode: ListSortMode) {
+        context.prefsDataStore.edit { it[LIST_SORT_MODE] = mode.name }
     }
 
     /**
