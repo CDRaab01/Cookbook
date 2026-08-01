@@ -39,6 +39,13 @@ class Store(Base):
     # clean chain name to reason about without the location noise.
     name: Mapped[str] = mapped_column(String(120))
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Which chain's identifiers this store's imported placements are keyed to ("meijer"), and that
+    # chain's own id for this location ("138" = Maysville Rd). Both nullable: a store you built by
+    # hand has neither, and nothing about routing depends on them. They exist so an aisle import
+    # can be repeated later without being told which store on which site it came from — the fact
+    # is about the store, so it belongs on the store, not in whoever runs the harvest.
+    retailer: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    retailer_store_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

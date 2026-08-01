@@ -8,6 +8,8 @@ from app.database import get_db
 from app.limiter import limiter
 from app.schemas.store import (
     AislesPut,
+    PlacementImportIn,
+    PlacementImportOut,
     PlacementIn,
     StoreCreate,
     StoreDetailOut,
@@ -15,6 +17,7 @@ from app.schemas.store import (
     StoreOut,
     StoreUpdate,
     SuggestLayoutRequest,
+    UnplacedOut,
 )
 from app.security import CurrentUser
 from app.services.store_service import (
@@ -22,9 +25,11 @@ from app.services.store_service import (
     delete_placement,
     delete_store,
     get_store,
+    import_placements,
     list_stores,
     replace_aisles,
     suggest_layout,
+    unplaced_items,
     update_store,
     upsert_placement,
 )
@@ -94,6 +99,36 @@ async def add_placement(
 ):
     """Remember that this item lives in that aisle *here*. Upsert by normalized name."""
     return await upsert_placement(db, current_user.id, store_id, req)
+
+
+@router.get("/{store_id}/unplaced", response_model=UnplacedOut)
+async def unplaced_for_list(
+    store_id: uuid.UUID, list_id: uuid.UUID, current_user: CurrentUser, db: DbSession
+):
+    """Which unchecked items on ``list_id`` this store still has no aisle for.
+
+    The worklist for an aisle import. Deduplicated by placement key and ordered like the list, so
+    working through it top-to-bottom matches the order the shopper sees.
+    """
+    return await unplaced_items(db, current_user.id, store_id, list_id)
+
+
+@router.post("/{store_id}/placements/import", response_model=PlacementImportOut)
+async def import_store_placements(
+    store_id: uuid.UUID, req: PlacementImportIn, current_user: CurrentUser, db: DbSession
+):
+    """Apply a batch of harvested aisle observations for this store.
+
+    **The server never fetches these itself** — meijer.com is a bot-protected SPA that refuses
+    automated browsers outright (``app/retailers/meijer.py`` documents the measurement). They are
+    collected in a real browser session and posted here. That makes an import an occasional,
+    human-initiated batch rather than a background refresh, which is fine: an aisle is close to
+    static, so the cost is paid once per item and cached in ``store_placements``.
+
+    Idempotent, and never destructive — an observation with no aisle is reported in ``skipped``
+    rather than clearing a placement the user learned by actually walking the store.
+    """
+    return await import_placements(db, current_user.id, store_id, req)
 
 
 @router.delete("/{store_id}/placements/{placement_id}", response_model=StoreDetailOut)
