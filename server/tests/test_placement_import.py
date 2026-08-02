@@ -372,3 +372,32 @@ async def test_import_requires_auth(client, auth_client):
         headers={"Authorization": "Bearer nope"},
     )
     assert r.status_code == 401
+
+
+async def test_unplaced_carries_a_search_query_for_the_harvester(auth_client):
+    """The worklist tells the harvester what to type into the retailer's search box, so no client
+    re-implements the cleaning — the same reason ``ItemOut.key`` is computed server-side."""
+    store = await _store(auth_client)
+    shopping_list = await _default_list(auth_client)
+    await _add(auth_client, shopping_list["id"], "cream cheese at room temp")
+    await _add(auth_client, shopping_list["id"], "soy sauce")
+
+    r = await auth_client.get(
+        f"/stores/{store['id']}/unplaced", params={"list_id": shopping_list["id"]}
+    )
+    by_name = {i["name"]: i["search_query"] for i in r.json()["items"]}
+    assert by_name["cream cheese at room temp"] == "cream cheese"
+    # An already-clean name passes through untouched.
+    assert by_name["soy sauce"] == "soy sauce"
+
+
+async def test_a_search_query_is_never_empty(auth_client):
+    """An empty query finds nothing, which reads as "this store doesn't stock it"."""
+    store = await _store(auth_client)
+    shopping_list = await _default_list(auth_client)
+    await _add(auth_client, shopping_list["id"], "chopped fresh")
+
+    r = await auth_client.get(
+        f"/stores/{store['id']}/unplaced", params={"list_id": shopping_list["id"]}
+    )
+    assert all(i["search_query"] for i in r.json()["items"])

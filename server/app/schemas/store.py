@@ -208,6 +208,10 @@ class UnplacedItemOut(BaseModel):
     name: str
     key: str
     category: str | None = None
+    #: What to type into the retailer's search box for this item (``lists/search_terms``). Sent by
+    #: the server so a harvester never re-implements the cleaning and drifts from it — the same
+    #: reason ``ItemOut.key`` is computed here. Best-effort: the harvest UI shows it editable.
+    search_query: str = ""
 
 
 class UnplacedOut(BaseModel):
