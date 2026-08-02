@@ -1169,3 +1169,84 @@ it).
   run locally against the sibling Pulse checkout.
 - **Not done:** no Roborazzi baseline for the new menu (the screenshots job is still
   `workflow_dispatch`-only), and no on-device pass — both human-gated as usual.
+
+---
+
+## v0.14 (2026-08-01) — the Meijer harvester, as a userscript (`claude/meijer-harvest-userscript`)
+
+v0.12 shipped the *import* endpoint but left the collecting to me driving Chrome by hand. This
+packages it: **`tools/meijer-aisle-harvest.user.js`**, a Tampermonkey userscript that runs the
+whole loop in the user's own browser session — worklist → look up each item on meijer.com →
+review → import. `tools/README.md` is the install/usage doc.
+
+It stays a userscript for the reason v0.12 recorded: automated browsers get `403 Access Denied`
+sitewide, so the only place these pages load is a real session. Chosen over the alternatives after
+researching them (see below).
+
+- **Every page wait is event-driven** — iframe `load` + `MutationObserver`, never `setTimeout`.
+  This is not stylistic: **Chrome clamps background-tab timers to roughly one call per minute**,
+  and a sleep-based first version stalled after its first item (a 1000 ms timer measured >45 s).
+  Timers survive only for the politeness delay and a backstop. The harvest therefore keeps running
+  while the user is in another tab.
+- **Same-origin iframes, not tab navigation**, so the page the user is on is never hijacked and
+  Stop works at any point.
+- **`lists/search_terms.py` (new) + `UnplacedItemOut.search_query`.** The server tells the
+  harvester what to type, so no client re-implements the cleaning — the `ItemOut.key` rule again.
+  **Deliberately separate from `categorize.clean_for_category`**: categorising wants every identity
+  word (a dropped one loses the aisle), searching wants the shortest confident product phrase (a
+  search box given "crema or 3 tbsp sour cream + 1 tbsp milk" returns nothing). Opposite
+  trade-offs. It reuses `clean_for_category` as its starting point rather than duplicating the
+  tested parenthetical/prep-clause stripping.
+- **The "X or Y" rule is worth keeping.** Taking the left side blindly is wrong as often as it's
+  right — the head noun sits wherever the writer put it: "crema or 3 tbsp sour cream" (left) vs
+  "thin red or green chili slices" (right). So it scores instead: a side carrying digits is a
+  quantity restatement and is dropped, then the most non-prep words wins, ties left. **My first
+  version took the left side and produced `"red"` for that second case — and I had written the
+  test asserting `"red"` rather than questioning it.** Caught on review of my own expectation.
+- **Best-effort is made safe at the UI, not in the parser.** Every query is shown in an *editable*
+  field before the run, because these are recipe lines and some are judgement calls. That is what
+  licenses the rules to be blunt; the expensive failure (silently searching the wrong thing) is
+  designed out where a human is already looking.
+- **Only finished rows are imported.** An unfinished row is never posted as "no aisle" — the server
+  reads that as a deliberate skip, and a skip you didn't mean is a silent hole in coverage.
+- **Auth stores tokens only.** Sign-in uses the password for that one `/auth/login` request and
+  never writes it; a 401 triggers exactly one transparent refresh, then gives up (a refresh loop on
+  a revoked token is worse than an honest "sign in again").
+- The script's own aisle regexes mirror `retailers/meijer.py` and are **a display convenience, not
+  the authority** — the server re-parses with `normalize_aisle_label`, so `"A|27"` and
+  `"Aisle A | 27"` land on the same aisle whatever the script produced. Bounded duplication.
+- **Verified: server 700 passed, 0 failed** (28 new: 24 in `tests/test_search_terms.py` incl. the
+  or-side table and the never-empty guarantee, 2 endpoint tests, plus the existing suites) + ruff
+  0.4.4 clean at CI scope. **The script's page-reading functions were run verbatim against the live
+  site**: `"wheat bread"` → UPC 70882008803, "Meijer Split Top Wheat Bread, 22 oz", `Aisle A | 27 /
+  Section 4` — matching the v0.12 manual harvest. Every API path and field it depends on was
+  checked against the deployed `openapi.json`.
+- **Not done:** no on-device/on-browser install pass (needs the human to install Tampermonkey and
+  sign in), and no JS test runner — adding one for a single file is disproportionate, and the
+  parsing it duplicates is tested server-side where the authority lives.
+
+### Research: what else could reach Meijer (2026-08-01)
+
+Asked for alternatives to the browser route. Findings, so this isn't re-derived:
+
+- **No public Meijer API.** `capiportal.meijer.com` is Azure API Management but the signup page
+  says outright: *"This is not a public API Manager, you must already have a US Meijer Active
+  Directory Account to use this."* No public partner programme for product data. Even Meijer's
+  **terms-of-use page returns 403** to an automated fetch — the edge config is aggressive
+  domain-wide, not just on shopping paths.
+- **The mobile-app API is dead twice over.** The one community project (`dapperfu/python_Meijer`)
+  had exactly this feature — a `defrag` command sorting a list by aisle — but its docs say login is
+  broken by Meijer's security and MITM token capture is the only way in, *and* newer app versions
+  removed the aisle line it depended on. Off-limits and no longer carries the data.
+- **Kroger is the real alternative.** Its **public** Products API returns `aisleLocations` per
+  product per store — `description` ("Aisle 35"), `number`, `side` (L/R), `shelfNumber`,
+  `bayNumber` — richer than what Meijer renders, under a free OAuth2 `client_credentials`
+  developer account, 10k calls/day, aisle data gated on `filter.locationId`. **A Kroger store could
+  be fully automatic** (the background lookup originally wanted), feeding the same
+  `placements/import` endpoint. The `stores.retailer` / `retailer_store_id` columns added in v0.12
+  exist precisely so a second chain slots in.
+- **Untested lead worth five minutes:** Meijer's *signed-in* shopping-list page may show aisle +
+  section per row (their app does per product). If so, one page load yields aisles for the whole
+  list instead of two loads per item — a 10–20× cut. Needs the user's login to check.
+- Third-party scrapers (Apify, RetailGators) sell Meijer data; they move the ToS problem to a
+  vendor and charge for it. Not recommended.

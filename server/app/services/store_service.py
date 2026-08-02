@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.limits import MAX_STORE_AISLES, MAX_STORES
 from app.lists.merge import normalize_name
+from app.lists.search_terms import search_query
 from app.models.recipe import STORE_CATEGORIES
 from app.models.shopping_list import ShoppingListItem
 from app.models.store import Store, StoreAisle, StorePlacement
@@ -330,7 +331,14 @@ async def unplaced_items(
         if not key or key in placed_keys or key in seen:
             continue
         seen.add(key)
-        items.append(UnplacedItemOut(name=row.name, key=key, category=row.category))
+        items.append(
+            UnplacedItemOut(
+                name=row.name,
+                key=key,
+                category=row.category,
+                search_query=search_query(row.name),
+            )
+        )
     return UnplacedOut(
         store_id=store.id,
         retailer=store.retailer,

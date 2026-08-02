@@ -195,6 +195,28 @@ with; sorting a walk order by name is never right. Note also that B|16 (peanut b
 (milk) are adjacent codes for departments nowhere near each other on a real floor — these are
 **planogram codes, not a survey of the store**, so the derived order is a plausible starting point
 the user drags into shape once. That is safe precisely because the aisle PUT preserves ids.
+
+**The harvester is `tools/meijer-aisle-harvest.user.js`** — a Tampermonkey userscript, because the
+pages only load in a real browser session. It reads meijer.com through same-origin iframes and
+posts the batch to the import endpoint; `tools/README.md` covers install and use. Three details
+that are load-bearing rather than incidental:
+
+- **Every page wait is event-driven** (`load` + `MutationObserver`), never a timer. Chrome clamps
+  `setTimeout` in a background tab to roughly one call a minute, and a sleep-based first version
+  stalled after its first item. Timers are used only for the politeness delay and a backstop.
+- **The server supplies each item's search term** (`lists/search_terms.py`, exposed as
+  `UnplacedItemOut.search_query`), so the script never re-implements that cleaning — the same rule
+  as `ItemOut.key`. `search_terms` is separate from `categorize.clean_for_category` on purpose:
+  categorising wants every identity word, searching wants the shortest confident product phrase,
+  and those are opposite trade-offs. It is best-effort and the harvest UI shows it **editable**,
+  which is what makes bluntness safe.
+- **The script's own aisle regexes are a display convenience, not the authority.** They mirror
+  `retailers/meijer.py`, and the server re-parses whatever arrives with `normalize_aisle_label`, so
+  `"A|27"` and `"Aisle A | 27"` land on the same aisle regardless of what the script produced.
+
+Only rows the harvest actually finished are posted. An unfinished row is never sent as "no aisle",
+because the server reads that as a deliberate skip and a skip you didn't mean is a silent hole in
+coverage.
 ### List sort modes (v0.13) — four ways to read the same list
 
 The shopping screen no longer infers its organising principle from whether a store is selected;
