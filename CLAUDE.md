@@ -1250,3 +1250,38 @@ Asked for alternatives to the browser route. Findings, so this isn't re-derived:
   list instead of two loads per item — a 10–20× cut. Needs the user's login to check.
 - Third-party scrapers (Apify, RetailGators) sell Meijer data; they move the ToS problem to a
   vendor and charge for it. Not recommended.
+
+### Option 2 investigated and closed (2026-08-02): there is no bulk aisle view on meijer.com
+
+The v0.14 research left one lead open — *"the signed-in shopping-list page may show aisle + section
+per row, which would make a harvest one page load instead of two per item."* Tested against a live
+signed-in session. **It doesn't exist.** Don't re-derive this:
+
+- **meijer.com has no shopping-list page at all.** `/shopping/list.html`, `/shopping/lists.html`,
+  `/shopping/my-list.html`, `/shopping/shopping-list.html`, `/account/lists.html`,
+  `/shopping/mylist.html` and `/account/shopping-list.html` all return the same 404 shell, and the
+  **signed-in** nav carries no list link (only Account Overview / Payments / Addresses /
+  Communication / Manage Password, plus Favorites collections). The shopping list is an app-only
+  feature; the web has a *cart*, which is a different thing.
+- **The cart renders no aisle information.** Checked live on `/shopping/cart.html` with 39 items in
+  it: zero occurrences of "Aisle" or "Section". Reasonable — a Pickup cart is fulfilled by a
+  shopper, so the customer is never shown where the item is.
+- A **single product page still shows it** (verified same session: olives → `Aisle B | 12 /
+  Section 45`), which is what the userscript already reads. Per-product is the only view there is.
+
+**Worth keeping — the field is called `ilc`** ("in-store location code"). In the SPA bundle it is
+read by `renderAisleInfo` alongside `tier2CategoryName`, gated on a `"GROC"` check, and `.split()`
+into the aisle/section parts the page displays. `/bin/meijer/productdata` is a **POST** endpoint
+whose payload uses the keys `source`, `type`, `upc` (read out of the bundle's call site) — but ~10
+attempts at the exact body shape all returned 500, and pinning it would need a captured live
+request, which is awkward because the SPA only calls it on a full page load (killing any injected
+`fetch` hook).
+
+**Not worth chasing further, and here is the arithmetic that settles it:** a harvest costs *two*
+page loads per item — a search (to get the UPC) and the product page (to get the aisle). Even a
+working batch `productdata` only removes the second one, because you still need a search per item
+to learn the UPC. So the best case from all that work is a **2× improvement on a cost that is
+~6 minutes once and ~40 s a week**. The userscript as shipped is the ceiling for Meijer.
+
+The only real step change remains **Kroger's public API** (aisle/side/shelf, free OAuth2,
+10k/day) — server-side and fully automatic, no browser in the loop.
